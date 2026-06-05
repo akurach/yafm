@@ -514,19 +514,15 @@ struct FileTableView: View {
         app.focusContextTarget(entry, in: tab)
     }
 
-    /// Menu for a file/selection. Items carry SF Symbols and are grouped.
+    /// Menu for a file/selection — kept FLAT (no nested `Menu`/`ForEach`).
+    /// SwiftUI builds a row's `.contextMenu` content eagerly for *every* row, so
+    /// nested submenus that enumerate apps (Open With) and share services (Share)
+    /// were built 286× and froze big folders. Open With / Share are now single
+    /// buttons that open the system picker on demand. (perf — user-confirmed.)
     @ViewBuilder
     private func rowMenu(_ entry: FSEntry) -> some View {
         Button { focus(entry); app.openCursor() } label: { Label("Open", systemImage: "arrow.up.forward.app") }
-        Menu {
-            ForEach(app.applications(for: entry.url), id: \.self) { appURL in
-                Button(appURL.deletingPathExtension().lastPathComponent) {
-                    app.openFile(entry.url, withApplication: appURL)
-                }
-            }
-            Divider()
-            Button("Other…") { app.openWithOther(entry.url) }
-        } label: { Label("Open With", systemImage: "square.and.arrow.up") }
+        Button { focus(entry); app.openWithOther(entry.url) } label: { Label("Open With…", systemImage: "square.and.arrow.up.on.square") }
         Button { focus(entry); QuickLook.toggle(urls: tab.actionable.map(\.url)) } label: { Label("Quick Look", systemImage: "eye") }
 
         Divider()
@@ -542,24 +538,18 @@ struct FileTableView: View {
         Button(role: .destructive) { focus(entry); app.run(CommandID.delete) } label: { Label("Delete Permanently…", systemImage: "trash.slash") }
 
         Divider()
-        Button { focus(entry); app.tagSheet = .init(url: entry.url) } label: {
-            Label("Tags…", systemImage: "tag")
-        }
-        shareMenu(entry)
+        Button { focus(entry); app.tagSheet = .init(url: entry.url) } label: { Label("Tags…", systemImage: "tag") }
+        Button { focus(entry); app.sharePicker(for: tab.actionable.map(\.url)) } label: { Label("Share…", systemImage: "square.and.arrow.up") }
 
         if entry.isDirectory {
-            Divider()
             Button { app.addBookmark(entry.url) } label: { Label("Add to Favorites", systemImage: "star") }
         }
 
-        // JS plugin context-menu items (v0.8), gated by the plugin's manifest.
-        let pluginItems = app.pluginMenuItems()
-        if !pluginItems.isEmpty {
-            Divider()
-            ForEach(pluginItems, id: \.id) { item in
-                Button { focus(entry); app.runPluginMenuItem(item.id, on: entry) } label: {
-                    Label(item.title, systemImage: "puzzlepiece.extension")
-                }
+        // JS plugin context-menu items (v0.8) — flat buttons; the list is empty
+        // unless a menu-contributing plugin is enabled, so this stays cheap.
+        ForEach(app.pluginMenuItems(), id: \.id) { item in
+            Button { focus(entry); app.runPluginMenuItem(item.id, on: entry) } label: {
+                Label(item.title, systemImage: "puzzlepiece.extension")
             }
         }
 
@@ -567,22 +557,6 @@ struct FileTableView: View {
         Button { focus(entry); app.run(CommandID.reveal) } label: { Label("Reveal in Finder", systemImage: "magnifyingglass") }
         Button { focus(entry); app.run(CommandID.getInfo) } label: { Label("Get Info", systemImage: "info.circle") }
         Button { focus(entry); app.run(CommandID.copyPath) } label: { Label("Copy Path", systemImage: "link") }
-    }
-
-    /// Share / AirDrop the row (or the whole selection when the row is in it).
-    @ViewBuilder
-    private func shareMenu(_ entry: FSEntry) -> some View {
-        let urls = tab.selection.contains(entry.url) ? Array(tab.selection) : [entry.url]
-        let services = app.sharingServices(for: urls)
-        if !services.isEmpty {
-            Menu {
-                ForEach(services, id: \.title) { svc in
-                    Button { app.share(urls, with: svc) } label: {
-                        Label { Text(svc.title) } icon: { Image(nsImage: svc.image) }
-                    }
-                }
-            } label: { Label("Share", systemImage: "square.and.arrow.up") }
-        }
     }
 
     /// Menu for empty pane background — no selection target.

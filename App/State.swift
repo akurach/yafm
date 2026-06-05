@@ -603,6 +603,16 @@ final class AppState {
         service.perform(withItems: urls)
     }
 
+    /// Show the system share picker on demand (so the row menu doesn't enumerate
+    /// share services for every row up front — that was a big-folder freeze).
+    func sharePicker(for urls: [URL]) {
+        guard !urls.isEmpty, let window = NSApp.keyWindow, let content = window.contentView else { return }
+        let picker = NSSharingServicePicker(items: urls)
+        let pt = window.mouseLocationOutsideOfEventStream
+        let rect = NSRect(x: pt.x, y: pt.y, width: 1, height: 1)
+        picker.show(relativeTo: rect, of: content, preferredEdge: .minY)
+    }
+
     // MARK: Volumes (§2)
 
     func refreshVolumes() { volumes = volumeService.mountedVolumes() }
