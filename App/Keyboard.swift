@@ -61,6 +61,12 @@ struct KeyboardMonitor: NSViewRepresentable {
     /// Returns true if the chord was consumed.
     @MainActor
     static func handle(_ c: KeyChord, app: AppState) -> Bool {
+        // A modal/alert is up (e.g. the delete confirmation): never intercept —
+        // the local monitor would otherwise swallow Return and run "Open" before
+        // the alert's default button saw it (the "Enter opens the file instead of
+        // confirming delete" bug). Let the event reach the alert.
+        if NSApp.modalWindow != nil { return false }
+
         // Don't steal keys from an active text field (path bar, rename sheet).
         if let responder = NSApp.keyWindow?.firstResponder,
            responder is NSText || responder.className.contains("NSTextView") {

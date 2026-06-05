@@ -75,18 +75,24 @@ final class TabModel: Identifiable {
 
     private func recomputeDisplayed() {
         let base: [FSEntry]
+        let streaming: Bool
         switch state {
-        case .loading(let p): base = p
-        case .loaded(let e): base = e
-        default: base = []
+        case .loading(let p): base = p; streaming = true
+        case .loaded(let e): base = e; streaming = false
+        default: base = []; streaming = false
         }
         var filtered = showHidden ? base : base.filter { !$0.isHidden }
         if filterActive, !filter.isEmpty {
             filtered = filtered.filter { $0.name.range(of: filter, options: .caseInsensitive) != nil }
         }
-        displayed = filtered.sorted(by: sortOrder)
-        // Keep the cursor on a visible row as the filter narrows the list.
-        if let c = cursor, !displayed.contains(where: { $0.url == c }) {
+        // PERF: sorting the whole *growing* partial on every stream batch was
+        // O(n²) `localizedStandard` work on the main actor — it froze big folders
+        // (Downloads). While streaming, show arrival order (row animation is
+        // suppressed anyway); sort once when the listing is complete.
+        displayed = streaming ? filtered : filtered.sorted(by: sortOrder)
+        // Keep the cursor on a visible row as the filter narrows the list. Only
+        // needed while filtering — the O(n) scan was wasted on every batch.
+        if filterActive, let c = cursor, !displayed.contains(where: { $0.url == c }) {
             cursor = displayed.first?.url
         }
     }
@@ -133,13 +139,22 @@ final class TabModel: Identifiable {
         let stream = fs.list(directory)
         task = Task { [weak self] in
             var partial: [FSEntry] = []
+            var lastShown = 0
             for await event in stream {
                 guard let self else { return }
                 switch event {
                 case .began: break
                 case .entries(let batch):
                     partial.append(contentsOf: batch)
-                    self.state = .loading(partial: partial)
+                    // PERF: coalesce stream updates so the table re-renders a
+                    // handful of times for a 10k folder, not once per 128-file
+                    // batch. Flush the first batch immediately (instant feedback,
+                    // incl. slow SMB dirs), then every 500; `.finished` flushes
+                    // the full set.
+                    if lastShown == 0 || partial.count - lastShown >= 500 {
+                        lastShown = partial.count
+                        self.state = .loading(partial: partial)
+                    }
                 case .finished:
                     self.state = .loaded(partial)
                     if self.cursor == nil { self.cursor = self.displayed.first?.url }
@@ -155,12 +170,16 @@ final class TabModel: Identifiable {
     /// Lazily attach tags without blocking the listing. Bails if the user
     /// navigated away mid-fill so stale entries never overwrite the new dir.
     private func fillTags(_ entries: [FSEntry], forDirectory dir: URL) async {
-        guard case .loaded(var current) = state, directory == dir else { return }
+        guard case .loaded = state, directory == dir else { return }
+        // PERF: one in-memory batch lookup, NOT a live xattr read per file. The
+        // old loop did `getxattr` for all ~N files on every folder open (seconds
+        // on Downloads) and then re-sorted N even when nothing was tagged. Now we
+        // only touch the UI when some file actually carries a tag.
+        let byURL = await tags.cachedTags(for: entries.map(\.url))
+        guard !byURL.isEmpty, directory == dir, case .loaded(var current) = state else { return }
         for i in current.indices {
-            if directory != dir { return }
-            current[i].tags = await tags.tags(of: current[i].url)
+            if let t = byURL[current[i].url] { current[i].tags = t }
         }
-        guard directory == dir, case .loaded = state else { return }
         state = .loaded(current)
     }
 

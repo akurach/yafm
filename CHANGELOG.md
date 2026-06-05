@@ -6,6 +6,64 @@ the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.9.0] — 1.0 candidate
+
+Stability + the last extension points. This release is mostly about making yafm
+actually live up to its one promise — **it never freezes** — after real use
+turned up big folders and drag-and-drop that did exactly that. Plus the final
+VISION extension points and a data-loss fix, on the way to 1.0.
+
+### Fixed — the never-freeze pillar, for real
+- **Big folders no longer freeze on open.** Listing re-sorted the *entire growing
+  partial* on every 128-file stream batch — O(n²) `localizedStandard` sorting on
+  the main thread. A folder like Downloads churned for seconds. Now the stream
+  shows arrival order and sorts **once** when complete: measured **1767 ms → 68 ms
+  (26×)** for 8 000 files. Stream updates are also coalesced (a handful of
+  re-renders, not one per batch). (`TabModel`.)
+- **Tag dots no longer cost a syscall per row.** Opening a folder read
+  `getxattr` for *every* file and then re-sorted — seconds on a big folder, even
+  when nothing was tagged. Tags now come from the in-memory index in one batch,
+  and the UI only updates when a file is actually tagged. (`TagService.cachedTags`.)
+- **No more beachball on large folders / re-sort.** The tag-editor was a
+  `.popover` attached to **every row**, which SwiftUI instantiates per row. It's
+  now a single sheet for the whole table.
+- **Drag between panes is smooth.** The drop highlight mutated table-level state
+  on every hover, re-rendering the whole list. The targeted state now lives per
+  row (and the pane drop has none), so an inter-pane drag no longer crawls.
+- **Delete confirmation keeps focus.** Pressing Return on the delete prompt
+  opened the file instead of confirming — the global key monitor swallowed the
+  Return before the alert saw it. The monitor now stands down whenever a modal is
+  up. (`Keyboard.swift`.)
+
+### Added — last extension points
+- **Transformers** — reusable bulk-rename rules / converters (`Transformer`):
+  lowercase, sequential numbering, space-replace built in; registered in the
+  extension registry for first-party features and (capability-bounded) plugins.
+- **Custom previewers** — a `Previewer` extension point so file types QuickLook
+  handles poorly (logs, CSV) can get a tailored preview; resolved by extension.
+- **Plugin API frozen at 1.0** — within 1.x the contract is a compatibility
+  promise (additive capabilities, deprecation window before removal); a breaking
+  change bumps the major and is refused by the loader.
+
+### Fixed — data safety
+- **OPS-1 atomic replace.** A `.replace` copy deleted the destination *before*
+  writing — a failed/cancelled copy lost both files. It now copies to a temp
+  sibling and swaps with `replaceItemAt`; the original survives any failure. The
+  output is also opened `O_CREAT|O_EXCL|O_NOFOLLOW`, closing the TOCTOU window and
+  never following a planted symlink. (`FileEngine`.)
+
+### Deferred (with reason)
+- **Photo Ingest** + **device-detection sidebar icons** — Photo Ingest depends on
+  device detection (auto-prompt on plugging a camera), which stays deferred; both
+  are peripheral to the 1.0 stability focus and tracked in `docs/feature-requests/`.
+- **Notarized DMG** — still gated on a paid Apple Developer ID.
+
+### Docs
+- User Guide now ships in **English and Russian** (`docs/USER_GUIDE.ru.md`).
+
+_Tests: +8 Core (transformers, previewers, API freeze, atomic-replace + symlink
+safety) → 79 total. Perf verified with listing/sort microbenchmarks._
+
 ## [0.8.0] — Make it yours
 
 Extensibility re-opens — now safely. The public plugin surface, frozen since the
