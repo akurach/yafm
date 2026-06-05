@@ -11,9 +11,9 @@
 	<key>CFBundleExecutable</key>
 	<string>yafm</string>
 	<key>CFBundleVersion</key>
-	<string>0.1</string>
+	<string>0.2.1</string>
 	<key>CFBundleShortVersionString</key>
-	<string>0.1</string>
+	<string>0.2.1</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>LSMinimumSystemVersion</key>
@@ -24,5 +24,15 @@
 	<string>NSApplication</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.utilities</string>
+	<key>NSDesktopFolderUsageDescription</key>
+	<string>yafm reads the files you open so it can show and copy them.</string>
+	<key>NSDocumentsFolderUsageDescription</key>
+	<string>yafm reads the files you open so it can show and copy them.</string>
+	<key>NSDownloadsFolderUsageDescription</key>
+	<string>yafm reads the files you open so it can show and copy them.</string>
+	<key>NSRemovableVolumesUsageDescription</key>
+	<string>yafm lists and copies files on removable drives you connect.</string>
+	<key>NSNetworkVolumesUsageDescription</key>
+	<string>yafm lists and copies files on network volumes you connect.</string>
 </dict>
 </plist>

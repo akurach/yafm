@@ -11,6 +11,9 @@ public protocol TagServing: Sendable {
     func setTags(_ tags: [Tag], on url: URL) async throws
     func allKnownTags() async -> [Tag]
     func entries(taggedWith tag: Tag) async -> [URL]
+    /// Background-populate the index by walking the given roots, so the tag
+    /// cloud isn't empty before the user has browsed anywhere.
+    func index(roots: [URL]) async
 }
 
 public actor TagService: TagServing {
@@ -40,6 +43,28 @@ public actor TagService: TagServing {
 
     public func entries(taggedWith tag: Tag) async -> [URL] {
         Array(index[tag.name] ?? [])
+    }
+
+    /// Walk `roots` shallowly-recursively, reading native tags into the index.
+    /// Bounded + yields periodically so it never starves foreground tag reads.
+    public func index(roots: [URL]) async {
+        let fm = FileManager.default
+        var seen = 0
+        let limit = 50_000
+        for root in roots {
+            guard let en = fm.enumerator(
+                at: root, includingPropertiesForKeys: nil,
+                options: [.skipsHiddenFiles, .skipsPackageDescendants]
+            ) else { continue }
+            while let url = en.nextObject() as? URL {
+                if Task.isCancelled { return }
+                let tags = Self.readTags(url)
+                if !tags.isEmpty { reindex(url, tags) }
+                seen += 1
+                if seen >= limit { return }
+                if seen % 256 == 0 { await Task.yield() }
+            }
+        }
     }
 
     private func reindex(_ url: URL, _ tags: [Tag]) {

@@ -29,21 +29,23 @@ This describes the v0.1 skeleton. Everything here serves the two non-negotiables
 
 ```
 yafm/
-├── yafm.xcodeproj              # app target (SwiftUI macOS app)
-├── Core/                       # local Swift package
-│   ├── Package.swift
-│   └── Sources/Core/
-│       ├── FileSystem/         # FileSystemProvider, LocalFileSystem, FSEntry, ListingState
-│       ├── Operations/         # FileEngine, Operation, OperationQueue
-│       ├── Tags/               # TagService, TagIndex, xattr bridge
-│       ├── Extensions/         # ExtensionRegistry + provider protocols
-│       └── Commands/           # Command, CommandRegistry, keybindings
-│       └── Tests/CoreTests/
-└── App/                        # SwiftUI app target sources
-    ├── yafmApp.swift           # @main
-    ├── State/                  # AppState, PaneModel, TabModel (@Observable, @MainActor)
-    ├── Views/                  # Pane, TabBar, PathBar, FileTable, StatusBar, QueueView
-    └── Integrations/           # QuickLook (QLPreviewPanel) bridge
+├── Package.swift               # SwiftPM: Core library + yafm executable target
+├── Core/Sources/Core/          # UI-free domain package
+│   ├── FileSystem.swift        # FileSystemProvider, LocalFileSystem, FSEntry, ListingState, Tag
+│   ├── Operations.swift        # FileEngine — streamed copy/move/delete/rename + progress
+│   ├── Tags.swift              # TagService (xattr bridge + index + background indexer)
+│   ├── Volumes.swift           # VolumeService, Volume (mounted drives; §2)
+│   ├── Sorting.swift           # SortOrder/SortKey, color rules, rename rules
+│   └── Commands.swift          # Command, CommandID, keybindings, ExtensionRegistry
+│   └── Core/Tests/CoreTests/
+└── App/                        # SwiftUI executable sources (flat)
+    ├── yafm.swift              # @main, RootView, inspector/preview wrappers, menu commands
+    ├── State.swift             # AppState · PaneModel · TabModel (@Observable @MainActor)
+    ├── Views.swift             # panes, table+columns, sidebar, tag cloud, F-bar, inspector
+    ├── Onboarding.swift        # Full Disk Access sheet + limited-access banner (§6)
+    ├── Keyboard.swift          # NSEvent key monitor → CommandID dispatch
+    ├── QuickLook.swift         # QLPreviewPanel bridge
+    └── Resources/Info.plist    # bundle id + TCC usage strings
 ```
 
 Core as a real package (not just folders) enforces the no-UI boundary at compile time and makes it independently testable.

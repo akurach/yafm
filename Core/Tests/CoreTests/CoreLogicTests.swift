@@ -113,4 +113,24 @@ final class CoreLogicTests: XCTestCase {
         let entries = await service.entries(taggedWith: Tag(name: "Work"))
         XCTAssertEqual(entries, [f])
     }
+
+    /// Background index (§5) populates the cloud from a cold service that has
+    /// never read the file individually.
+    func testIndexPopulatesTagCloudFromRoot() async throws {
+        let dir = try tmpDir(); defer { try? FileManager.default.removeItem(at: dir) }
+        let f = dir.appendingPathComponent("report.txt")
+        try "x".write(to: f, atomically: true, encoding: .utf8)
+        try await TagService().setTags([Tag(name: "Finance")], on: f)
+
+        // A fresh service: empty index until it walks the tree.
+        let cold = TagService()
+        let before = await cold.allKnownTags()
+        XCTAssertTrue(before.isEmpty)
+        await cold.index(roots: [dir])
+        let after = await cold.allKnownTags()
+        XCTAssertTrue(after.contains { $0.name == "Finance" })
+        let entries = await cold.entries(taggedWith: Tag(name: "Finance"))
+        // Enumerator yields the symlink-resolved path (/private/var vs /var).
+        XCTAssertEqual(entries.map(\.lastPathComponent), ["report.txt"])
+    }
 }

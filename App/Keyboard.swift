@@ -65,6 +65,9 @@ struct KeyboardMonitor: NSViewRepresentable {
         case 97: app.run(CommandID.move); return true       // F6
         case 100: app.run(CommandID.delete); return true    // F8
         case 120: app.run(CommandID.rename); return true    // F2
+        case 99: app.run(CommandID.view); return true       // F3
+        case 118: app.run(CommandID.edit); return true      // F4
+        case 98: app.run(CommandID.newFolder); return true  // F7
         case 48: app.run(CommandID.switchPane); return true // Tab
         case 49 where !c.command:                           // Space -> QuickLook
             QuickLook.toggle(urls: tab.actionable.map(\.url)); return true
@@ -81,6 +84,11 @@ struct KeyboardMonitor: NSViewRepresentable {
         case ("t", true, false): app.run(CommandID.newTab); return true
         case ("w", true, false): app.run(CommandID.closeTab); return true
         case ("p", true, true): app.run(CommandID.togglePreview); return true
+        case ("c", true, false): app.run(CommandID.clipCopy); return true
+        case ("x", true, false): app.run(CommandID.clipCut); return true
+        case ("v", true, false): app.run(CommandID.paste); return true
+        case ("r", true, false): app.run(CommandID.refresh); return true
+        case ("i", true, false): app.run(CommandID.getInfo); return true
         default: return false
         }
     }

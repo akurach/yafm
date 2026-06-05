@@ -27,19 +27,26 @@ struct RootView: View {
             BookmarksSidebar(app: app)
         } detail: {
             VStack(spacing: 0) {
+                if !app.hasFullDiskAccess && !app.bannerDismissed {
+                    AccessBanner(app: app)
+                    Divider()
+                }
                 HSplitView {
                     PaneView(pane: app.left, isActive: app.activePaneIsLeft, app: app)
                     PaneView(pane: app.right, isActive: !app.activePaneIsLeft, app: app)
                     if app.showPreview {
-                        PreviewPane(tab: app.activeTab).frame(minWidth: 220)
+                        InspectorView(app: app).frame(minWidth: 240)
                     }
                 }
                 QueueView(app: app)
                 Divider()
                 StatusBarView(tab: app.activeTab)
+                Divider()
+                FunctionBarView(app: app)
             }
         }
         .sheet(isPresented: $app.renameSheet) { RenameSheet(app: app) }
+        .sheet(isPresented: $app.showOnboarding) { OnboardingSheet(app: app) }
     }
 }
 
@@ -90,6 +97,16 @@ struct CommandMenus: Commands {
             Button("Move → other pane") { app.run(CommandID.move) }
             Button("Delete") { app.run(CommandID.delete) }
             Button("Rename…") { app.run(CommandID.rename) }
+            Divider()
+            Button("Copy") { app.run(CommandID.clipCopy) }
+            Button("Cut") { app.run(CommandID.clipCut) }
+            Button("Paste") { app.run(CommandID.paste) }
+            Button("New Folder…") { app.run(CommandID.newFolder) }
+            Divider()
+            Button("Reveal in Finder") { app.run(CommandID.reveal) }
+            Button("Get Info") { app.run(CommandID.getInfo) }
+            Button("Copy Path") { app.run(CommandID.copyPath) }
+            Button("Refresh") { app.run(CommandID.refresh) }
         }
     }
 }

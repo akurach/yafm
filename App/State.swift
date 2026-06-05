@@ -17,6 +17,10 @@ final class TabModel: Identifiable {
     var sortOrder = SortOrder()
     var showHidden = false
 
+    /// Non-nil when the tab shows a virtual listing (e.g. "everything tagged X")
+    /// instead of a real directory. Cleared the moment the user navigates.
+    private(set) var virtualName: String?
+
     /// Multi-selection + the keyboard cursor (focused row).
     var selection: Set<URL> = []
     var cursor: URL?
@@ -29,7 +33,10 @@ final class TabModel: Identifiable {
         self.directory = directory
     }
 
-    var title: String { directory.lastPathComponent.isEmpty ? "/" : directory.lastPathComponent }
+    var title: String {
+        if let v = virtualName { return v }
+        return directory.lastPathComponent.isEmpty ? "/" : directory.lastPathComponent
+    }
 
     /// Entries after hidden-filter + sort. The single source the table renders.
     var displayed: [FSEntry] {
@@ -44,10 +51,22 @@ final class TabModel: Identifiable {
     }
 
     func open(_ url: URL) {
+        virtualName = nil
         directory = url
         selection = []
         cursor = nil
         load()
+    }
+
+    /// Show an explicit set of entries (tag cloud, search results) as a virtual
+    /// listing. Not tied to `directory`; Refresh/navigation leaves it.
+    func showVirtual(title: String, entries: [FSEntry]) {
+        task?.cancel()
+        virtualName = title
+        selection = []
+        cursor = nil
+        state = .loaded(entries)
+        cursor = displayed.first?.url
     }
 
     func goUp() {
@@ -57,6 +76,7 @@ final class TabModel: Identifiable {
 
     func load() {
         task?.cancel()
+        virtualName = nil   // a real directory listing exits virtual (tag) mode
         state = .loading(partial: [])
         let stream = fs.list(directory)
         task = Task { [weak self] in
@@ -187,6 +207,7 @@ final class AppState {
     let tags: TagServing = TagService()
     let engine = FileEngine()
     let registry = ExtensionRegistry()
+    let volumeService = VolumeService()
 
     let left: PaneModel
     let right: PaneModel
@@ -197,8 +218,30 @@ final class AppState {
     var colorCoder = ColorCoder()
     var showPreview = false
 
+    /// The right inspector has two modes (§4): metadata vs large QuickLook.
+    enum InspectorMode { case info, preview }
+    var inspectorMode: InspectorMode = .info
+
+    /// Mounted volumes for the sidebar, kept live via mount/unmount notifications.
+    var volumes: [Volume] = []
+    private var volumeObservers: [NSObjectProtocol] = []
+
+    /// Tag cloud (§5): all known tags + per-tag file counts for the sidebar.
+    var knownTags: [Tag] = []
+    var tagCounts: [String: Int] = [:]
+
+    /// Access onboarding (§6): Full Disk Access state + first-run sheet.
+    var hasFullDiskAccess = true
+    var showOnboarding = false
+    var bannerDismissed = false
+    private static let didOnboardKey = "didOnboard"
+
     // Bulk-rename + tag sheets driven from the UI.
     var renameSheet: Bool = false
+
+    /// Internal copy/cut buffer (distinct from NSPasteboard). Paste enqueues a
+    /// copy or move into the active pane's directory.
+    var clipboard: (urls: [URL], cut: Bool)?
 
     init() {
         let home = FileManager.default.homeDirectoryForCurrentUser
@@ -216,6 +259,113 @@ final class AppState {
     func start() {
         left.active.load()
         right.active.load()
+        refreshVolumes()
+        observeVolumes()
+        indexTagsInBackground()
+        checkAccess()
+    }
+
+    // MARK: Volumes (§2)
+
+    func refreshVolumes() { volumes = volumeService.mountedVolumes() }
+
+    /// Live updates: NSWorkspace posts mount/unmount on the main thread, so the
+    /// closures touch main-actor state directly.
+    private func observeVolumes() {
+        guard volumeObservers.isEmpty else { return }
+        let nc = NSWorkspace.shared.notificationCenter
+        let names: [Notification.Name] = [
+            NSWorkspace.didMountNotification,
+            NSWorkspace.didUnmountNotification,
+            NSWorkspace.didRenameVolumeNotification,
+        ]
+        for name in names {
+            let token = nc.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
+                MainActor.assumeIsolated { self?.refreshVolumes() }
+            }
+            volumeObservers.append(token)
+        }
+    }
+
+    func eject(_ volume: Volume) {
+        do {
+            try NSWorkspace.shared.unmountAndEjectDevice(at: volume.url)
+        } catch {
+            NSAlert(error: error).runModal()
+        }
+        refreshVolumes()
+    }
+
+    // MARK: Tag cloud (§5)
+
+    /// Refresh the sidebar tag cloud: known tags + per-tag counts.
+    func refreshTags() {
+        Task { [weak self] in
+            guard let self else { return }
+            let all = await self.tags.allKnownTags()
+            var counts: [String: Int] = [:]
+            for t in all { counts[t.name] = await self.tags.entries(taggedWith: t).count }
+            self.knownTags = all
+            self.tagCounts = counts
+        }
+    }
+
+    /// Populate the index from Home in the background so the cloud isn't empty
+    /// on a cold start, then refresh the sidebar.
+    private func indexTagsInBackground() {
+        Task { [weak self] in
+            guard let self else { return }
+            await self.tags.index(roots: [FileManager.default.homeDirectoryForCurrentUser])
+            self.refreshTags()
+        }
+    }
+
+    /// Click a tag → show every file carrying it as a virtual listing.
+    func openTag(_ tag: Tag) {
+        Task { [weak self] in
+            guard let self else { return }
+            let urls = await self.tags.entries(taggedWith: tag)
+            var entries: [FSEntry] = []
+            for url in urls {
+                guard var e = try? await self.fs.metadata(of: url) else { continue }
+                e.tags = await self.tags.tags(of: url)
+                entries.append(e)
+            }
+            self.activeTab.showVirtual(title: "Tag: \(tag.name)", entries: entries)
+        }
+    }
+
+    // MARK: Access onboarding (§6)
+
+    /// Detect Full Disk Access by probing a TCC-protected path. Shows the
+    /// first-run onboarding sheet once; the banner stays until access is granted.
+    func checkAccess() {
+        hasFullDiskAccess = Self.hasFullDiskAccess()
+        if !UserDefaults.standard.bool(forKey: Self.didOnboardKey) {
+            showOnboarding = true
+        }
+    }
+
+    func completeOnboarding() {
+        UserDefaults.standard.set(true, forKey: Self.didOnboardKey)
+        showOnboarding = false
+    }
+
+    /// Open System Settings → Privacy & Security → Full Disk Access.
+    func openFullDiskAccessSettings() {
+        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFilesAccess") {
+            NSWorkspace.shared.open(url)
+        }
+    }
+
+    /// FDA can't be queried directly — probe a TCC-protected file. A readable
+    /// `TCC.db` means access is granted; EPERM means it isn't.
+    static func hasFullDiskAccess() -> Bool {
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let probe = home.appendingPathComponent("Library/Application Support/com.apple.TCC/TCC.db")
+        let fd = open(probe.path, O_RDONLY)
+        if fd >= 0 { close(fd); return true }
+        return false
     }
 
     // MARK: Command dispatch
@@ -233,6 +383,16 @@ final class AppState {
         case CommandID.newTab: activePane.newTab()
         case CommandID.closeTab: activePane.closeTab(activePane.active.id)
         case CommandID.togglePreview: showPreview.toggle()
+        case CommandID.clipCopy: clipboardCopy(cut: false)
+        case CommandID.clipCut: clipboardCopy(cut: true)
+        case CommandID.paste: paste()
+        case CommandID.newFolder: newFolder()
+        case CommandID.reveal: revealInFinder()
+        case CommandID.copyPath: copyPath()
+        case CommandID.getInfo: showPreview = true; inspectorMode = .info
+        case CommandID.refresh: activeTab.load()
+        case CommandID.view: QuickLook.toggle(urls: activeTab.actionable.map(\.url))
+        case CommandID.edit: editCursor()
         default: break
         }
     }
@@ -287,6 +447,152 @@ final class AppState {
             guard alert.runModal() == .alertFirstButtonReturn else { return }
         }
         NSWorkspace.shared.open(url)
+    }
+
+    /// F4 Edit — open the cursor file in its default app for editing. (A
+    /// user-assignable editor comes later; for now this is the system handler.)
+    func editCursor() {
+        guard let entry = activeTab.actionable.first, !entry.isDirectory else { return }
+        NSWorkspace.shared.open(entry.url)
+    }
+
+    // MARK: Context-menu commands (v0.2.1)
+
+    /// Right-clicking a row outside the current selection acts on that row only.
+    /// Mirror Finder: focus it (and its pane) before the menu's items run.
+    func focusContextTarget(_ entry: FSEntry, in tab: TabModel) {
+        if !tab.selection.contains(entry.url) {
+            tab.selection = [entry.url]
+            tab.cursor = entry.url
+        }
+        activePaneIsLeft = left.tabs.contains { $0.id == tab.id }
+    }
+
+    func clipboardCopy(cut: Bool) {
+        let urls = activeTab.actionable.map(\.url)
+        guard !urls.isEmpty else { return }
+        clipboard = (urls, cut)
+    }
+
+    func paste() {
+        guard let clip = clipboard, !clip.urls.isEmpty else { return }
+        let dest = activeTab.directory
+        let task = OperationTask(kind: clip.cut ? .move : .copy, sources: clip.urls, destination: dest)
+        runTask(task) { [weak self] in
+            self?.activeTab.load()
+            if clip.cut { self?.clipboard = nil }   // a cut is consumed once pasted
+        }
+    }
+
+    func newFolder() {
+        let parent = activeTab.directory
+        let alert = NSAlert()
+        alert.messageText = "New Folder"
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
+        field.stringValue = "untitled folder"
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Create")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let name = field.stringValue
+        // Reject empty + path traversal — must be a plain leaf name.
+        guard !name.isEmpty, !name.contains("/"), name != ".", name != ".." else { return }
+        let url = parent.appendingPathComponent(name, isDirectory: true)
+        do {
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
+            activeTab.load()
+            activeTab.cursor = url
+        } catch {
+            NSAlert(error: error).runModal()
+        }
+    }
+
+    func revealInFinder() {
+        let urls = activeTab.actionable.map(\.url)
+        guard !urls.isEmpty else {
+            NSWorkspace.shared.activateFileViewerSelecting([activeTab.directory]); return
+        }
+        NSWorkspace.shared.activateFileViewerSelecting(urls)
+    }
+
+    func copyPath() {
+        let paths = activeTab.actionable.map(\.url.path)
+        guard !paths.isEmpty else { return }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(paths.joined(separator: "\n"), forType: .string)
+    }
+
+    // MARK: Open With
+
+    /// Application handlers for a file, from LaunchServices (macOS 12+).
+    func applications(for url: URL) -> [URL] {
+        NSWorkspace.shared.urlsForApplications(toOpen: url)
+    }
+
+    func openFile(_ url: URL, withApplication appURL: URL) {
+        NSWorkspace.shared.open([url], withApplicationAt: appURL, configuration: NSWorkspace.OpenConfiguration())
+    }
+
+    /// "Other…" — pick an app from /Applications and open the file with it.
+    func openWithOther(_ url: URL) {
+        let panel = NSOpenPanel()
+        panel.directoryURL = URL(fileURLWithPath: "/Applications")
+        panel.allowedContentTypes = [.application]
+        panel.allowsMultipleSelection = false
+        guard panel.runModal() == .OK, let app = panel.url else { return }
+        openFile(url, withApplication: app)
+    }
+
+    // MARK: Tags (color toggles + free tag; full editor in §5)
+
+    func toggleColorTag(name: String, colorIndex: Int, on entry: FSEntry) {
+        Task { [weak self] in
+            guard let self else { return }
+            var current = await self.tags.tags(of: entry.url)
+            if let i = current.firstIndex(where: { $0.name == name }) {
+                current.remove(at: i)
+            } else {
+                current.append(Tag(name: name, colorIndex: colorIndex))
+            }
+            try? await self.tags.setTags(current, on: entry.url)
+            self.activeTab.load()
+            self.refreshTags()
+        }
+    }
+
+    func addTag(_ name: String, on entry: FSEntry) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !trimmed.contains("\n") else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            var current = await self.tags.tags(of: entry.url)
+            guard !current.contains(where: { $0.name == trimmed }) else { return }
+            current.append(Tag(name: trimmed))
+            try? await self.tags.setTags(current, on: entry.url)
+            self.activeTab.load()
+            self.refreshTags()
+        }
+    }
+
+    func promptNewTag(on entry: FSEntry) {
+        let alert = NSAlert()
+        alert.messageText = "New Tag"
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Add")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        addTag(field.stringValue, on: entry)
+    }
+
+    // MARK: Sort (driven from background menu + column headers in §4)
+
+    func sortBy(_ key: SortKey) {
+        var order = activeTab.sortOrder
+        if order.key == key { order.ascending.toggle() }
+        else { order = SortOrder(key: key, ascending: true) }
+        activeTab.sortOrder = order
     }
 
     private func runTask(_ task: OperationTask, onFinish: @escaping () -> Void) {

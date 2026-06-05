@@ -1,5 +1,7 @@
 import SwiftUI
+import AppKit
 import Core
+import UniformTypeIdentifiers
 
 // MARK: - Color mapping (Core stays UI-free; the UI maps names -> Color)
 
@@ -156,7 +158,50 @@ struct FileTableView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    // Fixed column widths; Name flexes. Header aligns to these.
+    private let sizeW: CGFloat = 78
+    private let modW: CGFloat = 124
+    private let kindW: CGFloat = 92
+
     private var rows: some View {
+        VStack(spacing: 0) {
+            columnHeader
+            Divider()
+            rowList
+        }
+    }
+
+    private var columnHeader: some View {
+        HStack(spacing: 8) {
+            Color.clear.frame(width: 16)   // aligns with the row icon
+            headerButton("Name", .name).frame(maxWidth: .infinity, alignment: .leading)
+            headerButton("Size", .size).frame(width: sizeW, alignment: .trailing)
+            headerButton("Modified", .modified).frame(width: modW, alignment: .trailing)
+            headerButton("Kind", .kind).frame(width: kindW, alignment: .leading)
+        }
+        .padding(.horizontal, 14).padding(.vertical, 4)
+        .background(.bar)
+    }
+
+    private func headerButton(_ title: String, _ key: SortKey) -> some View {
+        Button {
+            app.activePaneIsLeft = tabBelongsToLeft()
+            app.sortBy(key)
+        } label: {
+            HStack(spacing: 2) {
+                Text(title)
+                if tab.sortOrder.key == key {
+                    Image(systemName: tab.sortOrder.ascending ? "chevron.up" : "chevron.down")
+                        .font(.system(size: 7))
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .font(.caption.bold())
+        .foregroundStyle(tab.sortOrder.key == key ? Color.accentColor : .secondary)
+    }
+
+    private var rowList: some View {
         ScrollViewReader { proxy in
             List {
                 ForEach(tab.displayed) { entry in
@@ -172,8 +217,10 @@ struct FileTableView: View {
                             tab.selection = [entry.url]
                             app.activePaneIsLeft = (tabBelongsToLeft())
                         }
+                        .contextMenu { rowMenu(entry) }
                 }
             }
+            .contextMenu { backgroundMenu() }   // empty area below the rows
             .listStyle(.inset)
             .onChange(of: tab.cursor) { _, new in
                 if let new { withAnimation(.linear(duration: 0.1)) { proxy.scrollTo(new, anchor: .center) } }
@@ -189,19 +236,41 @@ struct FileTableView: View {
         HStack(spacing: 8) {
             Image(systemName: entry.isDirectory ? "folder.fill" : "doc")
                 .foregroundStyle(iconColor(entry))
+                .frame(width: 16)
             Text(entry.name)
                 .foregroundStyle(entry.isHidden ? .secondary : .primary)
                 .lineLimit(1)
-            Spacer()
+                .frame(maxWidth: .infinity, alignment: .leading)
             ForEach(entry.tags, id: \.name) { tag in
                 Circle().fill(Color.named(tag.colorName) ?? .secondary).frame(width: 8, height: 8)
             }
-            if let size = entry.size, !entry.isDirectory {
-                Text(byteString(size)).font(.caption.monospaced()).foregroundStyle(.secondary)
-            }
+            Text(entry.isDirectory ? "--" : (entry.size.map(byteString) ?? "--"))
+                .font(.caption.monospaced()).foregroundStyle(.secondary)
+                .frame(width: sizeW, alignment: .trailing)
+            Text(entry.modified.map(Self.dateText) ?? "--")
+                .font(.caption.monospaced()).foregroundStyle(.secondary)
+                .frame(width: modW, alignment: .trailing)
+            Text(kindText(entry))
+                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                .frame(width: kindW, alignment: .leading)
         }
         .padding(.vertical, 1)
     }
+
+    private func kindText(_ entry: FSEntry) -> String {
+        if entry.isDirectory { return "Folder" }
+        let ext = entry.url.pathExtension
+        if let t = UTType(filenameExtension: ext), let d = t.localizedDescription { return d }
+        return ext.isEmpty ? "Document" : ext.uppercased()
+    }
+
+    static func dateText(_ d: Date) -> String { Self.df.string(from: d) }
+    private static let df: DateFormatter = {
+        let f = DateFormatter()
+        f.dateStyle = .short
+        f.timeStyle = .short
+        return f
+    }()
 
     private func iconColor(_ entry: FSEntry) -> Color {
         if let c = Color.named(app.colorCoder.colorName(for: entry)) { return c }
@@ -219,6 +288,85 @@ struct FileTableView: View {
 
     private func byteString(_ n: Int64) -> String {
         ByteCountFormatter.string(fromByteCount: n, countStyle: .file)
+    }
+
+    // MARK: Context menus (§1)
+
+    /// Menu for a file/selection. Right-clicking outside the selection focuses
+    /// the row first so the existing `actionable`-based commands target it.
+    @ViewBuilder
+    private func rowMenu(_ entry: FSEntry) -> some View {
+        let _ = app.focusContextTarget(entry, in: tab)
+
+        Button("Open") { app.openCursor() }
+        Menu("Open With") {
+            ForEach(app.applications(for: entry.url), id: \.self) { appURL in
+                Button(appURL.deletingPathExtension().lastPathComponent) {
+                    app.openFile(entry.url, withApplication: appURL)
+                }
+            }
+            Divider()
+            Button("Other…") { app.openWithOther(entry.url) }
+        }
+        Button("Quick Look") { QuickLook.toggle(urls: tab.actionable.map(\.url)) }
+
+        Divider()
+        Button("Copy → other pane") { app.run(CommandID.copy) }
+        Button("Move → other pane") { app.run(CommandID.move) }
+        Button("Copy") { app.run(CommandID.clipCopy) }
+        Button("Cut") { app.run(CommandID.clipCut) }
+
+        Divider()
+        Button("Rename…") { app.run(CommandID.rename) }
+        Button("New Folder…") { app.run(CommandID.newFolder) }
+        Button("Delete") { app.run(CommandID.delete) }
+
+        Divider()
+        Menu("Tags") {
+            ForEach(1..<Tag.colorNames.count, id: \.self) { i in
+                let name = Tag.colorNames[i]
+                let on = entry.tags.contains { $0.name == name }
+                Button { app.toggleColorTag(name: name, colorIndex: i, on: entry) } label: {
+                    Label(name, systemImage: on ? "checkmark.circle.fill" : "circle")
+                }
+            }
+            Divider()
+            Button("New Tag…") { app.promptNewTag(on: entry) }
+        }
+
+        Divider()
+        Button("Reveal in Finder") { app.run(CommandID.reveal) }
+        Button("Get Info") { app.run(CommandID.getInfo) }
+        Button("Copy Path") { app.run(CommandID.copyPath) }
+    }
+
+    /// Menu for empty pane background — no selection target.
+    @ViewBuilder
+    private func backgroundMenu() -> some View {
+        Button("New Folder…") { app.run(CommandID.newFolder) }
+        if app.clipboard?.urls.isEmpty == false {
+            Button("Paste") { app.run(CommandID.paste) }
+        }
+        Divider()
+        Menu("Sort By") {
+            ForEach(SortKey.allCases, id: \.self) { key in
+                let active = tab.sortOrder.key == key
+                Button {
+                    app.activePaneIsLeft = tabBelongsToLeft()
+                    app.sortBy(key)
+                } label: {
+                    Label(key.rawValue.capitalized,
+                          systemImage: active ? (tab.sortOrder.ascending ? "chevron.up" : "chevron.down") : "")
+                }
+            }
+        }
+        Button {
+            tab.showHidden.toggle()
+        } label: {
+            Label("Show Hidden Files", systemImage: tab.showHidden ? "checkmark" : "")
+        }
+        Divider()
+        Button("Refresh") { tab.load() }
     }
 }
 
@@ -282,21 +430,113 @@ struct QueueView: View {
     }
 }
 
-// MARK: - Bookmarks sidebar (v0.2)
+// MARK: - Sidebar: Favorites · Locations · Devices · Network (v0.2.1 §2)
 
 struct BookmarksSidebar: View {
-    let app: AppState
+    @Bindable var app: AppState
+
+    private var devices: [Volume] { app.volumes.filter { !$0.isNetwork } }
+    private var networkVolumes: [Volume] { app.volumes.filter { $0.isNetwork } }
 
     var body: some View {
         List {
             Section("Favorites") {
                 ForEach(app.bookmarks) { bm in
                     Label(bm.name, systemImage: "folder")
+                        .contentShape(Rectangle())
                         .onTapGesture { app.activeTab.open(bm.url) }
                 }
             }
+
+            Section("Locations") {
+                Label("Computer", systemImage: "desktopcomputer")
+                    .contentShape(Rectangle())
+                    .onTapGesture { app.activeTab.open(URL(fileURLWithPath: "/")) }
+                Label("Home", systemImage: "house")
+                    .contentShape(Rectangle())
+                    .onTapGesture { app.activeTab.open(FileManager.default.homeDirectoryForCurrentUser) }
+            }
+
+            if !devices.isEmpty {
+                Section("Devices") {
+                    ForEach(devices) { vol in VolumeRow(app: app, volume: vol) }
+                }
+            }
+
+            if !networkVolumes.isEmpty {
+                Section("Network") {
+                    ForEach(networkVolumes) { vol in VolumeRow(app: app, volume: vol) }
+                }
+            }
+
+            if !app.knownTags.isEmpty {
+                Section("Tags") {
+                    ForEach(app.knownTags, id: \.name) { tag in
+                        TagCloudRow(app: app, tag: tag, count: app.tagCounts[tag.name] ?? 0)
+                    }
+                }
+            }
         }
-        .frame(minWidth: 150, maxWidth: 200)
+        .frame(minWidth: 170, maxWidth: 220)
+    }
+}
+
+/// One tag in the sidebar cloud: color dot · name · file count. Click filters.
+struct TagCloudRow: View {
+    let app: AppState
+    let tag: Tag
+    let count: Int
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Circle().fill(Color.named(tag.colorName) ?? .secondary)
+                .frame(width: 9, height: 9)
+            Text(tag.name).lineLimit(1)
+            Spacer()
+            Text("\(count)").font(.caption2).foregroundStyle(.secondary)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { app.openTag(tag) }
+    }
+}
+
+/// One mounted volume: name, capacity bar, eject button for removables.
+struct VolumeRow: View {
+    let app: AppState
+    let volume: Volume
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(volume.name).lineLimit(1)
+                if let frac = volume.usedFraction {
+                    ProgressView(value: frac)
+                        .controlSize(.mini)
+                    if let total = volume.totalCapacity, let avail = volume.availableCapacity {
+                        Text("\(byte(total - avail)) of \(byte(total))")
+                            .font(.system(size: 9)).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            Spacer()
+            if volume.canEject {
+                Button { app.eject(volume) } label: { Image(systemName: "eject.fill") }
+                    .buttonStyle(.plain).foregroundStyle(.secondary)
+            }
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { app.activeTab.open(volume.url) }
+    }
+
+    private var icon: String {
+        if volume.isNetwork { return "network" }
+        if volume.canEject { return "externaldrive" }
+        return "internaldrive"
+    }
+
+    private func byte(_ n: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: n, countStyle: .file)
     }
 }
 
@@ -357,6 +597,258 @@ struct RenameSheet: View {
             }
         } else {
             app.rename(to: replacement)
+        }
+    }
+}
+
+// MARK: - Function-key bar (TC-style, §3)
+
+struct FunctionBarView: View {
+    let app: AppState
+
+    // (number, label, command). F7 New Folder reuses the §1 command.
+    private let keys: [(Int, String, String)] = [
+        (2, "Rename", CommandID.rename),
+        (3, "View", CommandID.view),
+        (4, "Edit", CommandID.edit),
+        (5, "Copy", CommandID.copy),
+        (6, "Move", CommandID.move),
+        (7, "NewFolder", CommandID.newFolder),
+        (8, "Delete", CommandID.delete),
+    ]
+
+    var body: some View {
+        // Falls back to numbers-only when the window is too narrow for labels.
+        ViewThatFits(in: .horizontal) {
+            bar(compact: false)
+            bar(compact: true)
+        }
+        .background(.bar)
+    }
+
+    private func bar(compact: Bool) -> some View {
+        HStack(spacing: 4) {
+            ForEach(Array(keys.enumerated()), id: \.offset) { _, k in
+                FunctionKeyButton(number: k.0, label: k.1, compact: compact) { app.run(k.2) }
+            }
+        }
+        .padding(.horizontal, 6).padding(.vertical, 4)
+        .frame(maxWidth: .infinity)
+    }
+}
+
+struct FunctionKeyButton: View {
+    let number: Int
+    let label: String
+    let compact: Bool
+    let action: () -> Void
+    @State private var hover = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 3) {
+                Text("F\(number)").font(.caption2.bold()).foregroundStyle(.secondary)
+                if !compact { Text(label).font(.caption) }
+            }
+            .padding(.horizontal, 8).padding(.vertical, 3)
+            .frame(maxWidth: .infinity)
+            .background(
+                RoundedRectangle(cornerRadius: 5)
+                    .fill(hover ? Color.accentColor.opacity(0.25) : Color.gray.opacity(0.12))
+            )
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
+    }
+}
+
+// MARK: - Right inspector: Info / Preview modes (§4)
+
+struct InspectorView: View {
+    @Bindable var app: AppState
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Picker("", selection: $app.inspectorMode) {
+                Text("Info").tag(AppState.InspectorMode.info)
+                Text("Preview").tag(AppState.InspectorMode.preview)
+            }
+            .pickerStyle(.segmented).labelsHidden().padding(6)
+            Divider()
+            switch app.inspectorMode {
+            case .info: InfoPanel(app: app, tab: app.activeTab)
+            case .preview: PreviewPane(tab: app.activeTab)
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(.background)
+    }
+}
+
+/// Metadata inspector for the cursor/selection: icon, kind, size (folders sized
+/// in the background), dates, POSIX permissions, path, and a tag editor.
+struct InfoPanel: View {
+    let app: AppState
+    @Bindable var tab: TabModel
+    @State private var folderSize: String?
+    @State private var created: Date?
+    @State private var perms = "—"
+    @State private var newTag = ""
+
+    var body: some View {
+        let sel = tab.actionable
+        ScrollView {
+            if sel.isEmpty {
+                ContentUnavailableView("No selection", systemImage: "info.circle")
+                    .frame(maxWidth: .infinity)
+            } else if sel.count > 1 {
+                multi(sel)
+            } else {
+                single(sel[0])
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func single(_ entry: FSEntry) -> some View {
+        VStack(alignment: .leading, spacing: 9) {
+            HStack { Spacer(); icon(entry.url); Spacer() }
+            Text(entry.name).font(.headline).frame(maxWidth: .infinity).multilineTextAlignment(.center)
+            Divider()
+            field("Kind", kind(entry))
+            field("Size", sizeValue(entry))
+            field("Created", created.map(Self.dateStr) ?? "—")
+            field("Modified", entry.modified.map(Self.dateStr) ?? "—")
+            field("Permissions", perms)
+            field("Where", entry.url.deletingLastPathComponent().path)
+            Divider()
+            Text("Tags").font(.caption.bold()).foregroundStyle(.secondary)
+            tagEditor(entry)
+        }
+        .padding(12)
+        .task(id: entry.url) { await loadMeta(entry) }
+    }
+
+    @ViewBuilder
+    private func multi(_ sel: [FSEntry]) -> some View {
+        let total = sel.compactMap(\.size).reduce(0, +)
+        VStack(alignment: .leading, spacing: 9) {
+            Text("\(sel.count) items").font(.headline)
+            Divider()
+            field("Items", "\(sel.count)")
+            field("Total size", Self.byteStr(total))
+        }
+        .padding(12)
+    }
+
+    private func field(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .top, spacing: 6) {
+            Text(label).foregroundStyle(.secondary).frame(width: 86, alignment: .trailing)
+            Text(value).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading)
+        }
+        .font(.caption)
+    }
+
+    private func icon(_ url: URL) -> some View {
+        Image(nsImage: NSWorkspace.shared.icon(forFile: url.path))
+            .resizable().frame(width: 64, height: 64)
+    }
+
+    private func sizeValue(_ entry: FSEntry) -> String {
+        if entry.isDirectory { return folderSize ?? "calculating…" }
+        return entry.size.map(Self.byteStr) ?? "—"
+    }
+
+    private func kind(_ entry: FSEntry) -> String {
+        if entry.isDirectory { return "Folder" }
+        let ext = entry.url.pathExtension
+        if let t = UTType(filenameExtension: ext), let d = t.localizedDescription { return d }
+        return ext.isEmpty ? "Document" : ext.uppercased()
+    }
+
+    @ViewBuilder
+    private func tagEditor(_ entry: FSEntry) -> some View {
+        HStack(spacing: 8) {
+            ForEach(1..<Tag.colorNames.count, id: \.self) { i in
+                let name = Tag.colorNames[i]
+                let on = entry.tags.contains { $0.name == name }
+                Circle().fill(Color.named(name) ?? .secondary)
+                    .frame(width: 16, height: 16)
+                    .overlay { if on { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)).foregroundStyle(.white) } }
+                    .overlay { Circle().stroke(.secondary.opacity(0.4)) }
+                    .onTapGesture { app.toggleColorTag(name: name, colorIndex: i, on: entry) }
+            }
+        }
+        let named = entry.tags.filter { $0.colorName == nil }
+        if !named.isEmpty {
+            FlowTags(names: named.map(\.name))
+        }
+        HStack(spacing: 6) {
+            TextField("New tag", text: $newTag)
+                .textFieldStyle(.roundedBorder)
+                .onSubmit { app.addTag(newTag, on: entry); newTag = "" }
+            Button("Add") { app.addTag(newTag, on: entry); newTag = "" }
+        }
+    }
+
+    private func loadMeta(_ entry: FSEntry) async {
+        created = (try? entry.url.resourceValues(forKeys: [.creationDateKey]))?.creationDate
+        perms = Self.permString(entry.url)
+        folderSize = nil
+        if entry.isDirectory {
+            let bytes = await Self.directorySize(entry.url)
+            folderSize = Self.byteStr(bytes)
+        }
+    }
+
+    // MARK: helpers
+
+    static func byteStr(_ n: Int64) -> String {
+        ByteCountFormatter.string(fromByteCount: n, countStyle: .file)
+    }
+    static func dateStr(_ d: Date) -> String { df.string(from: d) }
+    private static let df: DateFormatter = {
+        let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .short; return f
+    }()
+
+    static func permString(_ url: URL) -> String {
+        guard let n = (try? FileManager.default.attributesOfItem(atPath: url.path))?[.posixPermissions] as? NSNumber
+        else { return "—" }
+        let p = n.intValue
+        func rwx(_ b: Int) -> String {
+            "\(b & 4 != 0 ? "r" : "-")\(b & 2 != 0 ? "w" : "-")\(b & 1 != 0 ? "x" : "-")"
+        }
+        return rwx((p >> 6) & 7) + rwx((p >> 3) & 7) + rwx(p & 7)
+    }
+
+    /// Recursively sums regular-file sizes off the main actor, honouring cancel.
+    static func directorySize(_ url: URL) async -> Int64 {
+        await Task.detached(priority: .utility) {
+            var total: Int64 = 0
+            let keys: [URLResourceKey] = [.fileSizeKey, .isRegularFileKey]
+            if let en = FileManager.default.enumerator(at: url, includingPropertiesForKeys: keys) {
+                while let f = en.nextObject() as? URL {
+                    if Task.isCancelled { break }
+                    if let v = try? f.resourceValues(forKeys: Set(keys)), v.isRegularFile == true {
+                        total += Int64(v.fileSize ?? 0)
+                    }
+                }
+            }
+            return total
+        }.value
+    }
+}
+
+/// Simple wrapping row of named (non-color) tag chips.
+struct FlowTags: View {
+    let names: [String]
+    var body: some View {
+        HStack(spacing: 4) {
+            ForEach(names, id: \.self) { n in
+                Text(n).font(.caption2)
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(Capsule().fill(.secondary.opacity(0.15)))
+            }
         }
     }
 }

@@ -53,6 +53,17 @@ public enum CommandID {
     public static let newTab = "tab.new"
     public static let closeTab = "tab.close"
     public static let togglePreview = "view.togglePreview"
+    // v0.2.1 context-menu commands
+    public static let clipCopy = "op.clipCopy"     // ⌘C -> internal clipboard
+    public static let clipCut = "op.clipCut"       // ⌘X -> internal clipboard
+    public static let paste = "op.paste"           // ⌘V <- internal clipboard
+    public static let newFolder = "op.newFolder"   // F7
+    public static let reveal = "nav.reveal"        // Reveal in Finder
+    public static let copyPath = "op.copyPath"
+    public static let getInfo = "view.getInfo"     // ⌘I (info panel, §4)
+    public static let refresh = "view.refresh"     // ⌘R
+    public static let view = "view.view"           // F3 QuickLook
+    public static let edit = "op.edit"             // F4 open in editor
 }
 
 /// The default Total Commander-style bindings.
@@ -70,6 +81,16 @@ public enum DefaultCommands {
         Command(id: CommandID.newTab, title: "New Tab", defaultKey: KeyBinding(.char("t"), [.command])),
         Command(id: CommandID.closeTab, title: "Close Tab", defaultKey: KeyBinding(.char("w"), [.command])),
         Command(id: CommandID.togglePreview, title: "Toggle Preview", defaultKey: KeyBinding(.char("p"), [.command, .shift])),
+        Command(id: CommandID.clipCopy, title: "Copy", defaultKey: KeyBinding(.char("c"), [.command])),
+        Command(id: CommandID.clipCut, title: "Cut", defaultKey: KeyBinding(.char("x"), [.command])),
+        Command(id: CommandID.paste, title: "Paste", defaultKey: KeyBinding(.char("v"), [.command])),
+        Command(id: CommandID.newFolder, title: "New Folder", defaultKey: KeyBinding(.function(7))),
+        Command(id: CommandID.reveal, title: "Reveal in Finder"),
+        Command(id: CommandID.copyPath, title: "Copy Path"),
+        Command(id: CommandID.getInfo, title: "Get Info", defaultKey: KeyBinding(.char("i"), [.command])),
+        Command(id: CommandID.refresh, title: "Refresh", defaultKey: KeyBinding(.char("r"), [.command])),
+        Command(id: CommandID.view, title: "View", defaultKey: KeyBinding(.function(3))),
+        Command(id: CommandID.edit, title: "Edit", defaultKey: KeyBinding(.function(4))),
     ]
 }
 
