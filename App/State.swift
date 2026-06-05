@@ -90,12 +90,21 @@ final class TabModel: Identifiable {
         // (Downloads). While streaming, show arrival order (row animation is
         // suppressed anyway); sort once when the listing is complete.
         displayed = streaming ? filtered : filtered.sorted(by: sortOrder)
+        // PERF: index by URL once so cursor moves / `actionable` are O(1) instead
+        // of an O(n) linear scan per keystroke (perf P2-F/P2-G).
+        var idx: [URL: Int] = [:]
+        idx.reserveCapacity(displayed.count)
+        for (i, e) in displayed.enumerated() { idx[e.url] = i }
+        displayedIndex = idx
         // Keep the cursor on a visible row as the filter narrows the list. Only
         // needed while filtering — the O(n) scan was wasted on every batch.
-        if filterActive, let c = cursor, !displayed.contains(where: { $0.url == c }) {
+        if filterActive, let c = cursor, displayedIndex[c] == nil {
             cursor = displayed.first?.url
         }
     }
+
+    /// URL → row index in `displayed`, rebuilt with it (perf).
+    private(set) var displayedIndex: [URL: Int] = [:]
 
     func open(_ url: URL) {
         virtualName = nil
@@ -204,9 +213,18 @@ final class TabModel: Identifiable {
     func moveCursor(by delta: Int, extend: Bool) {
         let rows = displayed
         guard !rows.isEmpty else { return }
-        let idx = rows.firstIndex { $0.url == cursor } ?? 0
+        let idx = cursor.flatMap { displayedIndex[$0] } ?? 0   // O(1) (perf P2-F)
         let next = max(0, min(rows.count - 1, idx + delta))
         let target = rows[next].url
+        cursor = target
+        if extend { selection.insert(target) } else { selection = [target] }
+    }
+
+    /// Move the cursor to an absolute row (Home/End/PageUp/PageDown).
+    func moveCursor(to index: Int, extend: Bool) {
+        let rows = displayed
+        guard !rows.isEmpty else { return }
+        let target = rows[max(0, min(rows.count - 1, index))].url
         cursor = target
         if extend { selection.insert(target) } else { selection = [target] }
     }
@@ -220,7 +238,7 @@ final class TabModel: Identifiable {
     var actionable: [FSEntry] {
         let rows = displayed
         if !selection.isEmpty { return rows.filter { selection.contains($0.url) } }
-        if let c = cursor { return rows.filter { $0.url == c } }
+        if let c = cursor, let i = displayedIndex[c] { return [rows[i]] }   // O(1) (perf P2-G)
         return []
     }
 }

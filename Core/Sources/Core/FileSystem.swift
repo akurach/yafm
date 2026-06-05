@@ -100,6 +100,8 @@ public actor LocalFileSystem: FileSystemProvider {
     private static let keys: [URLResourceKey] = [
         .isDirectoryKey, .fileSizeKey, .contentModificationDateKey, .isHiddenKey,
     ]
+    // PERF: hoisted so `entry(for:)` doesn't rebuild a Set per file (perf P1-A).
+    private static let keySet = Set(keys)
     private static let batchSize = 128
 
     public init() {}
@@ -196,7 +198,7 @@ public actor LocalFileSystem: FileSystemProvider {
     }
 
     private static func entry(for url: URL) -> FSEntry {
-        let v = try? url.resourceValues(forKeys: Set(keys))
+        let v = try? url.resourceValues(forKeys: keySet)
         return FSEntry(
             url: url,
             name: url.lastPathComponent,

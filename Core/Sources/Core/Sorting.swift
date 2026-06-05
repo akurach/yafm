@@ -31,7 +31,9 @@ public extension Array where Element == FSEntry {
             case .modified:
                 result = (a.modified ?? .distantPast) < (b.modified ?? .distantPast)
             case .kind:
-                result = a.url.pathExtension.localizedStandardCompare(b.url.pathExtension) == .orderedAscending
+                // PERF: extensions are short ASCII — a plain compare avoids the
+                // per-pair ICU cost of localizedStandardCompare on big folders (P2-D).
+                result = a.url.pathExtension.lowercased() < b.url.pathExtension.lowercased()
             }
             return order.ascending ? result : !result
         }

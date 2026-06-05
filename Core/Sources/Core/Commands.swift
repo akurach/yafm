@@ -210,9 +210,16 @@ public final class PluginValueCache {
     /// value lands, so the caller can invalidate the row.
     public func value(for entry: FSEntry, in column: PluginColumn,
                       onResolve: @escaping () -> Void) -> ColumnValue {
-        guard let async = column.evaluateAsync else { return column.evaluate(entry) }
         let key = Key(column: column.id, url: entry.url)
         if let cached = values[key] { return cached }
+        // PERF (P0-A): a sync column ran its JS `evaluate` for every row on every
+        // render. Cache the first result by (column, url) — content is fixed for
+        // a listing, so later renders are a dict hit, not a JSC round-trip.
+        guard let async = column.evaluateAsync else {
+            let v = column.evaluate(entry)
+            values[key] = v
+            return v
+        }
         if !inflight.contains(key) {
             inflight.insert(key)
             Task { @MainActor in

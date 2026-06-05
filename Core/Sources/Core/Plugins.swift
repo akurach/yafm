@@ -132,6 +132,7 @@ public final class JSPluginHost {
         menuItems.removeAll()
         readCwdContexts.removeAll()
         handleURLs.removeAll()
+        handleByURL.removeAll()
 
         let fm = FileManager.default
         guard let names = try? fm.contentsOfDirectory(atPath: directory.path) else { return [] }
@@ -288,10 +289,15 @@ public final class JSPluginHost {
         return .text(result.toString() ?? "")
     }
 
-    /// Map a URL to a fresh opaque handle the JS side can pass back to `readText`.
+    /// Map a URL to an opaque handle the JS side passes back to `readText`.
+    /// Deduped by URL so the map is bounded by unique files seen, not by render
+    /// count — the old per-evaluate insert grew without bound (perf/security).
+    private var handleByURL: [URL: Int] = [:]
     private func registerHandle(_ url: URL) -> Int {
+        if let existing = handleByURL[url] { return existing }
         handleSeq += 1
         handleURLs[handleSeq] = url
+        handleByURL[url] = handleSeq
         return handleSeq
     }
 

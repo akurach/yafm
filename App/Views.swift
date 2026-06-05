@@ -431,11 +431,18 @@ struct FileTableView: View {
         }
     }
 
+    // PERF: a `UTType` lookup is a LaunchServices query — caching by extension
+    // turns 10k per-render lookups into dictionary hits (perf P1-D).
+    private static var kindCache: [String: String] = [:]
     private func kindText(_ entry: FSEntry) -> String {
         if entry.isDirectory { return "Folder" }
         let ext = entry.url.pathExtension
-        if let t = UTType(filenameExtension: ext), let d = t.localizedDescription { return d }
-        return ext.isEmpty ? "Document" : ext.uppercased()
+        if let hit = Self.kindCache[ext] { return hit }
+        let text: String
+        if let t = UTType(filenameExtension: ext), let d = t.localizedDescription { text = d }
+        else { text = ext.isEmpty ? "Document" : ext.uppercased() }
+        Self.kindCache[ext] = text
+        return text
     }
 
     static func dateText(_ d: Date) -> String { Self.df.string(from: d) }
@@ -444,6 +451,11 @@ struct FileTableView: View {
         f.dateStyle = .short
         f.timeStyle = .short
         return f
+    }()
+    // PERF: one shared formatter — the class method `ByteCountFormatter.string`
+    // allocates a formatter per call (perf P2-E).
+    private static let bcf: ByteCountFormatter = {
+        let f = ByteCountFormatter(); f.countStyle = .file; return f
     }()
 
     /// Color-coding rule tints the name (the icon now shows the real file type).
@@ -470,7 +482,7 @@ struct FileTableView: View {
     }
 
     private func byteString(_ n: Int64) -> String {
-        ByteCountFormatter.string(fromByteCount: n, countStyle: .file)
+        Self.bcf.string(fromByteCount: n)
     }
 
     // MARK: Context menus (§1)
@@ -624,14 +636,16 @@ private struct FolderDrop: ViewModifier {
 
 struct StatusBarView: View {
     let tab: TabModel
+    private static let bcf: ByteCountFormatter = { let f = ByteCountFormatter(); f.countStyle = .file; return f }()
 
     var body: some View {
         let rows = tab.displayed
         let selCount = tab.selection.count
-        let selBytes = rows.filter { tab.selection.contains($0.url) }.compactMap(\.size).reduce(0, +)
+        let selBytes = selCount == 0 ? 0
+            : rows.reduce(Int64(0)) { tab.selection.contains($1.url) ? $0 + ($1.size ?? 0) : $0 }
         // Only show a byte total when the selection actually has measurable
         // bytes — folders report no size, so a folder selection showed "Zero KB".
-        let sizePart = selBytes > 0 ? " (\(ByteCountFormatter.string(fromByteCount: selBytes, countStyle: .file)))" : ""
+        let sizePart = selBytes > 0 ? " (\(Self.bcf.string(fromByteCount: selBytes)))" : ""
         return HStack {
             Text("\(rows.count) items")
             if selCount > 0 {
