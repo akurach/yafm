@@ -1,7 +1,10 @@
 # Spec: Device Detection & Classification for yafm
 
-> Status: **someday** (backlog). Don't start without an explicit priority decision.
-> This file is the source of truth for the feature; the roadmap links here.
+> Status: ⏸ **DEFERRED → post-1.0** (decision recorded 2026-06-05). Considered
+> for v0.6 and v0.9 and consciously held both times: it's peripheral to the
+> never-freeze/keyboard wedge and to the 1.0 stability focus. Its main consumer is
+> Photo Ingest. Revisit after 1.0 ships, alongside Photo Ingest. The DiskArbitration
+> + IOKit approach below stands; this is a sequencing decision, not a design gap.
 
 ## Goal
 

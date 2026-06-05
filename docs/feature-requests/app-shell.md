@@ -1,7 +1,11 @@
 # Spec: App shell — Settings · About · Auto-update · Theme
 
-> Status: **someday** (backlog). The basic app "shell" that doesn't exist yet.
-> This file is the source of truth; the roadmap links here.
+> Status: ✅ **SHIPPED in v0.2.3** (closed 2026-06-05). Settings window (⌘,) with
+> General/Appearance/Operations/Tags/Plugins/Updates tabs, About panel, theme
+> (Light/Dark/System), start folder, collision policy, confirm-delete, and the
+> GitHub-Releases update check all landed. Sparkle seamless auto-install remains
+> deferred (needs a paid Developer ID + a signed appcast). Kept here as the
+> historical source of truth.
 
 ## Goal
 

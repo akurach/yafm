@@ -1,7 +1,10 @@
 # Spec: Photo Ingest Extension for yafm
 
-> Status: **someday** (backlog). Don't start without an explicit priority decision.
-> This file is the source of truth for the feature; the roadmap links here.
+> Status: ⏸ **DEFERRED → post-1.0** (decision recorded 2026-06-05). Was a v0.9
+> candidate but **depends on Device Detection** (auto-prompt on plugging a camera
+> card), which is itself deferred post-1.0. Building ingest without detection would
+> mean a manual folder-picker stub that doesn't prove the feature — not worth it
+> now. Pick up together with device-detection after 1.0. Spec below stands.
 
 ## Goal
 
