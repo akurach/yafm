@@ -201,16 +201,21 @@ half-built.
   shown at enable-time; slots in without an API change.
 - [x] **Archive mounting** — `.zip` as a read-only `FileSystemProvider` (`ArchiveFileSystem`, `archive://`)
   behind the router, same shape as SMB; streamed, never freezes. (+14 Core tests, 70 total.)
-- [ ] **Archive mounting** — `.zip`/`.tar` as a read-only `FileSystemProvider` behind the router (same shape as SMB).
 
-## v0.9 — "1.0 candidate"
+## v0.9 — "1.0 candidate" ✅ shipped
 
-- [ ] **Freeze `apiVersion 1.0`** — plugin contract becomes a compatibility promise + capability deprecation policy. Only freeze what v0.8 marketplace plugins actually exercised.
-- [ ] **Transformers** extension point (bulk-rename rules, converters) + **custom previewers** — the last VISION extension points (`VISION.md:50`), now safe atop mature async-value + capability machinery.
-- [ ] **Photo Ingest** as an *optional first-party plugin* (not core) — consumes v0.6 device detection +
-  the v0.3 copy+verify engine; doubles as proof of the heavy-plugin path. Spec: [`photo-ingest.md`](docs/feature-requests/photo-ingest.md).
-- [ ] Close the deferred data-loss audit items before 1.0 (see Hardening backlog: OPS-1 atomic replace, TOCTOU `O_EXCL`).
-- [ ] **Notarized DMG** (paid Apple Developer ID) — removes the "Open Anyway" acquisition tax before any 1.0 push.
+- [x] **Freeze `apiVersion 1.0`** — `PluginAPI.frozen`; 1.x compatibility promise (additive caps,
+  deprecation window before removal), major bump refused by the loader.
+- [x] **Transformers** extension point + **custom previewers** — the last VISION extension points;
+  `Transformer` (lowercase/sequence/space-replace) + `Previewer`, seeded in the registry.
+- [x] **OPS-1 atomic replace + TOCTOU `O_EXCL`** — `.replace` copies to a temp sibling and swaps with
+  `replaceItemAt` (original survives any failure); output opened `O_CREAT|O_EXCL|O_NOFOLLOW`.
+- [x] **Stability hardening** (from real-use bug reports) — the never-freeze pillar made true on big
+  folders: streaming sort O(n²)→one sort (26× on 8k), in-memory tag batch (no per-row `getxattr`),
+  per-table tag sheet (was a per-row `.popover`), per-row drag highlight, delete-confirm focus fix.
+- [ ] **Photo Ingest** (optional first-party plugin) — **deferred**: depends on device detection
+  (auto-prompt on camera plug-in), itself deferred since v0.6. Tracked in `docs/feature-requests/`.
+- [ ] **Notarized DMG** (paid Apple Developer ID) — **deferred**: still gated on the cert.
 
 ## Open questions to revisit
 

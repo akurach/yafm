@@ -140,9 +140,16 @@ public enum PluginManifestError: LocalizedError, Equatable {
     }
 }
 
-/// The plugin API contract version the host advertises. Frozen at 1.0 in v0.9.
+/// The plugin API contract version the host advertises. **Frozen at 1.0 in
+/// v0.9** — within the 1.x line the host promises: a plugin that targets `1.y`
+/// keeps loading; capabilities are additive; a capability is only removed after
+/// a full minor-version deprecation window with a load-time warning. A breaking
+/// change bumps the major and is refused by `isCompatible`.
 public enum PluginAPI {
     public static let currentVersion = "1.0"
+    /// The 1.0 contract is a compatibility promise as of v0.9 — only what the
+    /// v0.8 plugins actually exercised (columns, commands, menu items, read:cwd).
+    public static let frozen = true
 
     /// Major component of a `major.minor` string (defaults to 0 on garbage).
     public static func major(_ version: String) -> Int {

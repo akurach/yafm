@@ -280,13 +280,28 @@ public final class ExtensionRegistry {
     /// Runtime columns from JS plugins + native first-party providers (git).
     /// The file table renders one trailing column per entry here.
     public private(set) var pluginColumns: [PluginColumn] = []
+    /// Bulk-rename transformers + custom previewers (v0.9 extension points).
+    public private(set) var transformers: [Transformer] = []
+    public private(set) var previewers: [Previewer] = []
 
-    public init() {}
+    public init() {
+        // Seed the built-in transformers/previewers; first-party features and
+        // (later) plugins append more.
+        transformers = [LowercaseTransformer(), SequenceTransformer(), SpaceReplaceTransformer()]
+        previewers = [TextPreviewer()]
+    }
 
     public func register(column: ColumnProvider) { columns.append(column) }
     public func register(commands: CommandProvider) { commandProviders.append(commands) }
     public func register(contextMenu: ContextMenuProvider) { contextMenus.append(contextMenu) }
     public func register(pluginColumn: PluginColumn) { pluginColumns.append(pluginColumn) }
+    public func register(transformer: Transformer) { transformers.append(transformer) }
+    public func register(previewer: Previewer) { previewers.append(previewer) }
+
+    /// First previewer that handles `ext`, if any (UI consults this before QuickLook).
+    public func previewer(forExtension ext: String) -> Previewer? {
+        previewers.first { $0.canPreview(extension: ext) }
+    }
 
     /// Drop plugin columns whose id has the given prefix (e.g. reload a plugin
     /// set). Native columns use a distinct prefix so they survive.

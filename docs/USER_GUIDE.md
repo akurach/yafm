@@ -1,6 +1,6 @@
 # yafm User Guide
 
-*Yet Another File Manager for macOS — v0.4.0*
+*Yet Another File Manager for macOS — v0.9.0* · [Русская версия](USER_GUIDE.ru.md)
 
 ---
 

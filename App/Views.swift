@@ -142,11 +142,7 @@ struct PathBarView: View {
 
 struct FileTableView: View {
     @Bindable var tab: TabModel
-    let app: AppState
-
-    /// Folder row (or pane background, `tab.directory`) currently under a drag,
-    /// for the drop highlight. nil = nothing targeted.
-    @State private var dropTarget: URL?
+    @Bindable var app: AppState
 
     var body: some View {
         Group {
@@ -256,36 +252,31 @@ struct FileTableView: View {
                             // drops into another pane, Finder, or any app.
                             .onDrag { dragPayload(entry) }
                             // Drop onto a folder row → copy (or move with ⌘) into
-                            // it. File rows aren't drop targets.
+                            // it. File rows aren't drop targets. The targeted
+                            // highlight lives in FolderDrop's own @State so only
+                            // the hovered row re-renders — not the whole table.
                             .modifier(FolderDrop(
                                 enabled: entry.isDirectory,
-                                target: entry.url,
-                                isTargeted: dropTarget == entry.url,
-                                onDrop: { urls in app.dropEntries(urls, onto: entry.url, move: dropIsMove()) },
-                                onTarget: { dropTarget = $0 ? entry.url : (dropTarget == entry.url ? nil : dropTarget) }
+                                onDrop: { urls in app.dropEntries(urls, onto: entry.url, move: dropIsMove()) }
                             ))
                             .contextMenu { rowMenu(entry) }
-                            // Popover (not a sheet) so clicking outside dismisses
-                            // the tag editor, anchored to the row it acts on.
-                            .popover(isPresented: tagPopover(entry), arrowEdge: .trailing) {
-                                TagEditorSheet(app: app, url: entry.url)
-                            }
                     }
                 } header: {
                     columnHeader
                 }
             }
+            // One tag editor for the whole table (driven by app.tagSheet), NOT a
+            // .popover per row — a per-row popover modifier is instantiated for
+            // every row and beachballed large folders. Sheet needs no anchor.
+            .sheet(item: $app.tagSheet) { item in
+                TagEditorSheet(app: app, url: item.url)
+            }
             .contextMenu { backgroundMenu() }   // empty area below the rows
-            // Drop onto empty pane area → into the current directory.
+            // Drop onto empty pane area → into the current directory. No
+            // targeted-highlight @State here: mutating table-level state on every
+            // hover re-rendered the whole list and made inter-pane drags crawl.
             .dropDestination(for: URL.self) { urls, _ in
                 app.dropEntries(urls, onto: tab.directory, move: dropIsMove()); return true
-            } isTargeted: { dropTarget = $0 ? tab.directory : (dropTarget == tab.directory ? nil : dropTarget) }
-            .overlay {
-                if dropTarget == tab.directory {
-                    RoundedRectangle(cornerRadius: Theme.cornerRadius)
-                        .strokeBorder(Theme.Palette.cursorStroke, lineWidth: 2).padding(2)
-                        .allowsHitTesting(false)
-                }
             }
             // Plain (edge-to-edge) instead of .inset: denser, Finder/TC-like, and
             // it drops the rounded inset-card corners that notched the bottom.
@@ -363,14 +354,6 @@ struct FileTableView: View {
     /// ⌘ held at drop time = move; otherwise copy (Finder's convention is the
     /// inverse, but yafm is move-on-⌘ to match its explicit F6-move muscle memory).
     private func dropIsMove() -> Bool { NSEvent.modifierFlags.contains(.command) }
-
-    /// Drives the per-row tag popover off the shared `app.tagSheet` target.
-    private func tagPopover(_ entry: FSEntry) -> Binding<Bool> {
-        Binding(
-            get: { app.tagSheet?.url == entry.url },
-            set: { if !$0 { app.tagSheet = nil } }
-        )
-    }
 
     private func row(_ entry: FSEntry) -> some View {
         let density = app.settings.density
@@ -616,18 +599,16 @@ struct FileTableView: View {
 /// `Views` to a single line and confines the `if enabled` branch.
 private struct FolderDrop: ViewModifier {
     let enabled: Bool
-    let target: URL
-    let isTargeted: Bool
     let onDrop: ([URL]) -> Void
-    let onTarget: (Bool) -> Void
+    @State private var targeted = false
 
     func body(content: Content) -> some View {
         if enabled {
             content
                 .dropDestination(for: URL.self) { urls, _ in onDrop(urls); return true }
-                isTargeted: { onTarget($0) }
+                isTargeted: { targeted = $0 }
                 .overlay {
-                    if isTargeted {
+                    if targeted {
                         RoundedRectangle(cornerRadius: Theme.cornerRadius)
                             .strokeBorder(Theme.Palette.cursorStroke, lineWidth: 2)
                             .allowsHitTesting(false)

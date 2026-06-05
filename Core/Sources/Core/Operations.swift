@@ -147,7 +147,8 @@ public actor FileEngine {
                     guard let dst = try Self.plannedDestination(for: source, in: dir, policy: task.collision) else {
                         done += Self.contentBytes(of: source); progress(source, .running); continue   // skipped
                     }
-                    try copy(source, to: dst, taskID: task.id, done: &done, total: total, emit: emit)
+                    try copy(source, to: dst, taskID: task.id, replacing: task.collision == .replace,
+                             done: &done, total: total, emit: emit)
                 }
             }
             if isCancelled(task.id) { progress(nil, .cancelled); return }
@@ -162,10 +163,27 @@ public actor FileEngine {
 
     /// Streamed copy so progress is real, not faked. Recurses into directories.
     private nonisolated func copy(
-        _ source: URL, to dst: URL, taskID: UUID,
+        _ source: URL, to dst: URL, taskID: UUID, replacing: Bool = false,
         done: inout Int64, total: Int64, emit: @Sendable (OperationProgress) -> Void
     ) throws {
         let fm = FileManager.default
+
+        // OPS-1 atomic replace: when overwriting an existing item, copy into a
+        // temp sibling first, then swap with `replaceItemAt`. A failure/cancel
+        // mid-copy leaves the original intact — never both files lost.
+        if replacing, fm.fileExists(atPath: dst.path) {
+            let temp = dst.deletingLastPathComponent()
+                .appendingPathComponent(".yafm-tmp-\(UUID().uuidString)-\(dst.lastPathComponent)")
+            do {
+                try copy(source, to: temp, taskID: taskID, replacing: false,
+                         done: &done, total: total, emit: emit)
+                _ = try fm.replaceItemAt(dst, withItemAt: temp)
+            } catch {
+                try? fm.removeItem(at: temp)   // don't leak a partial temp
+                throw error
+            }
+            return
+        }
 
         // Copy symlinks as links — never follow them. Following a symlink in a
         // copied tree would read files anywhere on disk (path traversal).
@@ -190,13 +208,15 @@ public actor FileEngine {
             return
         }
 
-        // Refuse to clobber: the planned dst is unique, but guard the window
-        // between planning and writing.
-        guard !fm.fileExists(atPath: dst.path) else { throw OpError.cannotWrite }
+        // Create the output with O_CREAT|O_EXCL|O_NOFOLLOW: the kernel refuses if
+        // anything already exists at the path (closing the TOCTOU window between a
+        // `fileExists` check and the open) and won't follow a planted symlink.
         guard let input = InputStream(url: source) else { throw OpError.missingSource }
-        guard let output = OutputStream(url: dst, append: false) else { throw OpError.cannotWrite }
-        input.open(); output.open()
-        defer { input.close(); output.close() }
+        let outFD = open(dst.path, O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW, 0o644)
+        guard outFD >= 0 else { throw OpError.cannotWrite }
+        let output = FileHandle(fileDescriptor: outFD, closeOnDealloc: true)
+        input.open()
+        defer { input.close(); try? output.close() }
 
         let bufSize = 1 << 20  // 1 MiB
         var buffer = [UInt8](repeating: 0, count: bufSize)
@@ -205,15 +225,7 @@ public actor FileEngine {
             let read = input.read(&buffer, maxLength: bufSize)
             if read < 0 { throw input.streamError ?? OpError.readFailed }
             if read == 0 { break }
-            try buffer.withUnsafeBytes { raw in
-                guard let base = raw.bindMemory(to: UInt8.self).baseAddress else { return }
-                var offset = 0
-                while offset < read {
-                    let written = output.write(base + offset, maxLength: read - offset)
-                    if written <= 0 || written > read - offset { throw output.streamError ?? OpError.cannotWrite }
-                    offset += written
-                }
-            }
+            try output.write(contentsOf: Data(buffer[0..<read]))
             done += Int64(read)
             emit(OperationProgress(id: taskID, completedBytes: done, totalBytes: total, currentFile: dst, state: .running))
         }
@@ -234,7 +246,9 @@ public actor FileEngine {
     }
 
     /// Resolve the destination per collision policy. Returns nil to signal
-    /// "skip this source". `replace` removes the existing item first.
+    /// "skip this source". `replace` returns the live path **without** deleting —
+    /// the copy writes to a temp sibling and swaps atomically (OPS-1), so a
+    /// failed/cancelled replace can't destroy the existing file.
     static func plannedDestination(for source: URL, in dir: URL, policy: CollisionPolicy) throws -> URL? {
         let fm = FileManager.default
         switch policy {
@@ -244,9 +258,7 @@ public actor FileEngine {
             let dst = dir.appendingPathComponent(source.lastPathComponent)
             return fm.fileExists(atPath: dst.path) ? nil : dst
         case .replace:
-            let dst = dir.appendingPathComponent(source.lastPathComponent)
-            if fm.fileExists(atPath: dst.path) { try fm.removeItem(at: dst) }
-            return dst
+            return dir.appendingPathComponent(source.lastPathComponent)
         }
     }
 

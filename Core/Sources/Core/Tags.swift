@@ -8,6 +8,11 @@ import Foundation
 /// "show everything tagged X" is instant.
 public protocol TagServing: Sendable {
     func tags(of url: URL) async -> [Tag]
+    /// Tags for many urls **from the in-memory index only** — no per-file xattr
+    /// read. Lets a listing attach tag dots without a syscall per row (the killer
+    /// for big folders like Downloads); files not yet indexed simply return no
+    /// tags until the next rescan.
+    func cachedTags(for urls: [URL]) async -> [URL: [Tag]]
     func setTags(_ tags: [Tag], on url: URL) async throws
     func allKnownTags() async -> [Tag]
     func entries(taggedWith tag: Tag) async -> [URL]
@@ -55,6 +60,15 @@ public actor TagService: TagServing {
         let tags = Self.readTags(url)
         reindex(url, tags)
         return tags
+    }
+
+    public func cachedTags(for urls: [URL]) async -> [URL: [Tag]] {
+        var out: [URL: [Tag]] = [:]
+        for url in urls {
+            guard let names = urlTags[url], !names.isEmpty else { continue }
+            out[url] = names.map { Tag(name: $0, colorIndex: colors[$0] ?? nil) }
+        }
+        return out
     }
 
     public func setTags(_ tags: [Tag], on url: URL) async throws {
