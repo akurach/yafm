@@ -30,6 +30,25 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 - [x] Bulk rename with regex + live preview (`RenameRule`, `RenameSheet`)
 - [x] Bookmarks / favorites (`BookmarksSidebar`)
 
+## v0.2.1 — Daily-driver UX (makes it actually usable) — see [TZ.md](TZ.md)
+
+The v0.1/v0.2 skeleton works but isn't usable yet: right-click does nothing, drives aren't
+shown, hotkeys are undiscoverable, no metadata is visible, tags can't be browsed. This milestone
+closes that. Full spec in [TZ.md](TZ.md).
+
+- [ ] Context menu (right-click) on rows + empty pane area — Open/Open With/QuickLook, Copy/Cut/
+  Paste, Copy→/Move→ pane, Rename/New Folder/Delete, Tags ▸, Reveal in Finder, Get Info, Copy Path
+- [ ] Mounted volumes/devices in the sidebar — Locations/Devices/Network sections, eject, live
+  update on mount/unmount (`VolumeService` + NSWorkspace notifications)
+- [ ] Function-key bar (bottom, TC-style, clickable): F2 Rename · F3 View · F4 Edit · F5 Copy ·
+  F6 Move · F7 New Folder · F8 Delete (+ new F3/F4/F7 commands)
+- [ ] Columns (Name/Size/Modified/Kind) with click-to-sort + right info inspector (size/dates/
+  permissions/tags/preview), merged with the existing preview panel
+- [ ] Tag cloud in the sidebar (all known tags + counts + color, click to filter) + tag editor
+  (7 Finder colors + new tag) in context menu & inspector
+- [ ] Access on launch: Info.plist usage strings + Full Disk Access onboarding + honest
+  "limited access" banner (never silent empty folders); removable/network volume consent
+
 ## v0.3 — Platform
 
 - [ ] JS plugin runtime (JavaScriptCore) + 2–3 extension points exposed

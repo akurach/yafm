@@ -55,3 +55,6 @@ tmp/
 .claude/
 CLAUDE.md
 CLAUDE.local.md
+
+# Working spec (local only)
+TZ.md
