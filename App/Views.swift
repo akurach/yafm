@@ -67,6 +67,7 @@ struct TabBarView: View {
                                 Image(systemName: "xmark").font(.system(size: 8))
                             }
                             .buttonStyle(.plain)
+                            .accessibilityLabel("Close tab \(tab.title)")
                         }
                     }
                     .padding(.horizontal, 8).padding(.vertical, 4)
@@ -76,6 +77,7 @@ struct TabBarView: View {
                 }
                 Button { pane.newTab() } label: { Image(systemName: "plus") }
                     .buttonStyle(.plain).padding(.horizontal, 4)
+                    .accessibilityLabel("New tab")
             }
             .padding(4)
         }
@@ -111,6 +113,7 @@ struct PathBarView: View {
                 Button { typed = tab.directory.path; editing = true } label: {
                     Image(systemName: "pencil")
                 }.buttonStyle(.plain)
+                .accessibilityLabel("Edit path")
             }
         }
         .padding(.horizontal, 6).padding(.vertical, 4)
@@ -406,6 +409,23 @@ struct FileTableView: View {
             }
         }
         .padding(.vertical, density.rowPadding)
+        // VoiceOver reads one coherent sentence per row instead of spelling out
+        // each column cell; selection/cursor state is announced as a trait.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityLabel(entry))
+        .accessibilityAddTraits(tab.cursor == entry.url ? .isSelected : [])
+    }
+
+    /// A spoken summary of a row: "Name, Kind, Size, tagged X, git modified".
+    private func accessibilityLabel(_ entry: FSEntry) -> String {
+        var parts = [entry.name, kindText(entry)]
+        if !entry.isDirectory, let size = entry.size { parts.append(byteString(size)) }
+        if !entry.tags.isEmpty { parts.append("tagged " + entry.tags.map(\.name).joined(separator: ", ")) }
+        if let marker = tab.gitStatus[entry.url], !marker.isEmpty {
+            let word = ["?": "untracked", "A": "added", "M": "modified", "D": "deleted"][marker] ?? "changed"
+            parts.append("git \(word)")
+        }
+        return parts.joined(separator: ", ")
     }
 
     /// Tint a VCS marker via the tokens layer (added green, modified orange, deleted red).
@@ -640,6 +660,7 @@ struct QueueView: View {
                         if !op.isTerminal {
                             Button { app.cancel(op.id) } label: { Image(systemName: "xmark.circle.fill") }
                                 .buttonStyle(.plain)
+                                .accessibilityLabel("Cancel \(op.task.kind.verb)")
                         }
                     }
                     .padding(.horizontal, 8)

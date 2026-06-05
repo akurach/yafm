@@ -166,18 +166,23 @@ half-built.
   keep v0.6 on the never-freeze pillar; peripheral here, primarily feeds photo-ingest (v0.9).
   Spec: [`device-detection.md`](docs/feature-requests/device-detection.md).
 
-## v0.7 — "Remote disks, finally native" (reach + accessibility)
+## v0.7 — "Remote disks, finally native" (reach + accessibility) ✅ shipped
 
-- [ ] **SMB as a virtual filesystem** — a `FileSystemProvider` (`FileSystem.swift:88`) over **XPC**,
-  behind the v0.4 router, so a hung network mount can't freeze the app (never-freeze at network latency).
-  One protocol done excellently first (SMB = most-requested on Mac); FTP/cloud follow.
-- [ ] VFS connection/credential/error UX — reuses the v0.6 unified state-view (a connecting share is just `.loading`).
-- [ ] **Accessibility** — VoiceOver labels on the file table (today a bare `HStack` of `Text`,
-  `Views.swift:277`), Dynamic Type (today fixed `.caption`/`.caption2`). Cheap *if* the v0.4 tokens layer landed; a rewrite if not.
-- [ ] **i18n / Russian** — `Localizable.strings` + `ru` + language picker in Settings ▸ General. Strings
-  have stabilized by now; if the v0.4 hygiene held, extraction is bounded.
-- **Depends on:** router (v0.4) + async providers (v0.5). A synchronous SMB provider would freeze — the async seam is non-negotiable here.
-- **Risk:** XPC lifecycle + credential security in a non-sandboxed app. Treat the XPC boundary as the trust boundary.
+- [x] **SMB as a virtual filesystem** — `SMBFileSystem` behind the v0.4 router (`smb` scheme),
+  mounting natively via **NetFS** (system handles the protocol + Keychain) and streaming through
+  the local provider; entries re-keyed into `smb://` space, failed mount → `.failed` listing.
+  Chose NetFS mount over a hand-rolled XPC SMB stack: the OS already owns the protocol + auth, so
+  the trust boundary is the system mount, not our code. (+6 Core tests, 56 total.)
+- [x] VFS connection UX — **Connect to Server (⌘⇧K)** `ConnectServerSheet`; reuses the v0.6
+  unified state-view (a connecting/failed share is `.loading`/`.failed`, never a freeze).
+- [x] **Accessibility** — VoiceOver reads each row as one sentence (name/kind/size/tags/git) with a
+  selected trait; icon-only buttons labelled; Dynamic Type via the `Theme` type tokens.
+- [x] **i18n / Russian** — `en.lproj` / `ru.lproj` + language picker (Settings ▸ General), writing
+  `AppleLanguages` (effective next launch). `make-app.sh` bundles the `.lproj`; resolution verified.
+- **Done on:** router (v0.4) + async providers (v0.5) — a synchronous SMB provider would freeze.
+- **Note:** picked the native NetFS mount over an XPC SMB service — same never-freeze guarantee
+  (mount is async + the listing streams), far less attack surface than a custom non-sandboxed XPC
+  daemon. FTP/cloud providers follow the same provider+router pattern.
 
 ## v0.8 — "Make it yours" (extensibility re-opens — now there's an audience)
 

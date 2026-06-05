@@ -25,6 +25,12 @@ cp "$BIN" "$APP/Contents/MacOS/yafm"
 cp "$ROOT/App/Resources/Info.plist" "$APP/Contents/Info.plist"
 cp "$ROOT/App/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 
+# Localizations (v0.7 i18n): copy every <lang>.lproj so SwiftUI's LocalizedString
+# lookup resolves against the chosen language. Bundle.main is the app bundle here.
+for lproj in "$ROOT"/App/Resources/*.lproj; do
+	[[ -d "$lproj" ]] && cp -R "$lproj" "$APP/Contents/Resources/"
+done
+
 # Ad-hoc codesign so the bundle launches without Gatekeeper friction locally.
 codesign --force --sign - "$APP" >/dev/null 2>&1 || true
 
