@@ -1,128 +1,95 @@
 import SwiftUI
+import Quartz
 import Core
 
 @main
 struct YafmApp: App {
+    @State private var app = AppState()
+
     var body: some Scene {
         WindowGroup("yafm") {
-            RootView()
-                .frame(minWidth: 800, minHeight: 480)
+            RootView(app: app)
+                .frame(minWidth: 900, minHeight: 520)
+                .onAppear { app.start() }
+                .background(KeyboardMonitor(app: app).frame(width: 0, height: 0))
         }
         .windowStyle(.titleBar)
+        .commands { CommandMenus(app: app) }
     }
 }
 
-/// v0.1 scaffold: two panes side by side. Each pane lists a directory through
-/// Core, rendering the honest loading state. Tabs / keyboard / file engine land next.
+/// Window chrome: bookmarks sidebar · dual pane (+ optional preview) · queue · status.
 struct RootView: View {
-    private let fs = LocalFileSystem()
+    @Bindable var app: AppState
 
     var body: some View {
-        HSplitView {
-            PaneView(model: PaneModel(fs: fs, directory: .homeDirectory))
-            PaneView(model: PaneModel(fs: fs, directory: .homeDirectory))
-        }
-    }
-}
-
-@MainActor
-@Observable
-final class PaneModel {
-    let fs: FileSystemProvider
-    private(set) var directory: URL
-    private(set) var state: ListingState = .idle
-    private var task: Task<Void, Never>?
-
-    init(fs: FileSystemProvider, directory: URL) {
-        self.fs = fs
-        self.directory = directory
-    }
-
-    func open(_ directory: URL) {
-        self.directory = directory
-        load()
-    }
-
-    func load() {
-        task?.cancel()
-        state = .loading(partial: [])
-        let stream = fs.list(directory)
-        task = Task { [weak self] in
-            var partial: [FSEntry] = []
-            for await event in stream {
-                guard let self else { return }
-                switch event {
-                case .began:
-                    break
-                case .entries(let batch):
-                    partial.append(contentsOf: batch)
-                    self.state = .loading(partial: partial)
-                case .finished:
-                    partial.sort { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-                    self.state = .loaded(partial)
-                case .failed(let message):
-                    self.state = .failed(message)
+        NavigationSplitView {
+            BookmarksSidebar(app: app)
+        } detail: {
+            VStack(spacing: 0) {
+                HSplitView {
+                    PaneView(pane: app.left, isActive: app.activePaneIsLeft, app: app)
+                    PaneView(pane: app.right, isActive: !app.activePaneIsLeft, app: app)
+                    if app.showPreview {
+                        PreviewPane(tab: app.activeTab).frame(minWidth: 220)
+                    }
                 }
+                QueueView(app: app)
+                Divider()
+                StatusBarView(tab: app.activeTab)
             }
         }
+        .sheet(isPresented: $app.renameSheet) { RenameSheet(app: app) }
     }
 }
 
-struct PaneView: View {
-    @State var model: PaneModel
+/// Inline preview panel (v0.2) — toggled with ⌘⇧P, distinct from Space QuickLook.
+struct PreviewPane: View {
+    let tab: TabModel
 
     var body: some View {
-        VStack(spacing: 0) {
-            // Path bar (typed navigation comes later).
-            Text(model.directory.path)
-                .font(.caption.monospaced())
-                .lineLimit(1)
-                .truncationMode(.head)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(6)
-                .background(.bar)
-
-            Divider()
-
-            content
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .task { model.load() }
-    }
-
-    @ViewBuilder
-    private var content: some View {
-        switch model.state {
-        case .idle:
-            Color.clear
-        case .loading(let partial):
-            VStack {
-                HStack(spacing: 6) {
-                    ProgressView().controlSize(.small)
-                    Text("Reading… (\(partial.count))")
-                        .foregroundStyle(.secondary)
-                }
-                .padding(.top, 8)
-                list(partial)
+        Group {
+            if let url = tab.actionable.first?.url ?? tab.cursor {
+                QuickLookPreview(url: url)
+            } else {
+                ContentUnavailableView("No selection", systemImage: "eye.slash")
             }
-        case .loaded(let entries):
-            list(entries)
-        case .failed(let message):
-            ContentUnavailableView("Can't open folder", systemImage: "exclamationmark.triangle", description: Text(message))
         }
-    }
-
-    private func list(_ entries: [FSEntry]) -> some View {
-        List(entries) { entry in
-            Label(entry.name, systemImage: entry.isDirectory ? "folder" : "doc")
-                .foregroundStyle(entry.isHidden ? .secondary : .primary)
-        }
-        .listStyle(.inset)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(.background)
     }
 }
 
-private extension URL {
-    static var homeDirectory: URL {
-        FileManager.default.homeDirectoryForCurrentUser
+/// QLPreviewView wrapper for the inline panel.
+struct QuickLookPreview: NSViewRepresentable {
+    let url: URL
+    func makeNSView(context: Context) -> QLPreviewView {
+        let v = QLPreviewView(frame: .zero, style: .normal) ?? QLPreviewView()
+        v.previewItem = url as NSURL
+        return v
+    }
+    func updateNSView(_ nsView: QLPreviewView, context: Context) {
+        nsView.previewItem = url as NSURL
+    }
+}
+
+/// TC-style commands also surfaced in the menu bar (discoverability + ⌘ keys).
+struct CommandMenus: Commands {
+    let app: AppState
+
+    var body: some Commands {
+        CommandMenu("Go") {
+            Button("Up") { app.run(CommandID.goUp) }
+            Button("Toggle Hidden Files") { app.run(CommandID.toggleHidden) }
+                .keyboardShortcut(".", modifiers: [.command, .shift])
+            Button("Toggle Preview") { app.run(CommandID.togglePreview) }
+                .keyboardShortcut("p", modifiers: [.command, .shift])
+        }
+        CommandMenu("File Ops") {
+            Button("Copy → other pane") { app.run(CommandID.copy) }
+            Button("Move → other pane") { app.run(CommandID.move) }
+            Button("Delete") { app.run(CommandID.delete) }
+            Button("Rename…") { app.run(CommandID.rename) }
+        }
     }
 }

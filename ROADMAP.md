@@ -12,23 +12,23 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 - [x] Async FS listing layer (`Core/FileSystem`) — streamed entries, cancellable
 - [x] Visible "reading…/loading…" state in the UI (the core differentiator)
 - [x] Dual pane (side-by-side)
-- [ ] Navigation: select row, Enter/→ into folder, Backspace/← up, arrow keys
-- [ ] Tab = switch active pane; visible active-pane indicator
-- [ ] Multi-select (Shift/⌘-click, Space-to-mark)
-- [ ] Tabs per pane
-- [ ] Path bar (type a path) + breadcrumbs
-- [ ] Hidden files toggle (⌘⇧.)
-- [ ] QuickLook on Space
-- [ ] Own file engine: copy (F5) / move (F6) / delete (F8) / rename — visible queue, progress, cancel
-- [ ] Tags: native xattr read/write + index + UI
-- [ ] Internal extension points laid (columns / commands / context-menu) — first-party goes through them
+- [x] Navigation: Enter/→ into folder, Backspace/← up, ↑↓ cursor (`Keyboard.swift`)
+- [x] Tab = switch active pane; visible active-pane indicator
+- [x] Multi-select (⇧+arrows, click; cursor + selection model in `TabModel`)
+- [x] Tabs per pane (`PaneModel`, `TabBarView`)
+- [x] Path bar (type a path, validated) + breadcrumbs (`PathBarView`)
+- [x] Hidden files toggle (⌘⇧.)
+- [x] QuickLook on Space (`QuickLook.swift`)
+- [x] Own file engine: copy (F5) / move (F6) / delete (F8) / rename (F2) — visible queue, progress, cancel
+- [x] Tags: native xattr read/write + in-memory index + UI dots (`Tags.swift`)
+- [x] Internal extension points laid (columns / commands / context-menu) — `Commands.swift` `ExtensionRegistry`
 
 ## v0.2 — Differentiators
 
-- [ ] Preview panel (toggle)
-- [ ] Color coding by rules / type / tags
-- [ ] Bulk rename with regex
-- [ ] Bookmarks / favorites
+- [x] Preview panel (toggle, ⌘⇧P) — `PreviewPane` / `QLPreviewView`
+- [x] Color coding by rules / type / tags (`ColorCoder`, `ColorRule`)
+- [x] Bulk rename with regex + live preview (`RenameRule`, `RenameSheet`)
+- [x] Bookmarks / favorites (`BookmarksSidebar`)
 
 ## v0.3 — Platform
 
@@ -43,7 +43,19 @@ Legend: `[x]` done · `[~]` in progress · `[ ]` not started
 - [ ] Plugin marketplace
 - [ ] Archive mounting
 
+## Hardening backlog (from the security + Swift audit — see `SECURITY.md`)
+
+Done: symlink-safe copy, rename path-traversal guard, xattr size/count caps, copy-progress
+fix, cancellation no longer looks "complete", `cancelled`-set leak, QuickLook actor isolation,
+executable-open confirmation, path-bar input validation.
+
+Deferred (tracked, not yet done):
+- [ ] TOCTOU: open copy output with `O_EXCL` instead of exists-check + truncate
+- [ ] Perf: cache `displayed` (sorts on every SwiftUI body); precompile `ColorRule` regex;
+  reverse-index in `TagService.reindex`
+- [ ] Plugin capability boundary (`PluginContext`) before any JS API is exposed (v0.3)
+
 ## Next up
 
-Navigation + keyboard (the rest of the spine sits on it): wire `PaneModel.open()` to the UI,
-row selection, Enter/→/Backspace, arrow keys, Tab between panes, active-pane indicator.
+v0.3 platform work: JS plugin runtime (JavaScriptCore) behind the `ExtensionRegistry` contract,
+starting with the deferred `PluginContext` capability boundary, then a git-status column plugin.

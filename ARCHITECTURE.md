@@ -138,6 +138,12 @@ Write-through to native xattr (Finder-compatible) + maintain an index (in-memory
 
 First-party features register through these now; the JS loader plugs into the same registry in v0.3.
 
+> **Security boundary (do before any JS API ships):** the `ExtensionRegistry` must never hand
+> plugins a `FileEngine`, `TagService`, or `LocalFileSystem` reference. Define a `PluginContext`
+> exposing only a vetted capability subset (list a user-chosen dir, read metadata; no raw path
+> construction, no delete/rename without user confirmation). Without this, the path-traversal
+> classes fixed in v0.1 (`SECURITY.md`) become plugin-reachable. Non-sandboxed = no OS backstop.
+
 ```swift
 protocol ColumnProvider { var id: String { get }; func value(for entry: FSEntry) -> ColumnValue }
 protocol CommandProvider { var commands: [Command] { get } }

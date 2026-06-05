@@ -1,0 +1,32 @@
+import AppKit
+import Quartz
+import Core
+
+/// Bridges Space-to-preview to the system QuickLook panel.
+/// `@MainActor`-isolated: AppKit delivers the data-source callbacks on the main
+/// thread, so the state (`urls`) is safe without `nonisolated(unsafe)`.
+@MainActor
+final class QuickLook: NSObject, QLPreviewPanelDataSource, QLPreviewPanelDelegate {
+    static let shared = QuickLook()
+    private var urls: [URL] = []
+
+    static func toggle(urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        shared.urls = urls
+        guard let panel = QLPreviewPanel.shared() else { return }
+        if QLPreviewPanel.sharedPreviewPanelExists() && panel.isVisible {
+            panel.orderOut(nil)
+        } else {
+            panel.dataSource = shared
+            panel.makeKeyAndOrderFront(nil)
+            panel.reloadData()
+        }
+    }
+
+    nonisolated func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int {
+        MainActor.assumeIsolated { urls.count }
+    }
+    nonisolated func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> QLPreviewItem! {
+        MainActor.assumeIsolated { urls[index] as NSURL }
+    }
+}

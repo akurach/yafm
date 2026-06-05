@@ -111,6 +111,9 @@ public actor LocalFileSystem: FileSystemProvider {
                         batch.removeAll(keepingCapacity: true)
                     }
                 }
+                // Cancelled mid-listing: finish without `.finished` so the
+                // consumer never shows a truncated listing as complete.
+                if Task.isCancelled { continuation.finish(); return }
                 if !batch.isEmpty { continuation.yield(.entries(batch)) }
                 continuation.yield(.finished)
                 continuation.finish()
