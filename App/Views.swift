@@ -248,7 +248,9 @@ struct FileTableView: View {
                                 app.activePaneIsLeft = tabBelongsToLeft()
                             }
                             .simultaneousGesture(TapGesture(count: 2).onEnded {
-                                if entry.isDirectory { tab.open(entry.url) } else { app.openFile(entry.url) }
+                                if entry.isDirectory { tab.open(entry.url) }
+                                else if entry.url.isFileURL, entry.url.pathExtension.lowercased() == "zip" { app.browseArchive(entry.url) }
+                                else { app.openFile(entry.url) }
                             })
                             // Drag out: the row's URL becomes the payload, so it
                             // drops into another pane, Finder, or any app.
@@ -536,6 +538,17 @@ struct FileTableView: View {
             Button { app.addBookmark(entry.url) } label: { Label("Add to Favorites", systemImage: "star") }
         }
 
+        // JS plugin context-menu items (v0.8), gated by the plugin's manifest.
+        let pluginItems = app.pluginMenuItems()
+        if !pluginItems.isEmpty {
+            Divider()
+            ForEach(pluginItems, id: \.id) { item in
+                Button { focus(entry); app.runPluginMenuItem(item.id, on: entry) } label: {
+                    Label(item.title, systemImage: "puzzlepiece.extension")
+                }
+            }
+        }
+
         Divider()
         Button { focus(entry); app.run(CommandID.reveal) } label: { Label("Reveal in Finder", systemImage: "magnifyingglass") }
         Button { focus(entry); app.run(CommandID.getInfo) } label: { Label("Get Info", systemImage: "info.circle") }
@@ -587,6 +600,13 @@ struct FileTableView: View {
         Button("Search…") { app.activePaneIsLeft = tabBelongsToLeft(); app.run(CommandID.search) }
         Button("Add Current Folder to Favorites") { app.addBookmark(tab.directory) }
         Button("Refresh") { tab.load() }
+        let pluginCmds = app.pluginCommands()
+        if !pluginCmds.isEmpty {
+            Divider()
+            ForEach(pluginCmds, id: \.id) { cmd in
+                Button(cmd.title) { app.run(cmd.id) }
+            }
+        }
     }
 }
 
