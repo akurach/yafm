@@ -234,6 +234,29 @@ final class TabModel: Identifiable {
         if selection.contains(c) { selection.remove(c) } else { selection.insert(c) }
     }
 
+    /// Insert-style: toggle the cursor row's membership, then advance the cursor
+    /// WITHOUT clearing the selection (the Total Commander multi-pick gesture).
+    func toggleSelectAndAdvance() {
+        toggleSelectCursor()
+        let rows = displayed
+        guard !rows.isEmpty, let i = cursor.flatMap({ displayedIndex[$0] }) else { return }
+        cursor = rows[min(rows.count - 1, i + 1)].url
+    }
+
+    func selectAll() { selection = Set(displayed.map(\.url)) }
+
+    /// Select the contiguous range between two rows (⇧-click).
+    func selectRange(from anchor: URL, to target: URL) {
+        guard let a = displayedIndex[anchor], let b = displayedIndex[target] else { return }
+        let lo = min(a, b), hi = max(a, b)
+        selection = Set(displayed[lo...hi].map(\.url))
+    }
+
+    func invertSelection() {
+        let all = Set(displayed.map(\.url))
+        selection = all.subtracting(selection)
+    }
+
     /// The entries the user is acting on: explicit selection, else the cursor row.
     var actionable: [FSEntry] {
         let rows = displayed
@@ -806,7 +829,11 @@ final class AppState {
         case CommandID.toggleHidden: activeTab.showHidden.toggle()
         case CommandID.copy: enqueue(.copy, to: inactivePane.active.directory)
         case CommandID.move: enqueue(.move, to: inactivePane.active.directory)
-        case CommandID.delete: enqueueDelete()
+        case CommandID.delete, CommandID.deletePermanent: enqueueDelete()
+        case CommandID.trash: enqueueTrash()
+        case CommandID.selectAll: activeTab.selectAll()
+        case CommandID.invertSelection: activeTab.invertSelection()
+        case CommandID.toggleSelect: activeTab.toggleSelectAndAdvance()
         case CommandID.rename: renameSheet = true
         case CommandID.newTab: activePane.newTab()
         case CommandID.closeTab: activePane.closeTab(activePane.active.id)
@@ -907,6 +934,23 @@ final class AppState {
                 if touched.contains(pane.active.directory.standardizedFileURL) { pane.active.load() }
             }
             if move { self.forgetTagged(filtered) }
+        }
+    }
+
+    /// Move to Trash (recoverable) — the default destructive action (F8). No
+    /// confirm needed since it's undoable from Finder's Trash.
+    func enqueueTrash() {
+        let sources = activeTab.actionable.map(\.url)
+        guard !sources.isEmpty else { return }
+        var trashed: [URL] = []
+        for url in sources {
+            if (try? FileManager.default.trashItem(at: url, resultingItemURL: nil)) != nil {
+                trashed.append(url)
+            }
+        }
+        if !trashed.isEmpty {
+            forgetTagged(trashed)
+            activeTab.load()
         }
     }
 

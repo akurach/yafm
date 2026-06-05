@@ -239,9 +239,21 @@ struct FileTableView: View {
                             // doesn't stall ~0.3s waiting to rule out a double —
                             // that wait was the sluggish / dropped-click feel.
                             .onTapGesture {
-                                tab.cursor = entry.url
-                                tab.selection = [entry.url]
                                 app.activePaneIsLeft = tabBelongsToLeft()
+                                let mods = NSEvent.modifierFlags
+                                if mods.contains(.command) {
+                                    // ⌘-click: toggle this row in/out of the selection.
+                                    if tab.selection.contains(entry.url) { tab.selection.remove(entry.url) }
+                                    else { tab.selection.insert(entry.url) }
+                                    tab.cursor = entry.url
+                                } else if mods.contains(.shift), let anchor = tab.cursor {
+                                    // ⇧-click: select the contiguous range from the cursor.
+                                    tab.selectRange(from: anchor, to: entry.url)
+                                    tab.cursor = entry.url
+                                } else {
+                                    tab.cursor = entry.url
+                                    tab.selection = [entry.url]
+                                }
                             }
                             .simultaneousGesture(TapGesture(count: 2).onEnded {
                                 if entry.isDirectory { tab.open(entry.url) }
@@ -520,7 +532,8 @@ struct FileTableView: View {
         Divider()
         Button { focus(entry); app.run(CommandID.rename) } label: { Label("Rename…", systemImage: "pencil") }
         Button { focus(entry); app.run(CommandID.newFolder) } label: { Label("New Folder…", systemImage: "folder.badge.plus") }
-        Button(role: .destructive) { focus(entry); app.run(CommandID.delete) } label: { Label("Delete", systemImage: "trash") }
+        Button { focus(entry); app.run(CommandID.trash) } label: { Label("Move to Trash", systemImage: "trash") }
+        Button(role: .destructive) { focus(entry); app.run(CommandID.delete) } label: { Label("Delete Permanently…", systemImage: "trash.slash") }
 
         Divider()
         Button { focus(entry); app.tagSheet = .init(url: entry.url) } label: {

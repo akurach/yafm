@@ -133,6 +133,14 @@ struct CommandPalette: View {
                 shortcut: c.defaultKey?.glyphs ?? "", systemImage: "command",
                 run: { [weak app] in app?.run(c.id) }))
         }
+        // Plugin-contributed commands (v0.8) so the palette's "jump to anything"
+        // promise covers them too (audit UX).
+        for c in app.pluginCommands() {
+            out.append(PaletteItem(
+                id: "pcmd.\(c.id)", title: c.title, subtitle: String(localized: "Plugin"),
+                shortcut: "", systemImage: "puzzlepiece.extension",
+                run: { [weak app] in app?.run(c.id) }))
+        }
         for b in app.bookmarks {
             let url = URL(fileURLWithPath: b.path)
             out.append(PaletteItem(
@@ -290,9 +298,14 @@ struct CheatSheet: View {
             Divider().padding(.vertical, 10)
             VStack(alignment: .leading, spacing: 4) {
                 extraRow(String(localized: "Move cursor"), "↑ ↓")
+                extraRow(String(localized: "Jump to top / bottom"), "Home  End")
+                extraRow(String(localized: "Page up / down"), "⇞ ⇟")
                 extraRow(String(localized: "Into folder / up a level"), "→  ←")
+                extraRow(String(localized: "Toggle-select & advance"), "Insert")
+                extraRow(String(localized: "Extend selection"), "⇧↑ ⇧↓ · ⌘-click · ⇧-click")
                 extraRow(String(localized: "Type to filter the current folder"), "A–Z 0–9")
                 extraRow(String(localized: "Jump to tab 1–9"), "⌘1–⌘9")
+                extraRow(String(localized: "Cheat sheet"), "⌘/")
             }
         }
         .padding(20)

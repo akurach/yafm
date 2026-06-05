@@ -193,6 +193,19 @@
 "Search & Palette" = "Поиск и палитра";
 "Type to filter the current folder" = "Печатайте, чтобы отфильтровать текущую папку";
 
+/* — Selection & delete (v0.9.1) — */
+"Select All" = "Выделить все";
+"Invert Selection" = "Инвертировать выделение";
+"Move to Trash" = "Переместить в Корзину";
+"Delete Permanently…" = "Удалить безвозвратно…";
+"Delete Permanently" = "Удалить безвозвратно";
+"Plugin" = "Плагин";
+"Jump to top / bottom" = "В начало / конец";
+"Page up / down" = "Страница вверх / вниз";
+"Toggle-select & advance" = "Отметить и вниз";
+"Extend selection" = "Расширить выделение";
+"Cheat sheet" = "Шпаргалка";
+
 /* — Plugins (v0.8) — */
 "Installed" = "Установленные";
 "No plugins installed." = "Плагины не установлены.";

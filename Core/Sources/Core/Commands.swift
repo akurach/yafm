@@ -73,6 +73,12 @@ public enum CommandID {
     public static let prevTab = "tab.prev"           // ⌃⇧Tab
     // v0.7 reach
     public static let connectServer = "nav.connectServer" // ⌘K-reachable: mount smb://
+    // v0.9.1 UX
+    public static let selectAll = "sel.all"           // ⌘A
+    public static let invertSelection = "sel.invert"  // palette/menu
+    public static let toggleSelect = "sel.toggle"     // Insert — toggle + advance
+    public static let deletePermanent = "op.deletePermanent" // ⇧F8 (F8 = Trash)
+    public static let trash = "op.trash"              // F8 → move to Trash
 }
 
 /// The default Total Commander-style bindings.
@@ -83,7 +89,7 @@ public enum DefaultCommands {
         Command(id: CommandID.switchPane, title: "Switch Pane", defaultKey: KeyBinding(.tab)),
         Command(id: CommandID.copy, title: "Copy", defaultKey: KeyBinding(.function(5))),
         Command(id: CommandID.move, title: "Move", defaultKey: KeyBinding(.function(6))),
-        Command(id: CommandID.delete, title: "Delete", defaultKey: KeyBinding(.function(8))),
+        Command(id: CommandID.delete, title: "Delete"),   // F8 now = Move to Trash; this stays menu-only (permanent)
         Command(id: CommandID.rename, title: "Rename", defaultKey: KeyBinding(.function(2))),
         Command(id: CommandID.toggleHidden, title: "Toggle Hidden Files", defaultKey: KeyBinding(.char("."), [.command, .shift])),
         Command(id: CommandID.quickLook, title: "Quick Look", defaultKey: KeyBinding(.space)),
@@ -106,6 +112,10 @@ public enum DefaultCommands {
         Command(id: CommandID.nextTab, title: "Next Tab", defaultKey: KeyBinding(.tab, [.control])),
         Command(id: CommandID.prevTab, title: "Previous Tab", defaultKey: KeyBinding(.tab, [.control, .shift])),
         Command(id: CommandID.connectServer, title: "Connect to Server…", defaultKey: KeyBinding(.char("k"), [.command, .shift])),
+        Command(id: CommandID.selectAll, title: "Select All", defaultKey: KeyBinding(.char("a"), [.command])),
+        Command(id: CommandID.invertSelection, title: "Invert Selection"),
+        Command(id: CommandID.trash, title: "Move to Trash", defaultKey: KeyBinding(.function(8))),
+        Command(id: CommandID.deletePermanent, title: "Delete Permanently", defaultKey: KeyBinding(.function(8), [.shift])),
     ]
 
     /// Single source of truth for key dispatch: binding → command id, derived
