@@ -6,6 +6,49 @@ the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.8.0] — Make it yours
+
+Extensibility re-opens — now safely. The public plugin surface, frozen since the
+2026-06-05 re-sequencing, comes back with a capability model: a plugin declares
+what it needs in a manifest, you grant it at enable-time in Settings, and the
+host hands it nothing more.
+
+### Added — plugin platform
+- **Plugin manifests.** A sidecar `<plugin>.json` (`manifest: 1`, reverse-DNS
+  `id`, `version`, `apiVersion`, `capabilities`, `contributes`) gives a plugin an
+  identity and gates every surface beyond a column. A bare `.js` with no manifest
+  still loads **compute-only** — the drop-a-file UX is intact. (`PluginManifest`.)
+- **Per-plugin enable/disable** in Settings ▸ Plugins, with each plugin's
+  capabilities and a **trust badge** (Signed / Author / Unsigned) shown honestly.
+- **Re-opened command & context-menu surface.** Plugins can `registerCommand`
+  (run from the pane menu) and `registerMenuItem` (row right-click) — but only
+  when the manifest grants `contribute:command` / `contribute:menu`.
+- **Scoped-FS read capability (`read:cwd`).** A granted plugin gets
+  `yafm.readText(entry, "rel/path")`: the host resolves it **against the entry's
+  folder only**, refuses any `..`/symlink escape (`PluginContext` + `O_NOFOLLOW`),
+  caps the read at 256 KB, and hands JS an **opaque handle, never a path**. Consent
+  is requested when you enable the plugin, never by the plugin.
+- **Flagship git plugin.** A bundled "Branch" column reads `.git/HEAD` through
+  `read:cwd` — proof the capability path works end to end. Ships **disabled** until
+  you grant it.
+- **Archive mounting.** Open a `.zip` to browse it read-only, like any folder:
+  `ArchiveFileSystem` lists via `unzip` and rides the same `FileSystemRouter` seam
+  as SMB (`archive://` scheme). Streamed off the main actor — a big archive loads,
+  never freezes.
+
+### Localization
+- Russian coverage extended to the new v0.8 plugin UI.
+
+### Deferred (with reason)
+- **Remote plugin marketplace** (discovery/install/update) and **cryptographic
+  plugin signing** — both need hosted infrastructure + a signing key/PKI (same
+  class of blocker as DMG notarization). The manifest already carries the trust
+  tier and `signature` field, so signing slots in without a format change; the
+  marketplace builds on the same `capabilities` shown before install.
+
+_Tests: +14 Core (manifest parse/validate, read:cwd grant + escape refusal +
+capability gating, archive tree synthesis & streaming) → 70 total._
+
 ## [0.7.1] — Russian, in full
 
 - **Fix: most of the UI stayed English when switching to Russian.** v0.7 shipped

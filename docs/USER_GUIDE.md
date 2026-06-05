@@ -211,6 +211,22 @@ yafm supports **JavaScript plugins** via JavaScriptCore — the "drop a file, it
 
 Plugins run **sandboxed** — no filesystem, network, or process access, only yafm's host API — so a column plugin can only see a path-free snapshot of each file. (The git-status column is a built-in native feature that appears in the same registry.)
 
+### Capabilities & manifests (v0.8)
+
+A plugin can do more than draw a column if it ships a **manifest** — a sidecar `<plugin>.json` next to the `.js` — declaring what it needs. A bare `.js` with no manifest stays **compute-only** (just columns).
+
+In **Settings ▸ Plugins ▸ Installed** every plugin appears with an **enable/disable** switch, its declared **capabilities**, and a **trust badge** (Signed / Author / Unsigned). Capabilities you grant by enabling:
+
+- **contribute:command** — adds commands to the pane (right-click empty space) menu.
+- **contribute:menu** — adds items to the file right-click menu.
+- **read:cwd** — lets the plugin read text files **inside the folder you're viewing** (e.g. `.git/HEAD`). The host resolves every read against that folder, refuses anything that tries to escape it, follows no symlinks, and caps the read size. The plugin gets an opaque handle, never a real path.
+
+You're asked to confirm when you enable a plugin that wants a sensitive capability — **consent happens in Settings, never from the plugin**. A bundled **Git Branch** plugin (shows a repo folder's branch via `read:cwd`) ships disabled; enable it to see the capability flow.
+
+### Browsing archives (v0.8)
+
+Open a **`.zip`** (Enter or double-click) to browse it **read-only**, like any folder — yafm lists it natively behind the same routing layer as network shares, streamed so a big archive never freezes the window.
+
 ---
 
 ## 11. Full keyboard shortcut reference

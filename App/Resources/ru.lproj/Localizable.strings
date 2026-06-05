@@ -193,6 +193,14 @@
 "Search & Palette" = "Поиск и палитра";
 "Type to filter the current folder" = "Печатайте, чтобы отфильтровать текущую папку";
 
+/* — Plugins (v0.8) — */
+"Installed" = "Установленные";
+"No plugins installed." = "Плагины не установлены.";
+"Enable" = "Включить";
+"Signed" = "Подписан";
+"Unsigned" = "Без подписи";
+"Enable “%@”?" = "Включить «%@»?";
+
 /* — Interpolated formats (stable generated keys) — */
 "%lld items" = "%lld объект(ов)";
 "%lld found" = "%lld найдено";

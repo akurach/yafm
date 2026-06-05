@@ -295,7 +295,9 @@ final class AppState {
     // every URL is local and falls through to LocalFileSystem unchanged.
     // SMB registered behind the router (v0.7): `smb://` URLs mount natively and
     // stream like any folder; every other URL still falls through to local.
-    let fs: FileSystemProvider = FileSystemRouter().registering(SMBFileSystem(), for: "smb")
+    let fs: FileSystemProvider = FileSystemRouter()
+        .registering(SMBFileSystem(), for: "smb")
+        .registering(ArchiveFileSystem(), for: "archive")   // read-only .zip browse (v0.8)
     let tags: TagServing = TagService()
     let engine = FileEngine()
     let registry = ExtensionRegistry()
@@ -310,6 +312,9 @@ final class AppState {
     /// the affected rows re-render without polling.
     let pluginValueCache = PluginValueCache()
     var pluginValuesVersion = 0
+
+    /// Plugin ids the user disabled in Settings ▸ Plugins (v0.8). Persisted.
+    var disabledPluginIDs: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "disabledPlugins") ?? [])
 
     /// Command palette (⌘K) + shortcut cheat sheet (⌘/) overlay state.
     var commandPalette = false
@@ -427,9 +432,27 @@ final class AppState {
         installBundledPluginsIfNeeded(into: dir)
         registry.removePluginColumns(idPrefix: JSPluginHost.columnIDPrefix)
         pluginValueCache.invalidate()   // stale async values must not survive a reload
+        pluginHost.disabledIDs = disabledPluginIDs   // user toggles in Settings
         for column in pluginHost.loadPlugins(from: dir) {
             registry.register(pluginColumn: column)
         }
+    }
+
+    /// Plugins present on disk (enabled or not) for Settings ▸ Plugins, each with
+    /// its manifest (nil = compute-only `.js`) and current enable state.
+    func availablePlugins() -> [(id: String, name: String, manifest: PluginManifest?, enabled: Bool)] {
+        guard let dir = JSPluginHost.defaultPluginsDirectory() else { return [] }
+        return pluginHost.discoverPlugins(in: dir).map {
+            ($0.id, $0.name, $0.manifest, !disabledPluginIDs.contains($0.id))
+        }
+    }
+
+    /// Enable/disable a plugin by id; persists and reloads so columns/commands
+    /// appear or vanish immediately.
+    func setPlugin(_ id: String, enabled: Bool) {
+        if enabled { disabledPluginIDs.remove(id) } else { disabledPluginIDs.insert(id) }
+        UserDefaults.standard.set(Array(disabledPluginIDs), forKey: "disabledPlugins")
+        loadPlugins()
     }
 
     /// Drop the example plugin into an empty plugins folder so the runtime has
@@ -440,6 +463,14 @@ final class AppState {
         let hasJS = installed.contains { $0.hasSuffix(".js") }
         guard !hasJS, !FileManager.default.fileExists(atPath: example.path) else { return }
         try? JSPluginHost.exampleColumnPlugin.write(to: example, atomically: true, encoding: .utf8)
+        // Flagship capability plugin + its manifest (v0.8). Ships disabled until
+        // the user grants read:cwd in Settings — capability consent is opt-in.
+        let git = dir.appendingPathComponent("git-branch.js")
+        try? JSPluginHost.gitBranchPlugin.write(to: git, atomically: true, encoding: .utf8)
+        try? JSPluginHost.gitBranchManifest.write(
+            to: dir.appendingPathComponent("git-branch.json"), atomically: true, encoding: .utf8)
+        disabledPluginIDs.insert("com.yafm.git-branch")
+        UserDefaults.standard.set(Array(disabledPluginIDs), forKey: "disabledPlugins")
     }
 
     /// Open the plugins folder in Finder (Settings affordance).
@@ -757,8 +788,25 @@ final class AppState {
         case CommandID.connectServer: connectAddress = "smb://"; connectSheet = true
         case CommandID.nextTab: activePane.cycleTab(by: 1)
         case CommandID.prevTab: activePane.cycleTab(by: -1)
+        // JS-contributed commands (v0.8) dispatch to the host by id prefix.
+        case let cmd where cmd.hasPrefix(JSPluginHost.commandIDPrefix):
+            pluginHost.runCommand(cmd)
         default: break
         }
+    }
+
+    /// JS plugin commands for the palette / pane menu (v0.8).
+    func pluginCommands() -> [(id: String, title: String)] {
+        pluginHost.commands.map { ($0.id, $0.title) }
+    }
+
+    /// JS plugin context-menu items; running one targets the given entry.
+    func pluginMenuItems() -> [(id: String, title: String)] {
+        pluginHost.menuItems.map { ($0.id, $0.title) }
+    }
+
+    func runPluginMenuItem(_ id: String, on entry: FSEntry) {
+        pluginHost.runMenuItem(id, on: entry)
     }
 
     /// `allowFileOpen: false` makes the action enter folders only and ignore
@@ -766,7 +814,14 @@ final class AppState {
     func openCursor(allowFileOpen: Bool = true) {
         guard let entry = activeTab.actionable.first ?? activeTab.displayed.first(where: { $0.url == activeTab.cursor }) else { return }
         if entry.isDirectory { activeTab.open(entry.url) }
+        else if entry.url.isFileURL, entry.url.pathExtension.lowercased() == "zip" { browseArchive(entry.url) }
         else if allowFileOpen { openFile(entry.url) }
+    }
+
+    /// Open a `.zip` as a read-only browsable archive in the active tab (v0.8).
+    func browseArchive(_ zip: URL) {
+        guard let url = ArchiveLocation.url(zip: zip, inner: "") else { return }
+        activeTab.open(url)
     }
 
     /// → key: enter folders always; open files only if the setting allows it.

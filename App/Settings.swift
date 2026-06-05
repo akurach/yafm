@@ -335,6 +335,15 @@ struct SettingsView: View {
                     Button("Reload Plugins") { app.loadPlugins() }
                 }
             }
+            Section("Installed") {
+                let plugins = app.availablePlugins()
+                if plugins.isEmpty {
+                    Text("No plugins installed.").font(.caption).foregroundStyle(.secondary)
+                }
+                ForEach(plugins, id: \.id) { p in
+                    PluginRow(app: app, id: p.id, name: p.name, manifest: p.manifest, enabled: p.enabled)
+                }
+            }
             Section("Loaded") {
                 if app.pluginHost.loaded.isEmpty {
                     Text("No plugins loaded.").font(.caption).foregroundStyle(.secondary)
@@ -392,6 +401,70 @@ struct SettingsView: View {
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
         if panel.runModal() == .OK, let url = panel.url { settings.customStartPath = url.path }
+    }
+}
+
+// MARK: - Plugin row (Settings → Plugins, v0.8)
+
+/// One installed plugin: enable toggle, manifest identity, capabilities, and a
+/// trust badge. Enabling a plugin that wants a consent-requiring capability
+/// (read:cwd) prompts first — the grant happens here in Settings, never from the
+/// plugin. A bare `.js` (no manifest) shows as compute-only and can't be granted
+/// anything beyond a column.
+private struct PluginRow: View {
+    let app: AppState
+    let id: String
+    let name: String
+    let manifest: PluginManifest?
+    let enabled: Bool
+
+    @State private var confirming = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Toggle(isOn: Binding(
+                    get: { enabled },
+                    set: { on in
+                        if on, needsConsent { confirming = true } else { app.setPlugin(id, enabled: on) }
+                    }
+                )) {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(name)
+                        Text(manifest.map { "\($0.id) · \($0.version)" } ?? "compute-only (no manifest)")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                trustBadge
+            }
+            if let caps = manifest?.capabilities, !caps.isEmpty {
+                Text(caps.map(\.rawValue).joined(separator: " · "))
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
+        }
+        .alert("Enable “\(name)”?", isPresented: $confirming) {
+            Button("Cancel", role: .cancel) {}
+            Button("Enable") { app.setPlugin(id, enabled: true) }
+        } message: {
+            Text(consentMessage)
+        }
+    }
+
+    private var needsConsent: Bool {
+        manifest?.capabilities.contains { $0.requiresConsent } ?? false
+    }
+    private var consentMessage: String {
+        let caps = manifest?.capabilities.filter(\.requiresConsent) ?? []
+        return "This plugin requests:\n" + caps.map { "• " + $0.consentSummary }.joined(separator: "\n")
+    }
+
+    @ViewBuilder private var trustBadge: some View {
+        switch manifest?.trust ?? .unsigned {
+        case .signed: Label("Signed", systemImage: "checkmark.seal.fill").foregroundStyle(.green)
+        case .declaredAuthor: Label(manifest?.author ?? "Author", systemImage: "person").foregroundStyle(.secondary)
+        case .unsigned: Label("Unsigned", systemImage: "exclamationmark.shield").foregroundStyle(.orange)
+        }
     }
 }
 

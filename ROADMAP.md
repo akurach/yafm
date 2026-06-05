@@ -184,19 +184,23 @@ half-built.
   (mount is async + the listing streams), far less attack surface than a custom non-sandboxed XPC
   daemon. FTP/cloud providers follow the same provider+router pattern.
 
-## v0.8 — "Make it yours" (extensibility re-opens — now there's an audience)
+## v0.8 — "Make it yours" (extensibility re-opens — now there's an audience) ✅ shipped
 
-- [ ] **Public plugin surface re-opened** — JS commands + context-menu items (reuse dormant
-  `CommandProvider`/`ContextMenuProvider`, `Commands.swift:126`,`:136`).
-- [ ] **Plugin manifests** (sidecar `<plugin>.json`: `manifest:1`, reverse-DNS `id`, `version`,
-  `apiVersion`, `capabilities`, `contributes`) + per-plugin enable/disable in Settings ▸ Plugins
-  (`Settings.swift:167`). Bare `.js` with no sidecar → `compute`-only fallback (keeps drop-a-file UX).
-- [ ] **Scoped-FS capability** (`PluginContext.resolve`, `Commands.swift:180`) — **opaque handles, not
-  paths**: `yafm.readText(entry, ".git/HEAD")` resolves host-side against a granted root. Scope = `read:cwd`.
-  Consent **at enable-time in Settings**, never plugin-triggered. Async + size-capped (a sync 2 GB read = freeze).
-  `O_NOFOLLOW` against TOCTOU. Ships a real **JS git plugin** as the flagship, partially retiring `Git.swift`'s rationale.
-- [ ] **Plugin signing / trust tier** — a marketplace shipping arbitrary JS with FS capability into a non-sandboxed app needs provenance.
-- [ ] **Plugin marketplace** — discovery/install/update built on the manifest `capabilities`, presented honestly before install.
+- [x] **Public plugin surface re-opened** — JS `registerCommand` (pane menu) + `registerMenuItem`
+  (row menu), each gated by a manifest capability grant. (`JSPluginHost`, `Views.swift`.)
+- [x] **Plugin manifests** (sidecar `<plugin>.json`: `manifest:1`, reverse-DNS `id`, `version`,
+  `apiVersion`, `capabilities`, `contributes`) + per-plugin enable/disable in Settings ▸ Plugins with
+  a trust badge. Bare `.js` → compute-only fallback. (`PluginManifest`, `PluginRow`.)
+- [x] **Scoped-FS capability** (`read:cwd`) — `yafm.readText(entry, "rel")` resolves host-side against
+  the entry's folder via `PluginContext`, **opaque handle not path**, refuses `..`/symlink escape,
+  `O_NOFOLLOW`, 256 KB cap. Enable-time consent in Settings. Ships the **git-branch** flagship plugin.
+- [x] **Plugin trust tier** — manifest `trust` (Signed / Author / Unsigned) surfaced honestly before
+  enable; `signature` field reserved so cryptographic signing slots in without a format change.
+- [ ] **Plugin marketplace** (remote discovery/install/update) — **deferred**: needs hosted infra +
+  a signing key/PKI (same blocker class as notarization). Built on the manifest `capabilities` already
+  shown at enable-time; slots in without an API change.
+- [x] **Archive mounting** — `.zip` as a read-only `FileSystemProvider` (`ArchiveFileSystem`, `archive://`)
+  behind the router, same shape as SMB; streamed, never freezes. (+14 Core tests, 70 total.)
 - [ ] **Archive mounting** — `.zip`/`.tar` as a read-only `FileSystemProvider` behind the router (same shape as SMB).
 
 ## v0.9 — "1.0 candidate"
