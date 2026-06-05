@@ -1,0 +1,75 @@
+/* yafm — Russian localization (v0.7).
+   Keys are the English UI literals; SwiftUI's LocalizedStringKey resolves them
+   here when the app runs in Russian. Coverage grows each release. */
+
+/* — Common actions — */
+"Open" = "Открыть";
+"Open With" = "Открыть в программе";
+"Other…" = "Другая…";
+"Quick Look" = "Быстрый просмотр";
+"Copy" = "Скопировать";
+"Cut" = "Вырезать";
+"Paste" = "Вставить";
+"Rename…" = "Переименовать…";
+"New Folder…" = "Новая папка…";
+"New Folder" = "Новая папка";
+"Delete" = "Удалить";
+"Cancel" = "Отмена";
+"Search" = "Найти";
+"Search…" = "Найти…";
+"Connect" = "Подключиться";
+"Refresh" = "Обновить";
+"Get Info" = "Свойства";
+"Copy Path" = "Скопировать путь";
+"Reveal in Finder" = "Показать в Finder";
+"Share" = "Поделиться";
+"Tags…" = "Метки…";
+"Add to Favorites" = "В избранное";
+
+/* — Row context / pane menus — */
+"Copy to other pane" = "Скопировать в другую панель";
+"Move to other pane" = "Переместить в другую панель";
+"Sort By" = "Сортировка";
+"Show Hidden Files" = "Показывать скрытые файлы";
+"Add Current Folder to Favorites" = "Добавить папку в избранное";
+
+/* — Search bar — */
+"File name contains…" = "Имя файла содержит…";
+"Text in files…" = "Текст в файлах…";
+"Name" = "Имя";
+"Contents" = "Содержимое";
+
+/* — States — */
+"Nothing open yet" = "Пока ничего не открыто";
+"Pick a folder from the sidebar or type a path above." = "Выберите папку слева или введите путь сверху.";
+"Can't open folder" = "Не удаётся открыть папку";
+"Empty folder" = "Пустая папка";
+"This folder has no items." = "В этой папке ничего нет.";
+"No matches" = "Совпадений нет";
+"Searching…" = "Идёт поиск…";
+
+/* — Connect to Server — */
+"Connect to Server" = "Подключение к серверу";
+"Connect to Server…" = "Подключение к серверу…";
+
+/* — Settings — */
+"General" = "Основные";
+"Appearance" = "Оформление";
+"Operations" = "Операции";
+"Tags" = "Метки";
+"Plugins" = "Плагины";
+"Updates" = "Обновления";
+"Theme" = "Тема";
+"Density" = "Плотность";
+"Motion" = "Анимация";
+"Row density" = "Плотность строк";
+"Language" = "Язык";
+"Check for Updates" = "Проверить обновления";
+"Up to date" = "Установлена последняя версия";
+"Confirm before deleting" = "Подтверждать удаление";
+
+/* — Function bar — */
+"Rename" = "Переименовать";
+"View" = "Просмотр";
+"Edit" = "Изменить";
+"Move" = "Переместить";

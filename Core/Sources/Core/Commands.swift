@@ -71,6 +71,8 @@ public enum CommandID {
     public static let cheatSheet = "help.shortcuts"  // ⌘/ shortcut overlay
     public static let nextTab = "tab.next"           // ⌃Tab
     public static let prevTab = "tab.prev"           // ⌃⇧Tab
+    // v0.7 reach
+    public static let connectServer = "nav.connectServer" // ⌘K-reachable: mount smb://
 }
 
 /// The default Total Commander-style bindings.
@@ -103,6 +105,7 @@ public enum DefaultCommands {
         Command(id: CommandID.cheatSheet, title: "Keyboard Shortcuts", defaultKey: KeyBinding(.char("/"), [.command])),
         Command(id: CommandID.nextTab, title: "Next Tab", defaultKey: KeyBinding(.tab, [.control])),
         Command(id: CommandID.prevTab, title: "Previous Tab", defaultKey: KeyBinding(.tab, [.control, .shift])),
+        Command(id: CommandID.connectServer, title: "Connect to Server…", defaultKey: KeyBinding(.char("k"), [.command, .shift])),
     ]
 
     /// Single source of truth for key dispatch: binding → command id, derived

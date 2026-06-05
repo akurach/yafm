@@ -19,6 +19,28 @@ enum AppTheme: String, CaseIterable, Identifiable {
     }
 }
 
+/// UI language. `system` follows the OS; the others override via the standard
+/// `AppleLanguages` default, which takes effect on the next launch.
+enum AppLanguage: String, CaseIterable, Identifiable {
+    case system, en, ru
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .system: "System"
+        case .en: "English"
+        case .ru: "Русский"
+        }
+    }
+    /// Codes to write into `AppleLanguages`, or nil to clear the override.
+    var codes: [String]? {
+        switch self {
+        case .system: nil
+        case .en: ["en"]
+        case .ru: ["ru"]
+        }
+    }
+}
+
 /// Row density for the file table. Power users want more rows on screen than
 /// Finder's single fixed height; `cozy` is the default middle ground.
 enum Density: String, CaseIterable, Identifiable {
@@ -82,6 +104,15 @@ final class AppSettings {
     /// Row density (Compact / Cozy / Comfortable).
     var density: Density { didSet { store.set(density.rawValue, forKey: Keys.density) } }
 
+    /// UI language. Writing it updates `AppleLanguages` (effective next launch).
+    var language: AppLanguage {
+        didSet {
+            store.set(language.rawValue, forKey: Keys.language)
+            if let codes = language.codes { store.set(codes, forKey: "AppleLanguages") }
+            else { store.removeObject(forKey: "AppleLanguages") }
+        }
+    }
+
     /// Animate selection/navigation glide. Off = instant (some power users
     /// prefer zero motion); streaming row inserts stay un-animated either way.
     var animations: Bool { didSet { store.set(animations, forKey: Keys.animations) } }
@@ -103,6 +134,7 @@ final class AppSettings {
         static let showHiddenByDefault = "showHiddenByDefault"
         static let theme = "theme"
         static let density = "density"
+        static let language = "language"
         static let animations = "animations"
         static let startMode = "startMode"
         static let customStartPath = "customStartPath"
@@ -117,6 +149,7 @@ final class AppSettings {
         showHiddenByDefault = d.bool(forKey: Keys.showHiddenByDefault)
         theme = AppTheme(rawValue: d.string(forKey: Keys.theme) ?? "") ?? .system
         density = Density(rawValue: d.string(forKey: Keys.density) ?? "") ?? .cozy
+        language = AppLanguage(rawValue: d.string(forKey: Keys.language) ?? "") ?? .system
         animations = d.object(forKey: Keys.animations) as? Bool ?? true   // default on
         startMode = StartMode(rawValue: d.string(forKey: Keys.startMode) ?? "") ?? .home
         customStartPath = d.string(forKey: Keys.customStartPath) ?? ""
@@ -235,6 +268,13 @@ struct SettingsView: View {
             }
             Section("Listing") {
                 Toggle("Show hidden files in new tabs", isOn: bindable.showHiddenByDefault)
+            }
+            Section("Language") {
+                Picker("Language", selection: bindable.language) {
+                    ForEach(AppLanguage.allCases) { Text($0.label).tag($0) }
+                }
+                Text("Takes effect after you quit and reopen yafm.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)

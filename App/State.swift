@@ -293,7 +293,9 @@ final class AppState {
     // Routed through FileSystemRouter so virtual filesystems (SMB/FTP in v0.7,
     // archives in v0.8) register by scheme without touching any call site. Today
     // every URL is local and falls through to LocalFileSystem unchanged.
-    let fs: FileSystemProvider = FileSystemRouter()
+    // SMB registered behind the router (v0.7): `smb://` URLs mount natively and
+    // stream like any folder; every other URL still falls through to local.
+    let fs: FileSystemProvider = FileSystemRouter().registering(SMBFileSystem(), for: "smb")
     let tags: TagServing = TagService()
     let engine = FileEngine()
     let registry = ExtensionRegistry()
@@ -312,6 +314,10 @@ final class AppState {
     /// Command palette (⌘K) + shortcut cheat sheet (⌘/) overlay state.
     var commandPalette = false
     var cheatSheet = false
+
+    /// Connect-to-Server (⌘⇧K): the smb:// address sheet (v0.7).
+    var connectSheet = false
+    var connectAddress = "smb://"
 
     /// Find-within-folder (⌘F). v0.6: an *inline* bar (no modal) on the active
     /// pane. `searchActive` shows/hides it; `searchMode` toggles name vs content
@@ -474,6 +480,17 @@ final class AppState {
             tab.appendVirtual(entries)
             self.searchRunning = false
         }
+    }
+
+    /// Open an `smb://` (or any) address in the active pane. The router sends it
+    /// to the SMB provider, which mounts natively and streams like a folder; a
+    /// failed connect shows as a `.failed` listing (the unified state-view), not
+    /// a freeze. nil/garbage addresses are ignored.
+    func connectToServer(_ address: String) {
+        let trimmed = address.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let url = URL(string: trimmed), url.scheme != nil, url.host != nil else { return }
+        connectSheet = false
+        activeTab.open(url)
     }
 
     /// Cancel an in-flight search and hide the inline bar.
@@ -737,6 +754,7 @@ final class AppState {
             if searchActive { cancelSearch() } else { searchActive = true }
         case CommandID.commandPalette: commandPalette = true
         case CommandID.cheatSheet: cheatSheet = true
+        case CommandID.connectServer: connectAddress = "smb://"; connectSheet = true
         case CommandID.nextTab: activePane.cycleTab(by: 1)
         case CommandID.prevTab: activePane.cycleTab(by: -1)
         default: break

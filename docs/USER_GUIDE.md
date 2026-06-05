@@ -102,6 +102,12 @@ Press **⌘F** again or **Esc** to close the bar.
 
 ---
 
+### Connect to a server (SMB)
+
+Press **⌘⇧K** (or run *Connect to Server…* from ⌘K) and type an address like `smb://nas.local/Media`. yafm mounts the share **natively** — macOS handles the SMB protocol and your credentials (stored in the Keychain) — and opens it in the active pane like any folder. Because the mount is async and the listing streams, a slow or unreachable share shows a **loading** state or a clear **error**, never a frozen window. Browse, copy, tag, and search it exactly like a local folder.
+
+---
+
 ## 6. Working with files
 
 yafm has its **own file-operation engine** with a visible queue — every operation shows progress and can be cancelled. Nothing happens behind your back.
@@ -186,7 +192,7 @@ The dual-pane workflow is the heart of yafm: browse the source in one pane, the 
 
 Open Settings with **⌘,**. The window has six tabs:
 
-- **General** — *Start folder* (Home / Last used / a specific folder); *Right arrow opens files* (off by default: → only enters folders, Enter always opens); *Show hidden files in new tabs*.
+- **General** — *Start folder* (Home / Last used / a specific folder); *Right arrow opens files* (off by default: → only enters folders, Enter always opens); *Show hidden files in new tabs*; **Language** (System / English / Русский — applies after you quit and reopen yafm).
 - **Appearance** — theme **Light / Dark / System**; **Density** (Compact / Cozy / Comfortable — how many rows fit on screen); **Motion** (animate selection & navigation, or keep it instant).
 - **Operations** — *Confirm before deleting* (on by default; note delete is **permanent**, not Trash); *Copy/Move collisions* default (Keep both / Skip / Replace).
 - **Tags** — the full tag manager (recolor, rename, delete across files) plus *Rescan* / *Clear index*.

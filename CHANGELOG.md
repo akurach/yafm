@@ -6,6 +6,43 @@ the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.0] — Remote disks, finally native
+
+Reach + accessibility. yafm grows past the local disk: SMB shares mount natively
+behind the v0.4 filesystem router and stream like any folder — a hung share shows
+"loading…" or a clear error, never a frozen window. Plus VoiceOver, Dynamic Type,
+and a Russian UI.
+
+### Added — remote disks (SMB)
+- **SMB as a virtual filesystem.** An `smb://` URL is a first-class location:
+  `SMBFileSystem` mounts the share natively via **NetFS** (the system handles the
+  SMB protocol and Keychain credentials), then streams the listing through the
+  local provider. It's registered behind the `FileSystemRouter` under the `smb`
+  scheme, so every call site that only knows `FileSystemProvider` is unchanged.
+  Entries are re-keyed into `smb://` space so navigation stays in-provider, and a
+  failed mount surfaces as a `.failed` listing — the never-freeze pillar at
+  network latency. (`SMBFileSystem`, `NetFSShareMounter`; +6 Core tests.)
+- **Connect to Server (⌘⇧K).** Type an `smb://server/share` address; it opens in
+  the active pane like any folder. A failed connection reuses the v0.6 unified
+  state-view (a connecting share is just `.loading`). (`ConnectServerSheet`.)
+
+### Added — accessibility
+- **VoiceOver** reads each file row as one coherent sentence — "name, kind, size,
+  tagged X, git modified" — instead of spelling out every column; the cursor row
+  carries the selected trait. Icon-only buttons (close/new tab, edit path, cancel
+  operation) gained labels.
+- **Dynamic Type** rides the `Theme` type tokens (`.body`/`.caption`), so the
+  table scales with the system text-size setting.
+
+### Added — localization
+- **Russian UI + language picker** (Settings ▸ General ▸ Language: System /
+  English / Русский). Localizations ship as `en.lproj` / `ru.lproj`; the picker
+  writes `AppleLanguages` and applies on next launch. Coverage is the most
+  user-facing surface (menus, settings, search, states) and grows each release.
+
+_Tests: +6 Core (smb URL parsing, router dispatch, stub-mount listing & re-key,
+failed-mount error) → 56 total._
+
 ## [0.6.0] — Never a dead end
 
 The never-freeze pillar proves itself under load: content search that streams

@@ -1,0 +1,12 @@
+/* yafm — English base localization (v0.7).
+   Identity mapping: the development language. Present so the bundle advertises
+   `en` as a localization and `String(localized:)` has a base table. */
+
+"Open" = "Open";
+"Connect to Server" = "Connect to Server";
+"Connect to Server…" = "Connect to Server…";
+"Language" = "Language";
+"Density" = "Density";
+"Motion" = "Motion";
+"Contents" = "Contents";
+"Name" = "Name";
