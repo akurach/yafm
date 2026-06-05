@@ -38,6 +38,7 @@ open .build/debug/yafm.app     # run
 ```
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the module layout and [ROADMAP.md](ROADMAP.md) for status.
+Parked feature specs (Photo Ingest, app shell) live in [docs/feature-requests/](docs/feature-requests/).
 
 ## License
 

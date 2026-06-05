@@ -25,7 +25,9 @@ public extension Array where Element == FSEntry {
             case .name:
                 result = a.name.localizedStandardCompare(b.name) == .orderedAscending
             case .size:
-                result = (a.size ?? 0) < (b.size ?? 0)
+                // Unknown sizes (nil) sort below 0-byte files so they don't
+                // interleave ambiguously with real empties.
+                result = (a.size ?? -1) < (b.size ?? -1)
             case .modified:
                 result = (a.modified ?? .distantPast) < (b.modified ?? .distantPast)
             case .kind:
@@ -56,7 +58,9 @@ public struct RenameRule: Sendable {
     public func preview(_ names: [String]) -> [(from: String, to: String)] {
         var counter = sequenceStart ?? 0
         let width = max(String(names.count).count, 2)
-        let regex = useRegex ? try? NSRegularExpression(pattern: pattern) : nil
+        // Cap pattern length to blunt pathological regexes evaluated live as the
+        // user types (M-13); filenames themselves are filesystem-bounded.
+        let regex = (useRegex && pattern.count <= 512) ? try? NSRegularExpression(pattern: pattern) : nil
         return names.map { name in
             var out: String
             if useRegex, let regex {
@@ -77,6 +81,22 @@ public struct RenameRule: Sendable {
 
 // MARK: - Color coding (v0.2): rules map an entry to a color
 
+/// Immutable, thread-safe compiled regex. `NSRegularExpression` is documented
+/// thread-safe but isn't `Sendable`-annotated, so wrap it.
+public struct CompiledRegex: @unchecked Sendable {
+    public let regex: NSRegularExpression?
+    /// Cap pattern length to blunt pathological/ReDoS patterns (M-13). Names are
+    /// already bounded by the filesystem (≤255), so worst-case backtracking on a
+    /// single match stays bounded.
+    public init(_ pattern: String) {
+        regex = pattern.count <= 512 ? try? NSRegularExpression(pattern: pattern) : nil
+    }
+    public func matches(_ s: String) -> Bool {
+        guard let regex, s.utf16.count <= 4096 else { return false }
+        return regex.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)) != nil
+    }
+}
+
 public struct ColorRule: Sendable, Identifiable {
     public enum Match: Sendable {
         case ext(Set<String>)          // by file extension
@@ -88,11 +108,16 @@ public struct ColorRule: Sendable, Identifiable {
     public let match: Match
     /// SwiftUI-agnostic: store a name the UI maps to a Color.
     public let colorName: String
+    /// Precompiled once at init — `matches` is called per file per render, so
+    /// compiling in the hot path (H-13) would thrash the regex engine.
+    private let compiled: CompiledRegex?
 
     public init(id: UUID = UUID(), match: Match, colorName: String) {
         self.id = id
         self.match = match
         self.colorName = colorName
+        if case .nameRegex(let pat) = match { compiled = CompiledRegex(pat) }
+        else { compiled = nil }
     }
 
     public func matches(_ entry: FSEntry) -> Bool {
@@ -100,9 +125,7 @@ public struct ColorRule: Sendable, Identifiable {
         case .ext(let set): return set.contains(entry.url.pathExtension.lowercased())
         case .directory: return entry.isDirectory
         case .tag(let name): return entry.tags.contains { $0.name == name }
-        case .nameRegex(let pat):
-            guard let re = try? NSRegularExpression(pattern: pat) else { return false }
-            return re.firstMatch(in: entry.name, range: NSRange(entry.name.startIndex..., in: entry.name)) != nil
+        case .nameRegex: return compiled?.matches(entry.name) ?? false
         }
     }
 }
@@ -121,6 +144,7 @@ public struct ColorCoder: Sendable {
         ColorRule(match: .ext(["mov", "mp4", "m4v", "avi", "mkv"]), colorName: "Blue"),
         ColorRule(match: .ext(["zip", "tar", "gz", "dmg", "7z"]), colorName: "Orange"),
         ColorRule(match: .ext(["swift", "js", "ts", "py", "rs", "go", "c", "h"]), colorName: "Green"),
+        ColorRule(match: .ext(["md", "txt", "pdf", "rtf", "doc", "docx", "pages"]), colorName: "Gray"),
     ]
 }
 
@@ -135,5 +159,10 @@ public struct Bookmark: Identifiable, Sendable, Codable, Equatable {
         self.name = name
         self.path = path
     }
-    public var url: URL { URL(fileURLWithPath: path) }
+    /// Only ever resolve absolute paths; an empty/relative bookmark path would
+    /// otherwise resolve against the CWD (L-9). Falls back to Home.
+    public var url: URL {
+        path.hasPrefix("/") ? URL(fileURLWithPath: path)
+            : FileManager.default.homeDirectoryForCurrentUser
+    }
 }

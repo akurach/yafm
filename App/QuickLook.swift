@@ -27,6 +27,10 @@ final class QuickLook: NSObject, QLPreviewPanelDataSource, QLPreviewPanelDelegat
         MainActor.assumeIsolated { urls.count }
     }
     nonisolated func previewPanel(_ panel: QLPreviewPanel!, previewItemAt index: Int) -> QLPreviewItem! {
-        MainActor.assumeIsolated { urls[index] as NSURL }
+        MainActor.assumeIsolated { () -> NSURL? in
+            // Guard against a toggle/reload race shrinking `urls` mid-query (H-12).
+            guard index >= 0, index < urls.count else { return nil }
+            return urls[index] as NSURL
+        }
     }
 }

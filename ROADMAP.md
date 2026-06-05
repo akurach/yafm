@@ -62,17 +62,32 @@ closes that. Full spec in [TZ.md](TZ.md).
 - [ ] Plugin marketplace
 - [ ] Archive mounting
 
+## Someday / backlog (full specs in [`docs/feature-requests/`](docs/feature-requests/))
+
+Parked feature requests with complete specs. Not scheduled; pull into a milestone when prioritized.
+
+- [ ] **Photo Ingest** — import from camera cards (SD/CFexpress/USB): detect camera media, import
+  wizard, preview, copy+verify (checksum), duplicate handling, `import-report.json`, safe eject.
+  Spec: [`photo-ingest.md`](docs/feature-requests/photo-ingest.md)
+- [ ] **App shell** — Settings window (⌘,), About, auto-updater (Sparkle vs GitHub-releases check —
+  TBD), and Light/Dark/System theme. Spec: [`app-shell.md`](docs/feature-requests/app-shell.md)
+
 ## Hardening backlog (from the security + Swift audit — see `SECURITY.md`)
 
 Done: symlink-safe copy, rename path-traversal guard, xattr size/count caps, copy-progress
 fix, cancellation no longer looks "complete", `cancelled`-set leak, QuickLook actor isolation,
 executable-open confirmation, path-bar input validation.
 
+Done (audit 2026-06-05 follow-up): cancel actually interrupts a running op (B-2); `TagService.index`
+reads xattrs off-actor (B-1); commands derive from a single `DefaultCommands.byBinding` source;
+precompiled `ColorRule` regex + ReDoS length caps; cached `TabModel.displayed`; reverse-index in
+`TagService.reindex` + persistence + invalidation; FS-detail reads moved into the provider; delete
+progress recurses; +13 tests (cancel/move/rename/recursive/collision/regex/persistence).
+
 Deferred (tracked, not yet done):
 - [ ] TOCTOU: open copy output with `O_EXCL` instead of exists-check + truncate
-- [ ] Perf: cache `displayed` (sorts on every SwiftUI body); precompile `ColorRule` regex;
-  reverse-index in `TagService.reindex`
-- [ ] Plugin capability boundary (`PluginContext`) before any JS API is exposed (v0.3)
+- [~] Plugin capability boundary: `PluginContext` type drafted in `Commands.swift`; enforce it at
+  the registry before any JS API is exposed (v0.3)
 
 ## Next up
 

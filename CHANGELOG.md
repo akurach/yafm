@@ -59,3 +59,30 @@ the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   path-traversal guard, xattr size/count caps, executable-open confirmation, listing-cancel
   correctness, copy-progress accuracy, QuickLook actor isolation, key-monitor assertion,
   `cancelled`-set leak. Full table in `SECURITY.md`.
+
+### Fixed — audit 2026-06-05 follow-up
+- **Cancel now interrupts a running operation (B-2).** `FileEngine` keeps its cancel set in an
+  `OSAllocatedUnfairLock` and runs the blocking copy loop `nonisolated`, so a cancel is observed
+  mid-copy instead of queueing behind the in-flight `execute`.
+- **`TagService.index` no longer starves the actor (B-1).** xattr reads run in a background
+  detached task and merge back in one actor hop.
+- **Single source of truth for key dispatch.** The keyboard layer decodes events into a
+  `KeyBinding` and looks them up in `DefaultCommands.byBinding`, instead of duplicating F-key codes.
+- **`TagService`** gains a reverse `url→tags` map (O(tags-on-url) reindex), on-disk persistence
+  (`persist`/`loadPersisted`), and `forget(_:)` invalidation wired into delete/move/rename/cut-paste.
+- **Inspector reads go through the provider** (`detail(of:)`, `directorySize(of:)`) instead of
+  reaching past it to `FileManager`, so a virtual FS returns correct values.
+- Precompiled `ColorRule` regex + ReDoS length caps; cached `TabModel.displayed`; delete progress
+  recurses into folders and sizes before removing; `newFolder` routes through the engine; tag-cloud
+  open streams entries; deferred context-menu focus out of the render pass; volume-observer cleanup
+  in `deinit`; double-paste guard; QuickLook index bounds check; assorted N-level cleanups.
+- +13 Core tests (cancel-mid-copy, move, rename, recursive copy, n≥3 collision, delete progress,
+  missing source, listing cancellation, regex edges, literal rename, tag forget/persistence) — 24 total.
+- `Views.swift` (840 lines) split into `Sidebar.swift`, `Inspector.swift`, `FunctionBar.swift`,
+  `RenameSheet.swift`.
+
+### Added
+- App icon (`App/Resources/AppIcon.icns`, wired via `Info.plist` + `make-app.sh`).
+- `docs/feature-requests/` backlog with full specs: Photo Ingest and the app shell
+  (Settings / About / auto-updater / theme).
+- `PluginContext` capability-boundary type drafted for the v0.3 JS plugin host.

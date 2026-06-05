@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 // MARK: - File operations (own engine: visible queue, progress, cancel)
 
@@ -59,21 +60,32 @@ public struct OperationProgress: Sendable, Equatable {
 
 /// Async copy/move/delete/rename with real byte progress and cancellation.
 /// Never runs on the main thread; the UI observes the streamed progress.
+///
+/// The cancel set lives in an `OSAllocatedUnfairLock` rather than actor-isolated
+/// state: the blocking copy loop runs `nonisolated` (off any actor executor), so
+/// a `cancel(_:)` from the UI is observed mid-flight instead of queueing behind
+/// the in-progress `execute`. (Was the cause of B-2: cancel did nothing.)
 public actor FileEngine {
-    private var cancelled: Set<UUID> = []
+    private let cancelledBox = OSAllocatedUnfairLock<Set<UUID>>(initialState: [])
 
     public init() {}
 
-    public func cancel(_ id: UUID) {
-        cancelled.insert(id)
+    public nonisolated func cancel(_ id: UUID) {
+        cancelledBox.withLock { _ = $0.insert(id) }
+    }
+
+    /// Create a directory through the engine so all mutating FS work funnels
+    /// through one place (no `FileManager` mkdir scattered in the UI layer).
+    public nonisolated func makeDirectory(at url: URL) throws {
+        try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
     }
 
     /// Run a task, emitting progress. The stream finishes after a terminal
     /// state (`done` / `failed` / `cancelled`).
     public nonisolated func run(_ task: OperationTask) -> AsyncStream<OperationProgress> {
         AsyncStream { continuation in
-            let work = Task.detached { [self] in
-                await self.execute(task, emit: { continuation.yield($0) })
+            let work = Task.detached(priority: .userInitiated) { [self] in
+                self.execute(task, emit: { continuation.yield($0) })
                 continuation.finish()
             }
             continuation.onTermination = { reason in
@@ -82,12 +94,12 @@ public actor FileEngine {
         }
     }
 
-    private func isCancelled(_ id: UUID) -> Bool {
-        cancelled.contains(id) || Task.isCancelled
+    private nonisolated func isCancelled(_ id: UUID) -> Bool {
+        cancelledBox.withLock { $0.contains(id) } || Task.isCancelled
     }
 
-    private func execute(_ task: OperationTask, emit: @Sendable (OperationProgress) -> Void) {
-        defer { cancelled.remove(task.id) }   // don't let the cancel set grow forever
+    private nonisolated func execute(_ task: OperationTask, emit: @Sendable (OperationProgress) -> Void) {
+        defer { cancelledBox.withLock { _ = $0.remove(task.id) } }   // don't let the cancel set grow forever
         let total = Self.totalBytes(of: task.sources, kind: task.kind)
         var done: Int64 = 0
 
@@ -102,8 +114,11 @@ public actor FileEngine {
                 if isCancelled(task.id) { progress(source, .cancelled); return }
                 switch task.kind {
                 case .delete:
+                    // Size BEFORE removing — afterwards the item is gone and
+                    // `size(of:)` would read 0, freezing delete progress at 0%.
+                    let bytes = Self.contentBytes(of: source)
                     try FileManager.default.removeItem(at: source)
-                    done += Self.size(of: source)
+                    done += bytes
                     progress(source, .running)
                 case .rename(let newName):
                     let dst = source.deletingLastPathComponent().appendingPathComponent(newName)
@@ -133,7 +148,7 @@ public actor FileEngine {
     }
 
     /// Streamed copy so progress is real, not faked. Recurses into directories.
-    private func copy(
+    private nonisolated func copy(
         _ source: URL, to dst: URL, taskID: UUID,
         done: inout Int64, total: Int64, emit: @Sendable (OperationProgress) -> Void
     ) throws {
@@ -178,7 +193,7 @@ public actor FileEngine {
             if read < 0 { throw input.streamError ?? OpError.readFailed }
             if read == 0 { break }
             try buffer.withUnsafeBytes { raw in
-                let base = raw.bindMemory(to: UInt8.self).baseAddress!
+                guard let base = raw.bindMemory(to: UInt8.self).baseAddress else { return }
                 var offset = 0
                 while offset < read {
                     let written = output.write(base + offset, maxLength: read - offset)
@@ -193,9 +208,9 @@ public actor FileEngine {
 
     // MARK: Helpers
 
-    enum OpError: LocalizedError {
+    public enum OpError: LocalizedError {
         case noDestination, missingSource, cannotWrite, readFailed
-        var errorDescription: String? {
+        public var errorDescription: String? {
             switch self {
             case .noDestination: return "No destination folder."
             case .missingSource: return "Source no longer exists."
@@ -226,20 +241,27 @@ public actor FileEngine {
     }
 
     static func totalBytes(of urls: [URL], kind: FileOperationKind) -> Int64 {
-        guard case .copy = kind else { return urls.reduce(0) { $0 + size(of: $1) } }
-        var total: Int64 = 0
+        switch kind {
+        case .copy, .delete:
+            // Recurse so a folder's progress reflects its contents, not a single
+            // directory-entry size (M-10: delete of a folder jumped 0→100%).
+            return urls.reduce(0) { $0 + contentBytes(of: $1) }
+        case .move, .rename:
+            // Move/rename are metadata ops; shallow size is enough.
+            return urls.reduce(0) { $0 + size(of: $1) }
+        }
+    }
+
+    /// Total payload bytes of `url`: its own size, or the sum of regular-file
+    /// bytes beneath it if it's a directory.
+    static func contentBytes(of url: URL) -> Int64 {
         let fm = FileManager.default
-        for url in urls {
-            let v = try? url.resourceValues(forKeys: [.isDirectoryKey])
-            if v?.isDirectory == true {
-                // Sum only file bytes; directory entries aren't payload.
-                if let e = fm.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey]) {
-                    for case let f as URL in e {
-                        if (try? f.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == false { total += size(of: f) }
-                    }
-                }
-            } else {
-                total += size(of: url)
+        let v = try? url.resourceValues(forKeys: [.isDirectoryKey])
+        guard v?.isDirectory == true else { return size(of: url) }
+        var total: Int64 = 0
+        if let e = fm.enumerator(at: url, includingPropertiesForKeys: [.fileSizeKey, .isDirectoryKey]) {
+            for case let f as URL in e {
+                if (try? f.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory == false { total += size(of: f) }
             }
         }
         return total

@@ -56,7 +56,7 @@ struct PreviewPane: View {
 
     var body: some View {
         Group {
-            if let url = tab.actionable.first?.url ?? tab.cursor {
+            if let url = tab.actionable.first?.url {
                 QuickLookPreview(url: url)
             } else {
                 ContentUnavailableView("No selection", systemImage: "eye.slash")

@@ -13,9 +13,9 @@ final class TabModel: Identifiable {
     private let tags: TagServing
 
     private(set) var directory: URL
-    private(set) var state: ListingState = .idle
-    var sortOrder = SortOrder()
-    var showHidden = false
+    private(set) var state: ListingState = .idle { didSet { recomputeDisplayed() } }
+    var sortOrder = SortOrder() { didSet { recomputeDisplayed() } }
+    var showHidden = false { didSet { recomputeDisplayed() } }
 
     /// Non-nil when the tab shows a virtual listing (e.g. "everything tagged X")
     /// instead of a real directory. Cleared the moment the user navigates.
@@ -39,7 +39,11 @@ final class TabModel: Identifiable {
     }
 
     /// Entries after hidden-filter + sort. The single source the table renders.
-    var displayed: [FSEntry] {
+    /// Cached: recomputed only when `state`/`sortOrder`/`showHidden` change, not
+    /// on every access (the table read + re-sorted it per render before).
+    private(set) var displayed: [FSEntry] = []
+
+    private func recomputeDisplayed() {
         let base: [FSEntry]
         switch state {
         case .loading(let p): base = p
@@ -47,7 +51,7 @@ final class TabModel: Identifiable {
         default: base = []
         }
         let filtered = showHidden ? base : base.filter { !$0.isHidden }
-        return filtered.sorted(by: sortOrder)
+        displayed = filtered.sorted(by: sortOrder)
     }
 
     func open(_ url: URL) {
@@ -58,15 +62,23 @@ final class TabModel: Identifiable {
         load()
     }
 
-    /// Show an explicit set of entries (tag cloud, search results) as a virtual
-    /// listing. Not tied to `directory`; Refresh/navigation leaves it.
-    func showVirtual(title: String, entries: [FSEntry]) {
+    /// Begin a virtual listing (tag cloud, search results) — not tied to
+    /// `directory`; Refresh/navigation leaves it. Entries stream in via
+    /// `appendVirtual` so a large set fills progressively.
+    func beginVirtual(title: String) {
         task?.cancel()
         virtualName = title
         selection = []
         cursor = nil
+        state = .loaded([])
+    }
+
+    /// Replace the virtual listing's entries with the latest accumulated set.
+    /// No-op once the user has navigated away (virtualName cleared).
+    func appendVirtual(_ entries: [FSEntry]) {
+        guard virtualName != nil else { return }
         state = .loaded(entries)
-        cursor = displayed.first?.url
+        if cursor == nil { cursor = displayed.first?.url }
     }
 
     func goUp() {
@@ -224,7 +236,17 @@ final class AppState {
 
     /// Mounted volumes for the sidebar, kept live via mount/unmount notifications.
     var volumes: [Volume] = []
-    private var volumeObservers: [NSObjectProtocol] = []
+    // Not observed by the UI; `nonisolated(unsafe)` lets the nonisolated deinit
+    // remove the tokens. They're only mutated on the main actor during setup and
+    // read in deinit when no other reference survives (H-1).
+    @ObservationIgnored nonisolated(unsafe) private var volumeObservers: [NSObjectProtocol] = []
+
+    /// Handles for the fire-and-forget tag tasks so re-entry cancels the prior
+    /// run (H-2): without this, two quick tag-cloud clicks raced and the slower
+    /// one's results clobbered the newer listing.
+    private var openTagTask: Task<Void, Never>?
+    private var refreshTagsTask: Task<Void, Never>?
+    private var indexTask: Task<Void, Never>?
 
     /// Tag cloud (§5): all known tags + per-tag file counts for the sidebar.
     var knownTags: [Tag] = []
@@ -281,10 +303,19 @@ final class AppState {
         ]
         for name in names {
             let token = nc.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.refreshVolumes() }
+                // Hop to the main actor explicitly rather than asserting it —
+                // robust under Swift 6 even if the queue contract changes (H-3).
+                Task { @MainActor in self?.refreshVolumes() }
             }
             volumeObservers.append(token)
         }
+    }
+
+    deinit {
+        // Tokens were registered on NSWorkspace's notification center; removing
+        // them is thread-safe, so this is fine from a nonisolated deinit (H-1).
+        let nc = NSWorkspace.shared.notificationCenter
+        for token in volumeObservers { nc.removeObserver(token) }
     }
 
     func eject(_ volume: Volume) {
@@ -300,38 +331,55 @@ final class AppState {
 
     /// Refresh the sidebar tag cloud: known tags + per-tag counts.
     func refreshTags() {
-        Task { [weak self] in
+        refreshTagsTask?.cancel()
+        refreshTagsTask = Task { [weak self] in
             guard let self else { return }
             let all = await self.tags.allKnownTags()
+            if Task.isCancelled { return }
             var counts: [String: Int] = [:]
             for t in all { counts[t.name] = await self.tags.entries(taggedWith: t).count }
+            if Task.isCancelled { return }
             self.knownTags = all
             self.tagCounts = counts
         }
     }
 
-    /// Populate the index from Home in the background so the cloud isn't empty
-    /// on a cold start, then refresh the sidebar.
+    /// Load the persisted index, populate from Home in the background so the
+    /// cloud isn't empty on a cold start, refresh the sidebar, then persist.
     private func indexTagsInBackground() {
-        Task { [weak self] in
+        indexTask?.cancel()
+        indexTask = Task { [weak self] in
             guard let self else { return }
+            await self.tags.loadPersisted()
+            self.refreshTags()   // show whatever persisted immediately
             await self.tags.index(roots: [FileManager.default.homeDirectoryForCurrentUser])
+            if Task.isCancelled { return }
             self.refreshTags()
+            await self.tags.persist()
         }
     }
 
-    /// Click a tag → show every file carrying it as a virtual listing.
+    /// Click a tag → stream every file carrying it into a virtual listing, so a
+    /// large tag doesn't block on building the whole array first (was: built
+    /// synchronously, no streaming). Re-entry cancels the prior open (H-2).
     func openTag(_ tag: Tag) {
-        Task { [weak self] in
+        openTagTask?.cancel()
+        let targetTab = activeTab
+        openTagTask = Task { [weak self] in
             guard let self else { return }
             let urls = await self.tags.entries(taggedWith: tag)
+            targetTab.beginVirtual(title: "Tag: \(tag.name)")
             var entries: [FSEntry] = []
             for url in urls {
+                if Task.isCancelled { return }
                 guard var e = try? await self.fs.metadata(of: url) else { continue }
                 e.tags = await self.tags.tags(of: url)
                 entries.append(e)
+                // Flush in small batches so the list fills progressively.
+                if entries.count % 64 == 0 { targetTab.appendVirtual(entries) }
             }
-            self.activeTab.showVirtual(title: "Tag: \(tag.name)", entries: entries)
+            if Task.isCancelled { return }
+            targetTab.appendVirtual(entries)
         }
     }
 
@@ -391,7 +439,7 @@ final class AppState {
         case CommandID.copyPath: copyPath()
         case CommandID.getInfo: showPreview = true; inspectorMode = .info
         case CommandID.refresh: activeTab.load()
-        case CommandID.view: QuickLook.toggle(urls: activeTab.actionable.map(\.url))
+        case CommandID.quickLook, CommandID.view: QuickLook.toggle(urls: activeTab.actionable.map(\.url))
         case CommandID.edit: editCursor()
         default: break
         }
@@ -411,7 +459,10 @@ final class AppState {
         let task = OperationTask(kind: kind, sources: sources, destination: destination)
         runTask(task) { [weak self] in
             self?.inactivePane.active.load()
-            if case .move = kind { self?.activeTab.load() }
+            if case .move = kind {
+                self?.forgetTagged(sources)   // sources left their old paths
+                self?.activeTab.load()
+            }
         }
     }
 
@@ -419,7 +470,20 @@ final class AppState {
         let sources = activeTab.actionable.map(\.url)
         guard !sources.isEmpty else { return }
         let task = OperationTask(kind: .delete, sources: sources)
-        runTask(task) { [weak self] in self?.activeTab.load() }
+        runTask(task) { [weak self] in
+            self?.forgetTagged(sources)   // deleted paths must leave the index
+            self?.activeTab.load()
+        }
+    }
+
+    /// Drop moved/renamed/deleted URLs from the tag index so the cloud counts and
+    /// "everything tagged X" listings don't point at paths that no longer exist.
+    private func forgetTagged(_ urls: [URL]) {
+        Task { [weak self] in
+            guard let self else { return }
+            for url in urls { await self.tags.forget(url) }
+            self.refreshTags()
+        }
     }
 
     func rename(to newName: String) {
@@ -431,7 +495,10 @@ final class AppState {
         // Must be a plain leaf name — reject path traversal ("../etc/passwd").
         guard !newName.isEmpty, !newName.contains("/"), newName != ".", newName != ".." else { return }
         let task = OperationTask(kind: .rename(to: newName), sources: [entry.url])
-        runTask(task) { [weak self] in self?.activeTab.load() }
+        runTask(task) { [weak self] in
+            self?.forgetTagged([entry.url])   // the old leaf name is gone
+            self?.activeTab.load()
+        }
     }
 
     /// Open a file in its default app, confirming first for executable/script
@@ -477,10 +544,13 @@ final class AppState {
     func paste() {
         guard let clip = clipboard, !clip.urls.isEmpty else { return }
         let dest = activeTab.directory
+        // Consume a cut immediately so a second ⌘V can't double-move it (H-6);
+        // the clipboard isn't needed once the task is enqueued.
+        if clip.cut { clipboard = nil }
         let task = OperationTask(kind: clip.cut ? .move : .copy, sources: clip.urls, destination: dest)
         runTask(task) { [weak self] in
+            if clip.cut { self?.forgetTagged(clip.urls) }   // moved out of source
             self?.activeTab.load()
-            if clip.cut { self?.clipboard = nil }   // a cut is consumed once pasted
         }
     }
 
@@ -499,7 +569,9 @@ final class AppState {
         guard !name.isEmpty, !name.contains("/"), name != ".", name != ".." else { return }
         let url = parent.appendingPathComponent(name, isDirectory: true)
         do {
-            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: false)
+            // Route mkdir through the engine so all mutating FS work lives in
+            // one place rather than calling FileManager directly from the UI.
+            try engine.makeDirectory(at: url)
             activeTab.load()
             activeTab.cursor = url
         } catch {
@@ -531,7 +603,12 @@ final class AppState {
     }
 
     func openFile(_ url: URL, withApplication appURL: URL) {
-        NSWorkspace.shared.open([url], withApplicationAt: appURL, configuration: NSWorkspace.OpenConfiguration())
+        // Surface launch failures instead of swallowing them (H-5).
+        NSWorkspace.shared.open([url], withApplicationAt: appURL,
+                                configuration: NSWorkspace.OpenConfiguration()) { _, error in
+            guard let error else { return }
+            Task { @MainActor in NSAlert(error: error).runModal() }
+        }
     }
 
     /// "Other…" — pick an app from /Applications and open the file with it.
@@ -610,7 +687,9 @@ final class AppState {
     }
 
     func cancel(_ id: UUID) {
-        Task { await engine.cancel(id) }
+        // `cancel` is nonisolated + lock-backed, so this is observed mid-copy
+        // instead of queueing behind the running operation (B-2).
+        engine.cancel(id)
     }
 
     static func defaultBookmarks() -> [Bookmark] {

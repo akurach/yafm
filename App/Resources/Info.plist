@@ -10,6 +10,10 @@
 	<string>com.yafm.app</string>
 	<key>CFBundleExecutable</key>
 	<string>yafm</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
 	<key>CFBundleVersion</key>
 	<string>0.2.1</string>
 	<key>CFBundleShortVersionString</key>

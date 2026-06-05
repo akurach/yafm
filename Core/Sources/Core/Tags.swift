@@ -14,6 +14,12 @@ public protocol TagServing: Sendable {
     /// Background-populate the index by walking the given roots, so the tag
     /// cloud isn't empty before the user has browsed anywhere.
     func index(roots: [URL]) async
+    /// Forget a URL after it was moved/renamed/deleted, so the cloud counts and
+    /// "everything tagged X" listings don't reference a path that's gone.
+    func forget(_ url: URL) async
+    /// Load / save the on-disk index so a cold start doesn't full-rescan Home.
+    func loadPersisted() async
+    func persist() async
 }
 
 public actor TagService: TagServing {
@@ -22,8 +28,16 @@ public actor TagService: TagServing {
     /// tag name -> color (last writer wins) and -> set of URLs.
     private var colors: [String: Int?] = [:]
     private var index: [String: Set<URL>] = [:]
+    /// Reverse map url -> its tag names, so dropping stale memberships on
+    /// reindex is O(tags-on-this-url) instead of O(all tags) (was P1: O(N·T)).
+    private var urlTags: [URL: Set<String>] = [:]
 
-    public init() {}
+    /// Where the persisted index lives (Application Support/yafm/tag-index.json).
+    private let storeURL: URL?
+
+    public init(storeURL: URL? = TagService.defaultStoreURL()) {
+        self.storeURL = storeURL
+    }
 
     public func tags(of url: URL) async -> [Tag] {
         let tags = Self.readTags(url)
@@ -37,7 +51,7 @@ public actor TagService: TagServing {
     }
 
     public func allKnownTags() async -> [Tag] {
-        colors.map { Tag(name: $0.key, colorIndex: $0.value ?? nil) }
+        colors.map { Tag(name: $0.key, colorIndex: $0.value) }
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
@@ -46,34 +60,89 @@ public actor TagService: TagServing {
     }
 
     /// Walk `roots` shallowly-recursively, reading native tags into the index.
-    /// Bounded + yields periodically so it never starves foreground tag reads.
+    /// The xattr reads (`getxattr` × up-to-50k) run in a background detached
+    /// task so they never starve foreground `tags(of:)`; results merge back in a
+    /// single actor hop (was B-1: synchronous xattr I/O on the actor).
     public func index(roots: [URL]) async {
-        let fm = FileManager.default
-        var seen = 0
-        let limit = 50_000
-        for root in roots {
-            guard let en = fm.enumerator(
-                at: root, includingPropertiesForKeys: nil,
-                options: [.skipsHiddenFiles, .skipsPackageDescendants]
-            ) else { continue }
-            while let url = en.nextObject() as? URL {
-                if Task.isCancelled { return }
-                let tags = Self.readTags(url)
-                if !tags.isEmpty { reindex(url, tags) }
-                seen += 1
-                if seen >= limit { return }
-                if seen % 256 == 0 { await Task.yield() }
+        let collected: [(URL, [Tag])] = await Task.detached(priority: .background) {
+            var out: [(URL, [Tag])] = []
+            let fm = FileManager.default
+            var seen = 0
+            let limit = 50_000
+            for root in roots {
+                guard let en = fm.enumerator(
+                    at: root, includingPropertiesForKeys: nil,
+                    options: [.skipsHiddenFiles, .skipsPackageDescendants]
+                ) else { continue }
+                while let url = en.nextObject() as? URL {
+                    if Task.isCancelled { return out }
+                    let tags = Self.readTags(url)
+                    if !tags.isEmpty { out.append((url, tags)) }
+                    seen += 1
+                    if seen >= limit { return out }
+                }
             }
-        }
+            return out
+        }.value
+
+        for (url, tags) in collected { reindex(url, tags) }
+    }
+
+    public func forget(_ url: URL) {
+        for name in urlTags[url] ?? [] { index[name]?.remove(url) }
+        urlTags[url] = nil
     }
 
     private func reindex(_ url: URL, _ tags: [Tag]) {
-        // Drop stale memberships for this url, then re-add.
-        for key in index.keys { index[key]?.remove(url) }
+        // Drop only the memberships this url actually had, via the reverse map.
+        for name in urlTags[url] ?? [] { index[name]?.remove(url) }
+        let names = Set(tags.map(\.name))
+        urlTags[url] = names.isEmpty ? nil : names
         for t in tags {
             colors[t.name] = t.colorIndex
             index[t.name, default: []].insert(url)
         }
+    }
+
+    // MARK: Persistence
+
+    public static func defaultStoreURL() -> URL? {
+        guard let dir = try? FileManager.default.url(
+            for: .applicationSupportDirectory, in: .userDomainMask,
+            appropriateFor: nil, create: true
+        ) else { return nil }
+        let appDir = dir.appendingPathComponent("yafm", isDirectory: true)
+        try? FileManager.default.createDirectory(at: appDir, withIntermediateDirectories: true)
+        return appDir.appendingPathComponent("tag-index.json")
+    }
+
+    /// On-disk shape: tag name -> (colorIndex?, [path]). Paths, not URLs, so it
+    /// round-trips as plain JSON.
+    private struct Persisted: Codable {
+        var colors: [String: Int]
+        var index: [String: [String]]
+    }
+
+    public func loadPersisted() async {
+        guard let storeURL, let data = try? Data(contentsOf: storeURL),
+              let p = try? JSONDecoder().decode(Persisted.self, from: data) else { return }
+        for (name, c) in p.colors where colors[name] == nil { colors[name] = c }
+        for (name, paths) in p.index {
+            for path in paths {
+                let url = URL(fileURLWithPath: path)
+                index[name, default: []].insert(url)
+                urlTags[url, default: []].insert(name)
+            }
+        }
+    }
+
+    public func persist() async {
+        guard let storeURL else { return }
+        var plainColors: [String: Int] = [:]
+        for (name, c) in colors { if let c { plainColors[name] = c } }
+        let plainIndex = index.mapValues { $0.map(\.path) }
+        let p = Persisted(colors: plainColors, index: plainIndex)
+        if let data = try? JSONEncoder().encode(p) { try? data.write(to: storeURL) }
     }
 
     // MARK: xattr bridge

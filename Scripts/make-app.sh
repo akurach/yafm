@@ -23,6 +23,7 @@ rm -rf "$APP"
 mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 cp "$BIN" "$APP/Contents/MacOS/yafm"
 cp "$ROOT/App/Resources/Info.plist" "$APP/Contents/Info.plist"
+cp "$ROOT/App/Resources/AppIcon.icns" "$APP/Contents/Resources/AppIcon.icns"
 
 # Ad-hoc codesign so the bundle launches without Gatekeeper friction locally.
 codesign --force --sign - "$APP" >/dev/null 2>&1 || true

@@ -49,6 +49,15 @@ struct KeyboardMonitor: NSViewRepresentable {
         deinit { if let m = monitor { NSEvent.removeMonitor(m) } }
     }
 
+    /// macOS virtual key codes for the keys that map to a `KeyBinding.Key`.
+    /// Pure event-decoding — NOT a second list of bindings. The binding→command
+    /// mapping itself lives once in `DefaultCommands.byBinding`.
+    private static let keyByCode: [UInt16: KeyBinding.Key] = [
+        96: .function(5), 97: .function(6), 98: .function(7), 99: .function(3),
+        100: .function(8), 118: .function(4), 120: .function(2),
+        48: .tab, 49: .space, 36: .enter, 76: .enter,
+    ]
+
     /// Returns true if the chord was consumed.
     @MainActor
     static func handle(_ c: KeyChord, app: AppState) -> Bool {
@@ -60,18 +69,9 @@ struct KeyboardMonitor: NSViewRepresentable {
 
         let tab = app.activeTab
 
+        // Cursor movement and the Left/Right nav aliases aren't modeled as
+        // commands (no binding), so they stay explicit.
         switch c.keyCode {
-        case 96: app.run(CommandID.copy); return true       // F5
-        case 97: app.run(CommandID.move); return true       // F6
-        case 100: app.run(CommandID.delete); return true    // F8
-        case 120: app.run(CommandID.rename); return true    // F2
-        case 99: app.run(CommandID.view); return true       // F3
-        case 118: app.run(CommandID.edit); return true      // F4
-        case 98: app.run(CommandID.newFolder); return true  // F7
-        case 48: app.run(CommandID.switchPane); return true // Tab
-        case 49 where !c.command:                           // Space -> QuickLook
-            QuickLook.toggle(urls: tab.actionable.map(\.url)); return true
-        case 36, 76: app.run(CommandID.open); return true   // Return / Enter
         case 126: tab.moveCursor(by: -1, extend: c.shift); return true // Up
         case 125: tab.moveCursor(by: 1, extend: c.shift); return true  // Down
         case 123: app.run(CommandID.goUp); return true      // Left -> up
@@ -79,17 +79,22 @@ struct KeyboardMonitor: NSViewRepresentable {
         default: break
         }
 
-        switch (c.chars, c.command, c.shift) {
-        case (".", true, true): app.run(CommandID.toggleHidden); return true
-        case ("t", true, false): app.run(CommandID.newTab); return true
-        case ("w", true, false): app.run(CommandID.closeTab); return true
-        case ("p", true, true): app.run(CommandID.togglePreview); return true
-        case ("c", true, false): app.run(CommandID.clipCopy); return true
-        case ("x", true, false): app.run(CommandID.clipCut); return true
-        case ("v", true, false): app.run(CommandID.paste); return true
-        case ("r", true, false): app.run(CommandID.refresh); return true
-        case ("i", true, false): app.run(CommandID.getInfo); return true
-        default: return false
+        // Everything else: decode the chord into a KeyBinding and dispatch via
+        // the single source of truth (DefaultCommands.byBinding).
+        var mods: KeyBinding.Modifiers = []
+        if c.command { mods.insert(.command) }
+        if c.shift { mods.insert(.shift) }
+        if c.control { mods.insert(.control) }
+        if c.option { mods.insert(.option) }
+
+        if let key = Self.keyByCode[c.keyCode],
+           let id = DefaultCommands.byBinding[KeyBinding(key, mods)] {
+            app.run(id); return true
         }
+        if let ch = c.chars?.first,
+           let id = DefaultCommands.byBinding[KeyBinding(.char(ch), mods)] {
+            app.run(id); return true
+        }
+        return false
     }
 }

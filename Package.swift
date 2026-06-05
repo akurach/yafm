@@ -18,7 +18,7 @@ let package = Package(
             name: "yafm",
             dependencies: ["Core"],
             path: "App",
-            exclude: ["Resources/Info.plist"]
+            exclude: ["Resources/Info.plist", "Resources/AppIcon.icns"]
         ),
     ]
 )

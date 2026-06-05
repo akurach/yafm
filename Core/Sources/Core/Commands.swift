@@ -92,6 +92,17 @@ public enum DefaultCommands {
         Command(id: CommandID.view, title: "View", defaultKey: KeyBinding(.function(3))),
         Command(id: CommandID.edit, title: "Edit", defaultKey: KeyBinding(.function(4))),
     ]
+
+    /// Single source of truth for key dispatch: binding → command id, derived
+    /// from `all`. The keyboard layer decodes a raw event into a `KeyBinding`
+    /// and looks it up here, instead of duplicating F-key codes (P1).
+    public static let byBinding: [KeyBinding: String] = {
+        var map: [KeyBinding: String] = [:]
+        for command in all {
+            if let key = command.defaultKey { map[key] = command.id }
+        }
+        return map
+    }()
 }
 
 // MARK: - Extension registry (invisible in v0.1, but the real plugin contract)
@@ -121,6 +132,39 @@ public struct MenuItem: Identifiable, Sendable {
 
 public protocol ContextMenuProvider: Sendable {
     func items(for selection: [FSEntry]) -> [MenuItem]
+}
+
+// MARK: - Plugin capability boundary (design-ahead for the v0.3 JS loader)
+
+/// The vetted surface a plugin (column/command/menu provider) is allowed to
+/// touch. Providers get a `PluginContext`, never a raw `FSEntry.url`, so that
+/// when JS plugins arrive they can't read/write arbitrary paths — every FS
+/// access is funnelled through here and scoped to `roots`. (ARCHITECTURE.md:143;
+/// the app is non-sandboxed, so path-traversal must not be plugin-reachable.)
+///
+/// v0.2: first-party providers still receive `FSEntry` directly; this type
+/// establishes the contract the JS host will enforce before any untrusted code
+/// runs. `resolve(_:)` is the single chokepoint a future host vets against.
+public struct PluginContext: Sendable {
+    /// Directories a plugin may read within. Empty = no filesystem access.
+    public let roots: [URL]
+
+    public init(roots: [URL]) {
+        self.roots = roots.map { $0.standardizedFileURL }
+    }
+
+    /// Resolve a plugin-supplied path, refusing anything that escapes `roots`
+    /// (via `..`, symlinks, or absolute paths outside scope). nil = denied.
+    public func resolve(_ path: String) -> URL? {
+        guard !path.isEmpty, !path.contains("\0") else { return nil }
+        let candidate = URL(fileURLWithPath: path).standardizedFileURL
+        let target = candidate.resolvingSymlinksInPath().path
+        for root in roots {
+            let base = root.resolvingSymlinksInPath().path
+            if target == base || target.hasPrefix(base + "/") { return candidate }
+        }
+        return nil
+    }
 }
 
 /// First-party features register here now; the JS loader plugs into the same
