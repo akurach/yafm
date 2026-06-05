@@ -165,25 +165,56 @@ struct CommandPalette: View {
             }
             .sorted { $0.1 < $1.1 }
             .map(\.0)
-        if let goto = pathItem(for: raw) { results.insert(goto, at: 0) }
+        let pitems = pathItems(for: raw)
+        results.insert(contentsOf: pitems, at: 0)
         return results
     }
 
-    /// Build a "Go to <path>" item when the query is a path. Expands a leading
-    /// `~`; only offered for a path that resolves to an existing directory.
-    private func pathItem(for raw: String) -> PaletteItem? {
-        guard raw.hasPrefix("/") || raw.hasPrefix("~") else { return nil }
+    /// Live path completion when the query is a path (`/…` or `~/…`): the exact
+    /// folder if it exists, plus child folders whose name the typed leaf prefixes.
+    /// Hidden folders (`.ssh`) stay out until the user types a leading dot — so
+    /// `~/D` offers Documents/Downloads but `~/.s` is needed to reach `.ssh`.
+    private func pathItems(for raw: String) -> [PaletteItem] {
+        guard raw.hasPrefix("/") || raw.hasPrefix("~") else { return [] }
         let expanded = (raw as NSString).expandingTildeInPath
-        guard expanded.hasPrefix("/"), !expanded.contains("\0") else { return nil }
+        guard expanded.hasPrefix("/"), !expanded.contains("\0") else { return [] }
+        let fm = FileManager.default
+        var out: [PaletteItem] = []
+
+        func goItem(_ url: URL, _ title: String) -> PaletteItem {
+            PaletteItem(id: "goto.\(url.path)", title: title, subtitle: url.path,
+                        shortcut: "", systemImage: "folder",
+                        run: { [weak app] in app?.activeTab.open(url) })
+        }
+
+        // Exact existing directory → top item, so Enter enters the typed path.
         var isDir: ObjCBool = false
-        guard FileManager.default.fileExists(atPath: expanded, isDirectory: &isDir), isDir.boolValue
-        else { return nil }
-        let url = URL(fileURLWithPath: expanded)
-        return PaletteItem(
-            id: "goto.\(expanded)", title: String(localized: "Go to \(expanded)"),
-            subtitle: String(localized: "Open this folder"),
-            shortcut: "↩", systemImage: "arrow.right.circle",
-            run: { [weak app] in app?.activeTab.open(url) })
+        if fm.fileExists(atPath: expanded, isDirectory: &isDir), isDir.boolValue {
+            out.append(goItem(URL(fileURLWithPath: expanded), String(localized: "Go to \(expanded)")))
+        }
+
+        // Parent dir + partial leaf to complete against.
+        let parent: String, leaf: String
+        if raw.hasSuffix("/") { parent = expanded; leaf = "" }
+        else { parent = (expanded as NSString).deletingLastPathComponent
+               leaf = (expanded as NSString).lastPathComponent }
+        let ql = leaf.lowercased()
+        guard let names = try? fm.contentsOfDirectory(atPath: parent) else { return out }
+        let matches = names.filter { name in
+            let lower = name.lowercased()
+            if name.hasPrefix(".") {                       // hidden: opt-in via dot
+                return (ql.hasPrefix(".") && lower.hasPrefix(ql)) || lower == ql
+            }
+            return ql.isEmpty || lower.hasPrefix(ql)
+        }.sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+        for name in matches.prefix(12) {
+            let url = URL(fileURLWithPath: parent).appendingPathComponent(name)
+            guard url.path != expanded else { continue }   // already the exact item
+            var d: ObjCBool = false
+            guard fm.fileExists(atPath: url.path, isDirectory: &d), d.boolValue else { continue }
+            out.append(goItem(url, name))
+        }
+        return out
     }
 
     /// nil = no subsequence match; lower = better (earlier first hit + tighter run).

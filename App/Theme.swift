@@ -81,5 +81,5 @@ enum Theme {
     // MARK: Geometry
 
     static let cornerRadius: CGFloat = 5
-    static let cursorStrokeWidth: CGFloat = 1.5
+    static let cursorBarWidth: CGFloat = 3   // leading accent bar marking the cursor row
 }

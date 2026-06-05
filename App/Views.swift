@@ -223,7 +223,9 @@ struct FileTableView: View {
                 }
             }
             .contextMenu { backgroundMenu() }   // empty area below the rows
-            .listStyle(.inset)
+            // Plain (edge-to-edge) instead of .inset: denser, Finder/TC-like, and
+            // it drops the rounded inset-card corners that notched the bottom.
+            .listStyle(.plain)
             // Kill implicit row animations: streaming partials inserted rows one
             // batch at a time, and List animated every insert → torn, choppy
             // scrolling while a folder loads. Snappy + instant is what we want.
@@ -360,23 +362,21 @@ struct FileTableView: View {
         return entry.isHidden ? .secondary : .primary
     }
 
-    /// Selection is a filled wash; the cursor is a crisp accent ring — so the
-    /// focused row reads distinctly even when it isn't part of the selection
-    /// (v0.3 made them differ by a barely-visible ~15% opacity).
+    /// Selection is a full-width wash; the keyboard cursor is a thin accent bar
+    /// down the leading edge — distinct from selection without boxing the row in
+    /// a heavy ring (the v0.4 ring read as a clunky border on the focused row).
     @ViewBuilder
     private func rowBackground(_ entry: FSEntry) -> some View {
         let selected = tab.selection.contains(entry.url)
         let cursored = tab.cursor == entry.url
-        RoundedRectangle(cornerRadius: Theme.cornerRadius)
-            .fill(selected ? Theme.Palette.selectionFill
-                  : cursored ? Theme.Palette.cursorFill : Color.clear)
-            .overlay {
-                if cursored {
-                    RoundedRectangle(cornerRadius: Theme.cornerRadius)
-                        .strokeBorder(Theme.Palette.cursorStroke, lineWidth: Theme.cursorStrokeWidth)
-                }
-            }
-            .padding(.horizontal, 2)
+        HStack(spacing: 0) {
+            Rectangle()
+                .fill(cursored ? Theme.Palette.cursorStroke : Color.clear)
+                .frame(width: Theme.cursorBarWidth)
+            Rectangle()
+                .fill(selected ? Theme.Palette.selectionFill
+                      : cursored ? Theme.Palette.cursorFill : Color.clear)
+        }
     }
 
     private func byteString(_ n: Int64) -> String {
@@ -494,10 +494,13 @@ struct StatusBarView: View {
         let rows = tab.displayed
         let selCount = tab.selection.count
         let selBytes = rows.filter { tab.selection.contains($0.url) }.compactMap(\.size).reduce(0, +)
+        // Only show a byte total when the selection actually has measurable
+        // bytes — folders report no size, so a folder selection showed "Zero KB".
+        let sizePart = selBytes > 0 ? " (\(ByteCountFormatter.string(fromByteCount: selBytes, countStyle: .file)))" : ""
         return HStack {
             Text("\(rows.count) items")
             if selCount > 0 {
-                Text("· \(selCount) selected (\(ByteCountFormatter.string(fromByteCount: selBytes, countStyle: .file)))")
+                Text("· \(selCount) selected\(sizePart)")
             }
             Spacer()
         }
