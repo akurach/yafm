@@ -32,6 +32,11 @@ struct PaneView: View {
             TabBarView(pane: pane)
             Divider()
             PathBarView(tab: pane.active)
+            // Inline find bar (⌘F) on the active pane only — replaces the modal.
+            if isActive && app.searchActive {
+                Divider()
+                SearchBar(app: app)
+            }
             Divider()
             FileTableView(tab: pane.active, app: app)
         }
@@ -144,9 +149,17 @@ struct FileTableView: View {
         Group {
             switch tab.state {
             case .idle:
-                Color.clear
+                // Never a blank pane: an idle tab still says what it is.
+                ContentUnavailableView("Nothing open yet", systemImage: "folder",
+                                       description: Text("Pick a folder from the sidebar or type a path above."))
             case .failed(let message):
                 ContentUnavailableView("Can't open folder", systemImage: "exclamationmark.triangle", description: Text(message))
+            case .loaded(let entries) where entries.isEmpty && !tab.filterActive:
+                // An empty folder/result rendered *nothing* before — a quiet
+                // violation of the never-freeze pillar. Say so explicitly.
+                emptyView
+            case .loaded(let entries) where tab.displayed.isEmpty && tab.filterActive && !entries.isEmpty:
+                ContentUnavailableView.search(text: tab.filter)
             default:
                 // Loading and loaded both render the same table; the "Reading…"
                 // badge floats as an overlay so it never pushes the rows down
@@ -194,6 +207,25 @@ struct FileTableView: View {
     // rides along as a pinned Section header (a plain List inside a VStack would
     // collapse to its intrinsic height and float mid-pane). Bonus: header and
     // rows share the List's insets, so columns line up.
+    /// Empty-state for a loaded listing with no rows — distinguishes "no search
+    /// matches" (a virtual results listing) from a genuinely empty folder. Both
+    /// beat the old blank pane (the never-freeze pillar: always say what's true).
+    @ViewBuilder
+    private var emptyView: some View {
+        if let origin = tab.virtualOrigin {
+            ContentUnavailableView {
+                Label(app.searchRunning ? "Searching…" : "No matches", systemImage: "magnifyingglass")
+            } description: {
+                Text(app.searchRunning
+                     ? "Looking in \(origin.lastPathComponent.isEmpty ? "/" : origin.lastPathComponent)…"
+                     : "Nothing in \(origin.lastPathComponent.isEmpty ? "/" : origin.lastPathComponent) matches “\(app.searchQuery)”.")
+            }
+        } else {
+            ContentUnavailableView("Empty folder", systemImage: "folder",
+                                   description: Text("This folder has no items."))
+        }
+    }
+
     private var rows: some View {
         ScrollViewReader { proxy in
             List {

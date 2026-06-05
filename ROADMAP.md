@@ -145,19 +145,26 @@ App-shell milestone pulled out of the backlog. Full spec: [`app-shell.md`](docs/
 - [x] **Seam — async plugin-value path**: `PluginColumn.asyncEvaluate` + `PluginValueCache`
   (placeholder → resolve, deduped, invalidatable) before VFS forces it. (+4 Core tests, 45 total.)
 
-## v0.6 — "Never a dead end" (honest states + search that doesn't freeze)
+## v0.6 — "Never a dead end" (honest states + search that doesn't freeze) ✅ shipped
 
-- [ ] **Content search** (grep-in-files) — streaming, cancellable, visible state; persistent results
-  pane that remembers origin. Extends `SearchService` (`Search.swift:12`, today name-only). The
-  canonical "could freeze 30s" op — the never-freeze pillar proving itself under load.
-- [ ] **Inline (non-modal) search bar** replacing the `SearchSheet` modal — modal search breaks keyboard flow.
-- [ ] **Unified empty/error/loading/limited-access state-view** over the four `ListingState` cases
-  (`FileSystem.swift:52`). Today `.failed` is handled (`Views.swift:145`) but `.idle` is `Color.clear`
-  (`:143`) and an empty folder renders nothing — a mild violation of the core pillar.
-- [ ] **Sparkle seamless auto-update** (signed appcast + EdDSA, fits the notarized-DMG / no-sandbox model).
-  Land it *before* asking users to make yafm a daily driver — trust/retention.
-- [ ] **Device detection** (DiskArbitration + IOKit metadata → device-type icons in the sidebar).
-  Spec: [`device-detection.md`](docs/feature-requests/device-detection.md). Reused by photo-ingest (v0.9).
+The never-freeze pillar proves itself under load. v0.6 ships the three pillar
+items; the two infra-gated items are deferred with a reason (below) rather than
+half-built.
+
+- [x] **Content search** (grep-in-files) — streaming, cancellable, bounded (8 MB/file cap,
+  binary-skip), visible "Searching… N" state; results listing remembers its origin
+  (`TabModel.virtualOrigin`). `SearchService.searchStream` yields hits as found. (+5 Core tests, 50 total.)
+- [x] **Inline (non-modal) search bar** (`SearchBar`) docked under the path bar of the active
+  pane, name/contents toggle — replaces the focus-stealing `SearchSheet` modal.
+- [x] **Unified empty/error/loading state-view** over the `ListingState` cases: `.idle` and empty
+  folders/results now render an explicit `ContentUnavailableView` (was a blank pane) —
+  distinguishing "empty folder" from "no search matches". (`Views.swift`.)
+- [ ] **Sparkle seamless auto-update** — **deferred**: gated on a paid Apple Developer ID cert +
+  a hosted, EdDSA-signed appcast (same blocker as DMG notarization). The GitHub-Releases checker
+  (v0.2.3) already covers the honest "a newer version exists" notice until then.
+- [ ] **Device detection** (DiskArbitration + IOKit → device-type sidebar icons) — **deferred** to
+  keep v0.6 on the never-freeze pillar; peripheral here, primarily feeds photo-ingest (v0.9).
+  Spec: [`device-detection.md`](docs/feature-requests/device-detection.md).
 
 ## v0.7 — "Remote disks, finally native" (reach + accessibility)
 

@@ -34,6 +34,9 @@ final class TabModel: Identifiable {
     /// Non-nil when the tab shows a virtual listing (e.g. "everything tagged X")
     /// instead of a real directory. Cleared the moment the user navigates.
     private(set) var virtualName: String?
+    /// The directory a virtual (search) listing was launched from, so the
+    /// results pane can show "results in <origin>" and offer a way back.
+    private(set) var virtualOrigin: URL?
 
     /// Multi-selection + the keyboard cursor (focused row).
     var selection: Set<URL> = []
@@ -101,9 +104,10 @@ final class TabModel: Identifiable {
     /// Begin a virtual listing (tag cloud, search results) — not tied to
     /// `directory`; Refresh/navigation leaves it. Entries stream in via
     /// `appendVirtual` so a large set fills progressively.
-    func beginVirtual(title: String) {
+    func beginVirtual(title: String, origin: URL? = nil) {
         task?.cancel()
         virtualName = title
+        virtualOrigin = origin
         selection = []
         cursor = nil
         state = .loaded([])
@@ -309,9 +313,15 @@ final class AppState {
     var commandPalette = false
     var cheatSheet = false
 
-    /// Find-within-folder (⌘F) sheet state.
-    var searchSheet = false
+    /// Find-within-folder (⌘F). v0.6: an *inline* bar (no modal) on the active
+    /// pane. `searchActive` shows/hides it; `searchMode` toggles name vs content
+    /// (grep); `searchRunning` drives the visible "Searching…" state so a long
+    /// content scan never looks frozen.
+    var searchActive = false
     var searchQuery = ""
+    var searchMode: SearchMode = .name
+    var searchRunning = false
+    var searchHitCount = 0
     private var searchTask: Task<Void, Never>?
 
     let left: PaneModel
@@ -441,22 +451,36 @@ final class AppState {
         guard !q.isEmpty else { return }
         let dir = activeTab.directory
         let tab = activeTab
+        let mode = searchMode
         searchTask?.cancel()
+        searchRunning = true
+        searchHitCount = 0
+        let label = mode == .content ? "Contents: \(q)" : "Search: \(q)"
+        tab.beginVirtual(title: label, origin: dir)
         searchTask = Task { [weak self] in
             guard let self else { return }
-            let urls = await self.searchService.search(q, in: dir)
-            tab.beginVirtual(title: "Search: \(q)")
             var entries: [FSEntry] = []
-            for url in urls {
-                if Task.isCancelled { return }
+            // Consume the stream: each hit arrives as it's found, so results fill
+            // progressively and cancellation (a new search / Esc) stops the walk.
+            for await url in self.searchService.searchStream(q, in: dir, mode: mode) {
+                if Task.isCancelled { self.searchRunning = false; return }
                 guard var e = try? await self.fs.metadata(of: url) else { continue }
                 e.tags = await self.tags.tags(of: url)
                 entries.append(e)
-                if entries.count % 64 == 0 { tab.appendVirtual(entries) }
+                self.searchHitCount = entries.count
+                if entries.count % 32 == 0 { tab.appendVirtual(entries) }
             }
-            if Task.isCancelled { return }
+            if Task.isCancelled { self.searchRunning = false; return }
             tab.appendVirtual(entries)
+            self.searchRunning = false
         }
+    }
+
+    /// Cancel an in-flight search and hide the inline bar.
+    func cancelSearch() {
+        searchTask?.cancel()
+        searchRunning = false
+        searchActive = false
     }
 
     // MARK: Share / AirDrop (v0.3 Platform)
@@ -707,7 +731,10 @@ final class AppState {
         case CommandID.refresh: activeTab.load()
         case CommandID.quickLook, CommandID.view: QuickLook.toggle(urls: activeTab.actionable.map(\.url))
         case CommandID.edit: editCursor()
-        case CommandID.search: searchQuery = ""; searchSheet = true
+        case CommandID.search:
+            // Toggle the inline bar; opening it focuses the field (handled in the
+            // view). A second ⌘F while open closes it and any running search.
+            if searchActive { cancelSearch() } else { searchActive = true }
         case CommandID.commandPalette: commandPalette = true
         case CommandID.cheatSheet: cheatSheet = true
         case CommandID.nextTab: activePane.cycleTab(by: 1)

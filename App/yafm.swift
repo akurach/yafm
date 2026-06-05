@@ -70,7 +70,6 @@ struct RootView: View {
         }
         .sheet(isPresented: $app.renameSheet) { RenameSheet(app: app) }
         .sheet(isPresented: $app.showOnboarding) { OnboardingSheet(app: app) }
-        .sheet(isPresented: $app.searchSheet) { SearchSheet(app: app) }
         .sheet(isPresented: $app.commandPalette) { CommandPalette(app: app) }
         .sheet(isPresented: $app.cheatSheet) { CheatSheet(app: app) }
     }

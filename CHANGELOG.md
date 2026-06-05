@@ -6,6 +6,40 @@ the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.6.0] — Never a dead end
+
+The never-freeze pillar proves itself under load: content search that streams
+and cancels instead of locking up, an inline find bar that keeps you in the
+keyboard flow, and honest empty/idle states where there used to be a blank pane.
+
+### Added — search that doesn't freeze
+- **Content search (grep-in-files).** Toggle the find bar to **Contents** to
+  search inside files, not just names. Streaming — hits appear as they're found,
+  with a live "Searching… N" count — and cancellable (Esc, ⌘F again, or a new
+  query stops the walk). Bounded for safety: an 8 MB/file cap and a binary-file
+  skip so a giant log or blob can't stall it. (`SearchService.searchStream`.)
+- **Results remember their origin.** A search listing knows which folder it came
+  from (`TabModel.virtualOrigin`), shown in the empty/result states.
+
+### Changed — interaction
+- **Inline find bar replaces the modal.** ⌘F now opens a bar docked under the
+  path bar of the active pane (name / contents toggle, live state, Esc to close)
+  instead of a sheet that stole keyboard focus and broke the type-ahead flow.
+  (`SearchBar`; the old `SearchSheet` modal is gone.)
+- **Honest empty & idle states.** An idle tab, an empty folder, and a search
+  with no matches each render an explicit `ContentUnavailableView` — the old
+  build drew a blank pane (a quiet violation of the never-freeze pillar). Empty
+  folder vs no-search-matches are now distinguished. (`Views.swift`.)
+
+### Deferred (with reason)
+- **Sparkle auto-update** — gated on a paid Apple Developer ID cert + a hosted,
+  EdDSA-signed appcast (same blocker as DMG notarization). The GitHub-Releases
+  update check (v0.2.3) covers the honest "newer version exists" notice until then.
+- **Device detection** (DiskArbitration sidebar icons) — held to keep v0.6 on the
+  search/states pillar; it primarily feeds photo-ingest in v0.9.
+
+_Tests: +5 Core (content/name streaming, binary & size skip, cancellation) → 50 total._
+
 ## [0.5.0] — Looks as good as it runs
 
 The visual & interaction-polish milestone. The keyboard wedge (v0.4) made yafm
