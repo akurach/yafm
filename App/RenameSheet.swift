@@ -1,5 +1,55 @@
 import SwiftUI
+import AppKit
 import Core
+
+/// A text field that, on appear, focuses and selects the **basename** (the part
+/// before the last dot) — so renaming `report.final.pdf` lets you type over the
+/// name without clobbering the extension (UX audit). Falls back to selecting all
+/// for dotfiles / extensionless names.
+struct BasenameField: NSViewRepresentable {
+    @Binding var text: String
+    var onSubmit: () -> Void
+
+    func makeNSView(context: Context) -> NSTextField {
+        let field = NSTextField(string: text)
+        field.delegate = context.coordinator
+        field.bezelStyle = .roundedBezel
+        field.focusRingType = .default
+        return field
+    }
+
+    func updateNSView(_ nsView: NSTextField, context: Context) {
+        if nsView.stringValue != text { nsView.stringValue = text }
+        // Select the basename once, after the name has been seeded (avoids the
+        // initial-empty race) — focus + select on the next runloop tick.
+        guard !context.coordinator.didSelect, !text.isEmpty else { return }
+        context.coordinator.didSelect = true
+        DispatchQueue.main.async {
+            nsView.window?.makeFirstResponder(nsView)
+            guard let editor = nsView.currentEditor() else { return }
+            let ns = text as NSString
+            let dot = ns.range(of: ".", options: .backwards)
+            editor.selectedRange = (dot.location == NSNotFound || dot.location == 0)
+                ? NSRange(location: 0, length: ns.length)
+                : NSRange(location: 0, length: dot.location)
+        }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        let parent: BasenameField
+        var didSelect = false
+        init(_ parent: BasenameField) { self.parent = parent }
+        func controlTextDidChange(_ obj: Notification) {
+            if let f = obj.object as? NSTextField { parent.text = f.stringValue }
+        }
+        func control(_ control: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {
+            if sel == #selector(NSResponder.insertNewline(_:)) { parent.onSubmit(); return true }
+            return false
+        }
+    }
+}
 
 // MARK: - Rename sheet (v0.1 single + v0.2 bulk regex preview)
 
@@ -33,8 +83,9 @@ struct RenameSheet: View {
                     }
                 }.frame(height: 120)
             } else {
-                TextField("New name", text: $replacement).textFieldStyle(.roundedBorder)
-                    .onAppear { replacement = names.first ?? "" }
+                BasenameField(text: $replacement, onSubmit: { apply(names); dismiss() })
+                    .frame(height: 22)
+                    .onAppear { if replacement.isEmpty { replacement = names.first ?? "" } }
             }
 
             HStack {
