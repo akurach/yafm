@@ -169,9 +169,15 @@ final class ArchiveTests: XCTestCase {
         XCTAssertEqual(loc?.inner, "dir")
     }
 
-    func testListingStreamsThroughStubLister() async {
+    func testListingStreamsThroughStubLister() async throws {
+        // The provider validates the zip is a real local .zip file; create one
+        // (contents come from the stub lister, not the bytes).
+        let realZip = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("stub-\(UUID().uuidString).zip")
+        try Data("PK".utf8).write(to: realZip)
+        defer { try? FileManager.default.removeItem(at: realZip) }
         let fs = ArchiveFileSystem(lister: { _ in ["a.txt", "b/c.txt"] })
-        let root = ArchiveLocation.url(zip: zip, inner: "")!
+        let root = ArchiveLocation.url(zip: realZip, inner: "")!
         var names: [String] = []
         for await event in fs.list(root) {
             if case .entries(let batch) = event { names.append(contentsOf: batch.map(\.name)) }
