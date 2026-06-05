@@ -58,3 +58,6 @@ CLAUDE.local.md
 
 # Working spec (local only)
 TZ.md
+
+# Audit log (local only)
+AUDIT.md
