@@ -260,8 +260,10 @@ public final class JSPluginHost {
 
     /// Run a JS command by id (from the palette / menus). Exceptions are swallowed.
     public func runCommand(_ id: String) {
-        guard let action = commands.first(where: { $0.id == id }) else { return }
-        action.fn.context?.exceptionHandler = { _, _ in }
+        guard let action = commands.first(where: { $0.id == id }), let ctx = action.fn.context else { return }
+        let prior = ctx.exceptionHandler
+        ctx.exceptionHandler = { _, _ in }
+        defer { ctx.exceptionHandler = prior }   // restore so column eval still reports (P2-3)
         _ = action.fn.call(withArguments: [])
     }
 
@@ -269,7 +271,9 @@ public final class JSPluginHost {
     public func runMenuItem(_ id: String, on entry: FSEntry) {
         guard let action = menuItems.first(where: { $0.id == id }),
               let context = action.fn.context else { return }
+        let prior = context.exceptionHandler
         context.exceptionHandler = { _, _ in }
+        defer { context.exceptionHandler = prior }
         _ = action.fn.call(withArguments: [Self.snapshot(of: entry, in: context,
                                                           handle: registerHandle(entry.url))])
     }

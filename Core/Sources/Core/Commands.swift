@@ -271,7 +271,10 @@ public struct PluginContext: Sendable {
         let target = candidate.resolvingSymlinksInPath().path
         for root in roots {
             let base = root.resolvingSymlinksInPath().path
-            if target == base || target.hasPrefix(base + "/") { return candidate }
+            // SECURITY: return the *symlink-resolved* URL, not the candidate — a
+            // mid-path symlink inside the root could otherwise reach outside it
+            // (O_NOFOLLOW only guards the leaf). Caller opens the real path.
+            if target == base || target.hasPrefix(base + "/") { return URL(fileURLWithPath: target) }
         }
         return nil
     }

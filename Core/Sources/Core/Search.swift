@@ -68,8 +68,12 @@ public struct SearchService: Sendable {
     /// query is built with the glob operators it expects and the user's text is
     /// quote-sanitised.
     private static func spotlight(_ query: String, in directory: URL, limit: Int) -> [URL] {
-        let safe = query.replacingOccurrences(of: "\"", with: "")
-            .replacingOccurrences(of: "*", with: "")
+        // SECURITY: strip every Spotlight predicate metacharacter, not just `"`/`*`,
+        // so a crafted query can't inject into the `kMDItemFSName == "…"` predicate
+        // (audit P2-2). `mdfind` runs via Process (no shell), so this is about
+        // predicate-injection, not command-injection.
+        let metachars = CharacterSet(charactersIn: "\"*\\()|&\n\r\t")
+        let safe = query.components(separatedBy: metachars).joined()
         guard !safe.isEmpty else { return [] }
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")

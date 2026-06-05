@@ -763,9 +763,14 @@ final class AppState {
     /// Detect Full Disk Access by probing a TCC-protected path. Shows the
     /// first-run onboarding sheet once; the banner stays until access is granted.
     func checkAccess() {
-        hasFullDiskAccess = Self.hasFullDiskAccess()
         if !UserDefaults.standard.bool(forKey: Self.didOnboardKey) {
             showOnboarding = true
+        }
+        // PERF: the TCC probe does a synchronous open() that can stall on a slow
+        // home dir — run it off the main actor and apply the result back (P2-10).
+        Task { [weak self] in
+            let granted = await Task.detached(priority: .userInitiated) { AppState.hasFullDiskAccess() }.value
+            self?.hasFullDiskAccess = granted
         }
     }
 
@@ -783,7 +788,7 @@ final class AppState {
 
     /// FDA can't be queried directly — probe a TCC-protected file. A readable
     /// `TCC.db` means access is granted; EPERM means it isn't.
-    static func hasFullDiskAccess() -> Bool {
+    nonisolated static func hasFullDiskAccess() -> Bool {
         let home = FileManager.default.homeDirectoryForCurrentUser
         let probe = home.appendingPathComponent("Library/Application Support/com.apple.TCC/TCC.db")
         let fd = open(probe.path, O_RDONLY)

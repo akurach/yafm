@@ -130,17 +130,23 @@ public actor FileEngine {
                     done += bytes
                     progress(source, .running)
                 case .rename(let newName):
+                    // SECURITY: a leaf name only — reject path separators / NUL so
+                    // a rename can't redirect into another directory (audit P2-3).
+                    guard !newName.isEmpty, !newName.contains("/"), !newName.contains("\0"),
+                          newName != ".", newName != ".." else { throw OpError.cannotWrite }
+                    let bytes = Self.size(of: source)   // size BEFORE the move (P2-4)
                     let dst = source.deletingLastPathComponent().appendingPathComponent(newName)
                     try FileManager.default.moveItem(at: source, to: dst)
-                    done += Self.size(of: source)
+                    done += bytes
                     progress(dst, .running)
                 case .move:
                     guard let dir = task.destination else { throw OpError.noDestination }
                     guard let dst = try Self.plannedDestination(for: source, in: dir, policy: task.collision) else {
                         done += Self.size(of: source); progress(source, .running); continue   // skipped
                     }
+                    let bytes = Self.size(of: source)   // size BEFORE the move (P2-4)
                     try FileManager.default.moveItem(at: source, to: dst)
-                    done += Self.size(of: source)
+                    done += bytes
                     progress(dst, .running)
                 case .copy:
                     guard let dir = task.destination else { throw OpError.noDestination }

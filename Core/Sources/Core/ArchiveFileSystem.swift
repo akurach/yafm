@@ -36,10 +36,19 @@ public struct ArchiveLocation: Equatable, Sendable {
 /// main actor and streamed, so a large or slow archive shows "loading…", never a
 /// freeze. Write ops are unsupported (it's a browse surface); the engine still
 /// copies *out* by reading through `metadata`/extraction later.
+public enum ArchiveError: LocalizedError {
+    case notArchive
+    public var errorDescription: String? { "Not an archive location." }
+}
+
 public actor ArchiveFileSystem: FileSystemProvider {
     /// Lists raw entry paths inside a zip. Abstracted for tests (no `unzip`).
     public typealias Lister = @Sendable (URL) -> [String]
     private let lister: Lister
+
+    /// Max entries read from one archive (audit P2-6: a crafted zip listing can't
+    /// blow up memory / main-actor work).
+    public static let entryCap = 100_000
 
     public init(lister: @escaping Lister = ArchiveFileSystem.unzipList) {
         self.lister = lister
@@ -53,7 +62,17 @@ public actor ArchiveFileSystem: FileSystemProvider {
                 guard let loc = ArchiveLocation(url: directory) else {
                     continuation.yield(.failed("Not an archive location.")); continuation.finish(); return
                 }
-                let all = lister(loc.zipURL)
+                // SECURITY: only browse a real, local `.zip` regular file — refuse
+                // a crafted `archive://?zip=` pointing at an arbitrary path, and
+                // reject `..`/NUL in the inner path (audit P1-2).
+                let zp = loc.zipURL.path
+                var isDir: ObjCBool = false
+                guard loc.zipURL.pathExtension.lowercased() == "zip",
+                      !zp.contains("\0"), !loc.inner.contains(".."),
+                      FileManager.default.fileExists(atPath: zp, isDirectory: &isDir), !isDir.boolValue else {
+                    continuation.yield(.failed("Not a valid .zip archive.")); continuation.finish(); return
+                }
+                let all = Array(lister(loc.zipURL).prefix(Self.entryCap))   // cap (audit P2-6)
                 if all.isEmpty {
                     // Empty list could be a damaged/unreadable zip — say so.
                     if !FileManager.default.fileExists(atPath: loc.zipURL.path) {
@@ -73,7 +92,7 @@ public actor ArchiveFileSystem: FileSystemProvider {
     }
 
     public func metadata(of url: URL) async throws -> FSEntry {
-        guard let loc = ArchiveLocation(url: url) else { throw SMBError.notSMB }
+        guard let loc = ArchiveLocation(url: url) else { throw ArchiveError.notArchive }
         let isDir = loc.inner.isEmpty || loc.inner.hasSuffix("/")
         return FSEntry(url: url, name: (loc.inner as NSString).lastPathComponent,
                        isDirectory: isDir, isHidden: false, size: nil, modified: nil)

@@ -67,9 +67,12 @@ struct KeyboardMonitor: NSViewRepresentable {
         // confirming delete" bug). Let the event reach the alert.
         if NSApp.modalWindow != nil { return false }
 
-        // Don't steal keys from an active text field (path bar, rename sheet).
+        // Don't steal keys from an active text field (path bar, rename sheet,
+        // search/palette fields). The field editor is an NSText/NSTextView, and
+        // NSTextField/NSSearchField conform to NSTextInputClient — covers them all
+        // without the old stringly-typed className check (P2-9).
         if let responder = NSApp.keyWindow?.firstResponder,
-           responder is NSText || responder.className.contains("NSTextView") {
+           responder is NSText || responder is NSTextInputClient {
             return false
         }
 

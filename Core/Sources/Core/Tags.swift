@@ -289,12 +289,14 @@ public actor TagService: TagServing {
     static func readXattr(_ name: String, _ url: URL) -> Data? {
         url.withUnsafeFileSystemRepresentation { path -> Data? in
             guard let path else { return nil }
-            let len = getxattr(path, name, nil, 0, 0, 0)
+            // SECURITY: XATTR_NOFOLLOW so a planted symlink at the path can't
+            // redirect the read/write to another file (audit P2-5).
+            let len = getxattr(path, name, nil, 0, 0, XATTR_NOFOLLOW)
             // Cap at the local APFS per-attribute limit (128 KiB). Network
             // filesystems enforce no cap; refuse to allocate attacker-sized blobs.
             if len <= 0 || len > (1 << 17) { return nil }
             var buf = Data(count: len)
-            let got = buf.withUnsafeMutableBytes { getxattr(path, name, $0.baseAddress, len, 0, 0) }
+            let got = buf.withUnsafeMutableBytes { getxattr(path, name, $0.baseAddress, len, 0, XATTR_NOFOLLOW) }
             return got >= 0 ? buf : nil
         }
     }
@@ -302,7 +304,7 @@ public actor TagService: TagServing {
     static func writeXattr(_ name: String, _ data: Data, _ url: URL) throws {
         try url.withUnsafeFileSystemRepresentation { path in
             guard let path else { throw CocoaError(.fileNoSuchFile) }
-            let rc = data.withUnsafeBytes { setxattr(path, name, $0.baseAddress, data.count, 0, 0) }
+            let rc = data.withUnsafeBytes { setxattr(path, name, $0.baseAddress, data.count, 0, XATTR_NOFOLLOW) }
             if rc != 0 { throw POSIXError(POSIXErrorCode(rawValue: errno) ?? .EIO) }
         }
     }
@@ -311,7 +313,7 @@ public actor TagService: TagServing {
     static func removeXattr(_ name: String, _ url: URL) -> Bool {
         url.withUnsafeFileSystemRepresentation { path in
             guard let path else { return false }
-            return removexattr(path, name, 0) == 0
+            return removexattr(path, name, XATTR_NOFOLLOW) == 0
         }
     }
 }
