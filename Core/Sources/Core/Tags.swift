@@ -59,33 +59,68 @@ public actor TagService: TagServing {
         Array(index[tag.name] ?? [])
     }
 
-    /// Walk `roots` shallowly-recursively, reading native tags into the index.
-    /// The xattr reads (`getxattr` × up-to-50k) run in a background detached
-    /// task so they never starve foreground `tags(of:)`; results merge back in a
-    /// single actor hop (was B-1: synchronous xattr I/O on the actor).
+    /// Populate the index with everything tagged under `roots`, via Spotlight.
+    ///
+    /// We ask `mdfind` for files carrying `kMDItemUserTags` instead of walking the
+    /// tree ourselves: a manual walk with `.skipsHiddenFiles` misses tags living
+    /// under `~/Library` (e.g. iCloud Drive at `~/Library/Mobile Documents`),
+    /// which is exactly where most tagged files end up. Spotlight sees them and
+    /// is near-instant. Reads run in a background task; results merge in one hop.
     public func index(roots: [URL]) async {
         let collected: [(URL, [Tag])] = await Task.detached(priority: .background) {
-            var out: [(URL, [Tag])] = []
             let fm = FileManager.default
-            var seen = 0
             let limit = 50_000
+            var seen = Set<URL>()
+            var out: [(URL, [Tag])] = []
+
+            // Returns false to stop the whole walk (cancelled or hit the cap).
+            func consider(_ url: URL) -> Bool {
+                if Task.isCancelled || out.count >= limit { return false }
+                guard seen.insert(url).inserted else { return true }
+                let tags = Self.readTags(url)
+                if !tags.isEmpty { out.append((url, tags)) }
+                return true
+            }
+
+            // Spotlight across the whole system (no -onlyin): every file the user
+            // has tagged, wherever it lives — Home, iCloud (~/Library/Mobile
+            // Documents), external disks. A hidden-skipping walk misses most of these.
+            for url in Self.spotlightTaggedPaths(in: nil) where !consider(url) { return out }
+
+            // Direct walk of the explicit roots too, for places Spotlight hasn't
+            // indexed yet (a freshly mounted card, temp dirs).
             for root in roots {
-                guard let en = fm.enumerator(
+                if let en = fm.enumerator(
                     at: root, includingPropertiesForKeys: nil,
                     options: [.skipsHiddenFiles, .skipsPackageDescendants]
-                ) else { continue }
-                while let url = en.nextObject() as? URL {
-                    if Task.isCancelled { return out }
-                    let tags = Self.readTags(url)
-                    if !tags.isEmpty { out.append((url, tags)) }
-                    seen += 1
-                    if seen >= limit { return out }
+                ) {
+                    while let url = en.nextObject() as? URL, consider(url) {}
+                    if Task.isCancelled || out.count >= limit { return out }
                 }
             }
             return out
         }.value
 
         for (url, tags) in collected { reindex(url, tags) }
+    }
+
+    /// Paths carrying any native tag, via `mdfind`. `root == nil` searches the
+    /// whole Spotlight index (all of the user's tagged files); otherwise scopes
+    /// to `root`.
+    private static func spotlightTaggedPaths(in root: URL?) -> [URL] {
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/usr/bin/mdfind")
+        proc.arguments = root.map { ["-onlyin", $0.path, "kMDItemUserTags == '*'"] }
+            ?? ["kMDItemUserTags == '*'"]
+        let pipe = Pipe()
+        proc.standardOutput = pipe
+        proc.standardError = FileHandle.nullDevice
+        do { try proc.run() } catch { return [] }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        proc.waitUntilExit()
+        return String(decoding: data, as: UTF8.self)
+            .split(separator: "\n")
+            .map { URL(fileURLWithPath: String($0)) }
     }
 
     public func forget(_ url: URL) {

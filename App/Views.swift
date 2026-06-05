@@ -163,11 +163,38 @@ struct FileTableView: View {
     private let modW: CGFloat = 124
     private let kindW: CGFloat = 92
 
+    // The List is the only child and fills the pane natively; the column header
+    // rides along as a pinned Section header (a plain List inside a VStack would
+    // collapse to its intrinsic height and float mid-pane). Bonus: header and
+    // rows share the List's insets, so columns line up.
     private var rows: some View {
-        VStack(spacing: 0) {
-            columnHeader
-            Divider()
-            rowList
+        ScrollViewReader { proxy in
+            List {
+                Section {
+                    ForEach(tab.displayed) { entry in
+                        row(entry)
+                            .id(entry.url)
+                            .listRowBackground(rowBackground(entry))
+                            .contentShape(Rectangle())
+                            .onTapGesture(count: 2) {
+                                if entry.isDirectory { tab.open(entry.url) } else { app.openFile(entry.url) }
+                            }
+                            .onTapGesture {
+                                tab.cursor = entry.url
+                                tab.selection = [entry.url]
+                                app.activePaneIsLeft = tabBelongsToLeft()
+                            }
+                            .contextMenu { rowMenu(entry) }
+                    }
+                } header: {
+                    columnHeader
+                }
+            }
+            .contextMenu { backgroundMenu() }   // empty area below the rows
+            .listStyle(.inset)
+            .onChange(of: tab.cursor) { _, new in
+                if let new { withAnimation(.linear(duration: 0.1)) { proxy.scrollTo(new, anchor: .center) } }
+            }
         }
     }
 
@@ -199,33 +226,6 @@ struct FileTableView: View {
         .buttonStyle(.plain)
         .font(.caption.bold())
         .foregroundStyle(tab.sortOrder.key == key ? Color.accentColor : .secondary)
-    }
-
-    private var rowList: some View {
-        ScrollViewReader { proxy in
-            List {
-                ForEach(tab.displayed) { entry in
-                    row(entry)
-                        .id(entry.url)
-                        .listRowBackground(rowBackground(entry))
-                        .contentShape(Rectangle())
-                        .onTapGesture(count: 2) {
-                            if entry.isDirectory { tab.open(entry.url) } else { app.openFile(entry.url) }
-                        }
-                        .onTapGesture {
-                            tab.cursor = entry.url
-                            tab.selection = [entry.url]
-                            app.activePaneIsLeft = (tabBelongsToLeft())
-                        }
-                        .contextMenu { rowMenu(entry) }
-                }
-            }
-            .contextMenu { backgroundMenu() }   // empty area below the rows
-            .listStyle(.inset)
-            .onChange(of: tab.cursor) { _, new in
-                if let new { withAnimation(.linear(duration: 0.1)) { proxy.scrollTo(new, anchor: .center) } }
-            }
-        }
     }
 
     private func tabBelongsToLeft() -> Bool {
@@ -292,16 +292,20 @@ struct FileTableView: View {
 
     // MARK: Context menus (§1)
 
-    /// Menu for a file/selection. Right-clicking outside the selection focuses
-    /// the row first so the existing `actionable`-based commands target it.
+    /// Focus the right-clicked row so the `actionable`-based commands target it.
+    /// Called from each menu action (NOT from the menu builder) — building the
+    /// menu must never mutate state, and SwiftUI builds row context menus eagerly,
+    /// so a mutation there fired for every row and snapped selection to the last
+    /// one (the "jumps to bottom / can't select / arrows dead" bug).
+    private func focus(_ entry: FSEntry) {
+        app.focusContextTarget(entry, in: tab)
+    }
+
+    /// Menu for a file/selection. Items carry SF Symbols and are grouped.
     @ViewBuilder
     private func rowMenu(_ entry: FSEntry) -> some View {
-        // Focus the right-clicked row, but defer past this render pass — mutating
-        // observable state synchronously inside a ViewBuilder is illegal (H-7).
-        let _ = { Task { @MainActor in app.focusContextTarget(entry, in: tab) } }()
-
-        Button("Open") { app.openCursor() }
-        Menu("Open With") {
+        Button { focus(entry); app.openCursor() } label: { Label("Open", systemImage: "arrow.up.forward.app") }
+        Menu {
             ForEach(app.applications(for: entry.url), id: \.self) { appURL in
                 Button(appURL.deletingPathExtension().lastPathComponent) {
                     app.openFile(entry.url, withApplication: appURL)
@@ -309,22 +313,22 @@ struct FileTableView: View {
             }
             Divider()
             Button("Other…") { app.openWithOther(entry.url) }
-        }
-        Button("Quick Look") { QuickLook.toggle(urls: tab.actionable.map(\.url)) }
+        } label: { Label("Open With", systemImage: "square.and.arrow.up") }
+        Button { focus(entry); QuickLook.toggle(urls: tab.actionable.map(\.url)) } label: { Label("Quick Look", systemImage: "eye") }
 
         Divider()
-        Button("Copy → other pane") { app.run(CommandID.copy) }
-        Button("Move → other pane") { app.run(CommandID.move) }
-        Button("Copy") { app.run(CommandID.clipCopy) }
-        Button("Cut") { app.run(CommandID.clipCut) }
+        Button { focus(entry); app.run(CommandID.copy) } label: { Label("Copy to other pane", systemImage: "arrow.right.doc.on.clipboard") }
+        Button { focus(entry); app.run(CommandID.move) } label: { Label("Move to other pane", systemImage: "arrow.right.square") }
+        Button { focus(entry); app.run(CommandID.clipCopy) } label: { Label("Copy", systemImage: "doc.on.doc") }
+        Button { focus(entry); app.run(CommandID.clipCut) } label: { Label("Cut", systemImage: "scissors") }
 
         Divider()
-        Button("Rename…") { app.run(CommandID.rename) }
-        Button("New Folder…") { app.run(CommandID.newFolder) }
-        Button("Delete") { app.run(CommandID.delete) }
+        Button { focus(entry); app.run(CommandID.rename) } label: { Label("Rename…", systemImage: "pencil") }
+        Button { focus(entry); app.run(CommandID.newFolder) } label: { Label("New Folder…", systemImage: "folder.badge.plus") }
+        Button(role: .destructive) { focus(entry); app.run(CommandID.delete) } label: { Label("Delete", systemImage: "trash") }
 
         Divider()
-        Menu("Tags") {
+        Menu {
             ForEach(1..<Tag.colorNames.count, id: \.self) { i in
                 let name = Tag.colorNames[i]
                 let on = entry.tags.contains { $0.name == name }
@@ -334,12 +338,12 @@ struct FileTableView: View {
             }
             Divider()
             Button("New Tag…") { app.promptNewTag(on: entry) }
-        }
+        } label: { Label("Tags", systemImage: "tag") }
 
         Divider()
-        Button("Reveal in Finder") { app.run(CommandID.reveal) }
-        Button("Get Info") { app.run(CommandID.getInfo) }
-        Button("Copy Path") { app.run(CommandID.copyPath) }
+        Button { focus(entry); app.run(CommandID.reveal) } label: { Label("Reveal in Finder", systemImage: "magnifyingglass") }
+        Button { focus(entry); app.run(CommandID.getInfo) } label: { Label("Get Info", systemImage: "info.circle") }
+        Button { focus(entry); app.run(CommandID.copyPath) } label: { Label("Copy Path", systemImage: "link") }
     }
 
     /// Menu for empty pane background — no selection target.

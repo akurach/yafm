@@ -81,6 +81,20 @@ the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `Views.swift` (840 lines) split into `Sidebar.swift`, `Inspector.swift`, `FunctionBar.swift`,
   `RenameSheet.swift`.
 
+### Fixed — post-icon bug report
+- Keyboard nav dead / selection jumping to the last row: SwiftUI builds each row's
+  context menu eagerly, and focusing the row inside the menu *builder* fired for every
+  row and snapped selection to the last one. Focus now happens inside each menu action.
+- File list pinned to the bottom of the pane with the header floating mid-pane: the
+  `List` wouldn't fill a `VStack`; rebuilt as a `List` with a pinned `Section(header:)`,
+  which fills natively and aligns header columns with the rows.
+- Tag cloud empty: indexing walked Home with `.skipsHiddenFiles`, missing tags under
+  `~/Library/Mobile Documents` (iCloud). Now indexes via Spotlight (`mdfind`) across the
+  whole system, plus a direct walk of explicit roots for un-indexed locations.
+- Context menu restyled with SF Symbols + grouping; destructive Delete role.
+- App icon had a white border (source PNG was a dark squircle on white, no alpha) —
+  trimmed and flood-filled corners to transparent.
+
 ### Added
 - App icon (`App/Resources/AppIcon.icns`, wired via `Info.plist` + `make-app.sh`).
 - `docs/feature-requests/` backlog with full specs: Photo Ingest and the app shell
