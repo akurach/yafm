@@ -19,6 +19,38 @@ enum AppTheme: String, CaseIterable, Identifiable {
     }
 }
 
+/// Row density for the file table. Power users want more rows on screen than
+/// Finder's single fixed height; `cozy` is the default middle ground.
+enum Density: String, CaseIterable, Identifiable {
+    case compact, cozy, comfortable
+    var id: String { rawValue }
+    var label: String { rawValue.capitalized }
+
+    /// Extra vertical padding per row half-edge (points). Drives row height.
+    var rowPadding: CGFloat {
+        switch self {
+        case .compact: 1
+        case .cozy: 3
+        case .comfortable: 6
+        }
+    }
+    /// Row font — compact shrinks a notch to pack more in.
+    var rowFont: SwiftUI.Font {
+        switch self {
+        case .compact: .callout
+        case .cozy, .comfortable: .body
+        }
+    }
+    /// Icon box size, scaled with density.
+    var iconSize: CGFloat {
+        switch self {
+        case .compact: 14
+        case .cozy: 16
+        case .comfortable: 18
+        }
+    }
+}
+
 /// Where new windows start.
 enum StartMode: String, CaseIterable, Identifiable {
     case home, lastUsed, custom
@@ -47,6 +79,13 @@ final class AppSettings {
     /// Light / Dark / System.
     var theme: AppTheme { didSet { store.set(theme.rawValue, forKey: Keys.theme) } }
 
+    /// Row density (Compact / Cozy / Comfortable).
+    var density: Density { didSet { store.set(density.rawValue, forKey: Keys.density) } }
+
+    /// Animate selection/navigation glide. Off = instant (some power users
+    /// prefer zero motion); streaming row inserts stay un-animated either way.
+    var animations: Bool { didSet { store.set(animations, forKey: Keys.animations) } }
+
     /// Start folder for new windows.
     var startMode: StartMode { didSet { store.set(startMode.rawValue, forKey: Keys.startMode) } }
     var customStartPath: String { didSet { store.set(customStartPath, forKey: Keys.customStartPath) } }
@@ -63,6 +102,8 @@ final class AppSettings {
         static let rightArrowOpensFiles = "rightArrowOpensFiles"
         static let showHiddenByDefault = "showHiddenByDefault"
         static let theme = "theme"
+        static let density = "density"
+        static let animations = "animations"
         static let startMode = "startMode"
         static let customStartPath = "customStartPath"
         static let lastFolder = "lastFolder"
@@ -75,6 +116,8 @@ final class AppSettings {
         rightArrowOpensFiles = d.bool(forKey: Keys.rightArrowOpensFiles)   // default false → folders only
         showHiddenByDefault = d.bool(forKey: Keys.showHiddenByDefault)
         theme = AppTheme(rawValue: d.string(forKey: Keys.theme) ?? "") ?? .system
+        density = Density(rawValue: d.string(forKey: Keys.density) ?? "") ?? .cozy
+        animations = d.object(forKey: Keys.animations) as? Bool ?? true   // default on
         startMode = StartMode(rawValue: d.string(forKey: Keys.startMode) ?? "") ?? .home
         customStartPath = d.string(forKey: Keys.customStartPath) ?? ""
         // Permanent delete: confirm by default unless the user has explicitly set it.
@@ -204,6 +247,19 @@ struct SettingsView: View {
                     ForEach(AppTheme.allCases) { Text($0.label).tag($0) }
                 }
                 .pickerStyle(.segmented)
+            }
+            Section("Density") {
+                Picker("Row density", selection: bindable.density) {
+                    ForEach(Density.allCases) { Text($0.label).tag($0) }
+                }
+                .pickerStyle(.segmented)
+                Text("Compact packs more rows on screen; Comfortable gives each row room.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Section("Motion") {
+                Toggle("Animate selection & navigation", isOn: bindable.animations)
+                Text("Off: instant, no motion. Streaming row inserts never animate either way.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)

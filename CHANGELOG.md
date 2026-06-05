@@ -6,6 +6,42 @@ the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.5.0] — Looks as good as it runs
+
+The visual & interaction-polish milestone. The keyboard wedge (v0.4) made yafm
+fast; v0.5 makes it feel finished — density to your taste, real drag-and-drop,
+motion that glides instead of snapping — plus one invisible seam (async plugin
+values) landed before a virtual filesystem would force it as a breaking change.
+
+### Added — polish
+- **Density modes** (Settings ▸ Appearance ▸ Density): Compact / Cozy /
+  Comfortable. Compact packs more rows on screen than Finder's single fixed
+  height; Comfortable gives each row room. Drives row padding, font, and icon
+  size off the `Density` tokens. (`Settings.swift`, `Views.swift`.)
+- **Full drag-and-drop.** Drag a row to the other pane, onto a folder row, or
+  out to Finder/any app to copy; hold **⌘** to move. Drop onto empty pane area
+  lands in the current directory. Folder rows and the pane draw an accent ring
+  while targeted. Dropping files *in* from Finder works too — the same path.
+  (`AppState.dropEntries`, `FolderDrop` in `Views.swift`.)
+- **Motion toggle** (Settings ▸ Appearance ▸ Motion): animate selection &
+  navigation, or keep it instant. On by default.
+
+### Changed — interaction
+- **Scoped animation.** The global "disable all animations" kill-switch is gone.
+  Selection / cursor / navigation now glide (token-timed, `Theme.Motion`), while
+  streaming row inserts stay un-animated so a loading folder never tears.
+  (`TabModel.isStreaming` gates it.)
+- Cursor vs selection (redesigned in v0.4 — a leading accent bar for the cursor,
+  a filled wash for selection) now scales cleanly across all three densities.
+
+### Added — platform seam
+- **Async plugin-value path.** `PluginColumn` gains an optional `asyncEvaluate`
+  alongside the synchronous `evaluate`; a new main-actor `PluginValueCache`
+  memoizes results per (column, URL), shows a placeholder while resolving, and
+  de-dups concurrent reads of the same cell. A future VFS/remote column plugs in
+  here without touching the table or any existing sync plugin. (`Commands.swift`;
+  4 new Core tests — 45 total.)
+
 ## [0.4.0] — Fast as your editor
 
 The keyboard-first milestone. The roadmap was re-sequenced (2026-06-05 review):

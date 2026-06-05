@@ -131,13 +131,19 @@ App-shell milestone pulled out of the backlog. Full spec: [`app-shell.md`](docs/
 - [x] **i18n hygiene**: new UI strings wrapped in `String(localized:)`.
 - **Plugin API: frozen** (as planned) — internal registry unchanged, nothing new author-facing.
 
-## v0.5 — "Looks as good as it runs" (visual & interaction polish)
+## v0.5 — "Looks as good as it runs" (visual & interaction polish) ✅ shipped
 
-- [ ] **Density modes** (Compact / Cozy / Comfortable) — power users want more rows than Finder; today it's one fixed density.
-- [ ] **Redesigned cursor/selection** — today selected vs cursor differ by ~15% opacity (`accentColor.opacity(0.25)` vs `0.10`), nearly invisible. Distinct ring/bar.
-- [ ] **Full drag-and-drop** — inter-pane copy/move + drop-onto-folder + drag in/out of app (currently absent; its absence reads as "not real yet"). Built on the existing gesture model (`Views.swift:191-198`) + `focusContextTarget` (`State.swift:762`).
-- [ ] **Scoped animation** — replace the global `disablesAnimations` kill-switch (`Views.swift:215`) with per-mutation animation (selection/navigation glide) referencing token timings; keep streaming inserts suppressed.
-- [ ] **Seam — async plugin-value path**: make `PluginColumn.evaluate` (`Commands.swift:150`) async-capable before VFS forces it as a breaking change.
+- [x] **Density modes** (Compact / Cozy / Comfortable) — `Density` tokens drive row
+  padding/font/icon; Settings ▸ Appearance ▸ Density. (`Settings.swift`, `Views.swift`.)
+- [x] **Redesigned cursor/selection** — distinct leading accent bar (cursor) vs filled wash
+  (selection), landed in v0.4's `Theme.Palette`; v0.5 scales it across the three densities.
+- [x] **Full drag-and-drop** — inter-pane + drop-onto-folder + drag in/out of app; copy by
+  default, **⌘** to move; accent-ring drop highlight. (`AppState.dropEntries`, `FolderDrop`.)
+- [x] **Scoped animation** — global `disablesAnimations` kill-switch removed; selection/cursor/
+  nav glide (token-timed), streaming inserts stay suppressed via `TabModel.isStreaming`. Motion
+  toggle in Settings.
+- [x] **Seam — async plugin-value path**: `PluginColumn.asyncEvaluate` + `PluginValueCache`
+  (placeholder → resolve, deduped, invalidatable) before VFS forces it. (+4 Core tests, 45 total.)
 
 ## v0.6 — "Never a dead end" (honest states + search that doesn't freeze)
 
