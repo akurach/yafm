@@ -26,7 +26,7 @@ yafm is the daily driver Finder should have been: fast, keyboard-driven, modern,
 
 ## Decisions (locked)
 
-- **Distribution:** notarized **DMG**. No App Store, no sandbox (sandbox would break plugins, FTP/SMB, full disk access — not worth it).
+- **Distribution:** **DMG**, no App Store, no sandbox (sandbox would break plugins, FTP/SMB, full disk access — not worth it). *Notarized* DMG is the target once an Apple Developer ID cert is set up; until then releases ship an **unnotarized DMG** with "Open Anyway" instructions (notarization needs the $99/yr Apple Developer Program).
 - **Tags:** read/write **native macOS tags** (xattr `com.apple.metadata`) so they stay compatible with Finder, plus our own **index** for speed and a proper **UI**.
 - **File operations:** our **own engine** — visible queue, progress, cancel. Finder hides this; we show it.
 - **Plugins:** community plugins are **JavaScript** via **JavaScriptCore** (ships with macOS, zero deps). Model is Obsidian/Chrome: download a file → it loads → it works. Toggle on/off, marketplace later. No rebuild. Plugins can only do what the host API exposes. Heavy first-party features (SMB, archive mounting) may be native/XPC but appear in the same plugin registry for a uniform UX.

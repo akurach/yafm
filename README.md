@@ -32,7 +32,17 @@ See **[VISION.md](VISION.md)** for the full vision, locked decisions, and roadma
 
 ## Distribution
 
-Notarized DMG. No App Store, no sandbox.
+DMG, no App Store, no sandbox. A *notarized* DMG is the goal once an Apple Developer ID is in place; for now releases ship an **unnotarized DMG**.
+
+### Installing an unnotarized DMG
+
+Until the app is notarized (needs a paid Apple Developer account), Gatekeeper will warn on first launch. Open it once with any of:
+
+- **Right-click** `yafm.app` → **Open** → **Open**, or
+- System Settings → **Privacy & Security** → scroll down → **Open Anyway**, or
+- Terminal: `xattr -dr com.apple.quarantine /Applications/yafm.app`
+
+After the first launch it opens normally. Or just build from source (below) — locally built apps aren't quarantined.
 
 ## Development
 
@@ -43,7 +53,7 @@ swift build                    # compile Core + yafm
 swift test                     # Core unit tests
 Scripts/make-app.sh            # wrap .build/debug/yafm into .build/debug/yafm.app
 open .build/debug/yafm.app     # run
-Scripts/make-dmg.sh            # release build → notarized .dmg (set CODESIGN_IDENTITY + AC_NOTARY_PROFILE)
+Scripts/make-dmg.sh            # release build → .dmg (unnotarized; set CODESIGN_IDENTITY + AC_NOTARY_PROFILE to notarize)
 ```
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the module layout and [ROADMAP.md](ROADMAP.md) for status.
