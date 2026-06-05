@@ -23,6 +23,17 @@ final class QuickLook: NSObject, QLPreviewPanelDataSource, QLPreviewPanelDelegat
         }
     }
 
+    /// Live-follow the keyboard cursor: while the panel is open, swap its item
+    /// to the newly-focused row so arrowing through the list updates the preview
+    /// (Finder behaviour). No-op when the panel is closed.
+    static func updateIfVisible(urls: [URL]) {
+        guard !urls.isEmpty,
+              QLPreviewPanel.sharedPreviewPanelExists(),
+              let panel = QLPreviewPanel.shared(), panel.isVisible else { return }
+        shared.urls = urls
+        panel.reloadData()
+    }
+
     nonisolated func numberOfPreviewItems(in panel: QLPreviewPanel!) -> Int {
         MainActor.assumeIsolated { urls.count }
     }

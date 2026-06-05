@@ -141,18 +141,24 @@ struct FileTableView: View {
             switch tab.state {
             case .idle:
                 Color.clear
-            case .loading(let partial):
-                VStack(spacing: 0) {
-                    HStack(spacing: 6) {
-                        ProgressView().controlSize(.small)
-                        Text("Reading… (\(partial.count))").foregroundStyle(.secondary).font(.caption)
-                    }.padding(6)
-                    rows
-                }
-            case .loaded:
-                rows
             case .failed(let message):
                 ContentUnavailableView("Can't open folder", systemImage: "exclamationmark.triangle", description: Text(message))
+            default:
+                // Loading and loaded both render the same table; the "Reading…"
+                // badge floats as an overlay so it never pushes the rows down
+                // (that layout shift was the jerky-table jank during nav).
+                rows.overlay(alignment: .top) {
+                    if case .loading(let partial) = tab.state {
+                        HStack(spacing: 6) {
+                            ProgressView().controlSize(.small)
+                            Text("Reading… (\(partial.count))")
+                                .font(.caption).foregroundStyle(.secondary)
+                        }
+                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(.regularMaterial, in: Capsule())
+                        .padding(.top, 6)
+                    }
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -176,14 +182,18 @@ struct FileTableView: View {
                             .id(entry.url)
                             .listRowBackground(rowBackground(entry))
                             .contentShape(Rectangle())
-                            .onTapGesture(count: 2) {
-                                if entry.isDirectory { tab.open(entry.url) } else { app.openFile(entry.url) }
-                            }
+                            // Single-tap selects INSTANTLY; double-tap opens. Both
+                            // recognize independently (simultaneous) so the single
+                            // doesn't stall ~0.3s waiting to rule out a double —
+                            // that wait was the sluggish / dropped-click feel.
                             .onTapGesture {
                                 tab.cursor = entry.url
                                 tab.selection = [entry.url]
                                 app.activePaneIsLeft = tabBelongsToLeft()
                             }
+                            .simultaneousGesture(TapGesture(count: 2).onEnded {
+                                if entry.isDirectory { tab.open(entry.url) } else { app.openFile(entry.url) }
+                            })
                             .contextMenu { rowMenu(entry) }
                     }
                 } header: {
@@ -192,8 +202,17 @@ struct FileTableView: View {
             }
             .contextMenu { backgroundMenu() }   // empty area below the rows
             .listStyle(.inset)
+            // Kill implicit row animations: streaming partials inserted rows one
+            // batch at a time, and List animated every insert → torn, choppy
+            // scrolling while a folder loads. Snappy + instant is what we want.
+            .transaction { $0.disablesAnimations = true }
             .onChange(of: tab.cursor) { _, new in
-                if let new { withAnimation(.linear(duration: 0.1)) { proxy.scrollTo(new, anchor: .center) } }
+                guard let new else { return }
+                proxy.scrollTo(new, anchor: .center)
+                // Follow the cursor with QuickLook when its panel is open.
+                if tab.id == app.activeTab.id {
+                    QuickLook.updateIfVisible(urls: tab.actionable.map(\.url))
+                }
             }
         }
     }
@@ -328,17 +347,14 @@ struct FileTableView: View {
         Button(role: .destructive) { focus(entry); app.run(CommandID.delete) } label: { Label("Delete", systemImage: "trash") }
 
         Divider()
-        Menu {
-            ForEach(1..<Tag.colorNames.count, id: \.self) { i in
-                let name = Tag.colorNames[i]
-                let on = entry.tags.contains { $0.name == name }
-                Button { app.toggleColorTag(name: name, colorIndex: i, on: entry) } label: {
-                    Label(name, systemImage: on ? "checkmark.circle.fill" : "circle")
-                }
-            }
+        Button { focus(entry); app.tagSheet = .init(url: entry.url) } label: {
+            Label("Tags…", systemImage: "tag")
+        }
+
+        if entry.isDirectory {
             Divider()
-            Button("New Tag…") { app.promptNewTag(on: entry) }
-        } label: { Label("Tags", systemImage: "tag") }
+            Button { app.addBookmark(entry.url) } label: { Label("Add to Favorites", systemImage: "star") }
+        }
 
         Divider()
         Button { focus(entry); app.run(CommandID.reveal) } label: { Label("Reveal in Finder", systemImage: "magnifyingglass") }
@@ -372,6 +388,7 @@ struct FileTableView: View {
             Label("Show Hidden Files", systemImage: tab.showHidden ? "checkmark" : "")
         }
         Divider()
+        Button("Add Current Folder to Favorites") { app.addBookmark(tab.directory) }
         Button("Refresh") { tab.load() }
     }
 }

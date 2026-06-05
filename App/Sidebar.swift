@@ -17,16 +17,20 @@ struct BookmarksSidebar: View {
                     Label(bm.name, systemImage: "folder")
                         .contentShape(Rectangle())
                         .onTapGesture { app.activeTab.open(bm.url) }
+                        .contextMenu {
+                            Button("Open") { app.activeTab.open(bm.url) }
+                            Button("Open in New Tab") { app.openInNewTab(bm.url) }
+                            Divider()
+                            Button(role: .destructive) { app.removeBookmark(bm) } label: {
+                                Label("Remove from Favorites", systemImage: "minus.circle")
+                            }
+                        }
                 }
             }
 
             Section("Locations") {
-                Label("Computer", systemImage: "desktopcomputer")
-                    .contentShape(Rectangle())
-                    .onTapGesture { app.activeTab.open(URL(fileURLWithPath: "/")) }
-                Label("Home", systemImage: "house")
-                    .contentShape(Rectangle())
-                    .onTapGesture { app.activeTab.open(FileManager.default.homeDirectoryForCurrentUser) }
+                locationRow("Computer", "desktopcomputer", URL(fileURLWithPath: "/"))
+                locationRow("Home", "house", FileManager.default.homeDirectoryForCurrentUser)
             }
 
             if !devices.isEmpty {
@@ -51,6 +55,21 @@ struct BookmarksSidebar: View {
         }
         .frame(minWidth: 170, maxWidth: 220)
     }
+
+    /// A Locations entry with open / new-tab / add-favorite context menu.
+    private func locationRow(_ title: String, _ icon: String, _ url: URL) -> some View {
+        Label(title, systemImage: icon)
+            .contentShape(Rectangle())
+            .onTapGesture { app.activeTab.open(url) }
+            .contextMenu {
+                Button("Open") { app.activeTab.open(url) }
+                Button("Open in New Tab") { app.openInNewTab(url) }
+                Divider()
+                Button { app.addBookmark(url) } label: {
+                    Label("Add to Favorites", systemImage: "star")
+                }
+            }
+    }
 }
 
 /// One tag in the sidebar cloud: color dot · name · file count. Click filters.
@@ -69,6 +88,9 @@ struct TagCloudRow: View {
         }
         .contentShape(Rectangle())
         .onTapGesture { app.openTag(tag) }
+        .contextMenu {
+            Button("Show Tagged Files") { app.openTag(tag) }
+        }
     }
 }
 
@@ -99,6 +121,23 @@ struct VolumeRow: View {
         }
         .contentShape(Rectangle())
         .onTapGesture { app.activeTab.open(volume.url) }
+        .contextMenu {
+            Button("Open") { app.activeTab.open(volume.url) }
+            Button("Open in New Tab") { app.openInNewTab(volume.url) }
+            Divider()
+            Button { app.addBookmark(volume.url) } label: {
+                Label("Add to Favorites", systemImage: "star")
+            }
+            Button("Reveal in Finder") {
+                NSWorkspace.shared.activateFileViewerSelecting([volume.url])
+            }
+            if volume.canEject {
+                Divider()
+                Button { app.eject(volume) } label: {
+                    Label("Eject", systemImage: "eject")
+                }
+            }
+        }
     }
 
     private var icon: String {

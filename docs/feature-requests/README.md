@@ -10,5 +10,6 @@ milestone; the detailed spec stays here as the source of truth.
 
 | File | Feature | Status |
 |------|---------|--------|
+| [device-detection.md](device-detection.md) | Device Detection & Classification — metadata + device-type/read-only/transport for mounted volumes | someday |
 | [photo-ingest.md](photo-ingest.md) | Photo Ingest — import from camera cards (SD/CFexpress/USB) | someday |
 | [app-shell.md](app-shell.md) | Settings · About · auto-updater · theme (light/dark/system) | someday |

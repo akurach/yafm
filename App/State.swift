@@ -261,6 +261,11 @@ final class AppState {
     // Bulk-rename + tag sheets driven from the UI.
     var renameSheet: Bool = false
 
+    /// Target of the custom tag editor popover/sheet (§context menu "Tags…").
+    /// Wrapped so `.sheet(item:)` has an Identifiable; nil = closed.
+    struct TagSheetItem: Identifiable { let url: URL; var id: URL { url } }
+    var tagSheet: TagSheetItem?
+
     /// Internal copy/cut buffer (distinct from NSPasteboard). Paste enqueues a
     /// copy or move into the active pane's directory.
     var clipboard: (urls: [URL], cut: Bool)?
@@ -277,6 +282,21 @@ final class AppState {
     var activeTab: TabModel { activePane.active }
 
     func switchPane() { activePaneIsLeft.toggle() }
+
+    /// Open a URL in a fresh tab of the active pane (sidebar "Open in New Tab").
+    func openInNewTab(_ url: URL) { activePane.newTab(at: url) }
+
+    // MARK: Favorites (sidebar)
+
+    func addBookmark(_ url: URL) {
+        guard !bookmarks.contains(where: { $0.path == url.path }) else { return }
+        let name = url.lastPathComponent.isEmpty ? "/" : url.lastPathComponent
+        bookmarks.append(Bookmark(name: name, path: url.path))
+    }
+
+    func removeBookmark(_ bm: Bookmark) {
+        bookmarks.removeAll { $0.id == bm.id }
+    }
 
     func start() {
         left.active.load()
@@ -651,6 +671,19 @@ final class AppState {
             self.refreshTags()
         }
     }
+
+    /// Persist a full tag set for one URL (the custom tag editor writes the whole
+    /// array on every change), then refresh the list + sidebar cloud.
+    func writeTags(_ newTags: [Tag], on url: URL) {
+        Task { [weak self] in
+            guard let self else { return }
+            try? await self.tags.setTags(newTags, on: url)
+            self.activeTab.load()
+            self.refreshTags()
+        }
+    }
+
+    func currentTags(of url: URL) async -> [Tag] { await tags.tags(of: url) }
 
     func promptNewTag(on entry: FSEntry) {
         let alert = NSAlert()

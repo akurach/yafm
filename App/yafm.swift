@@ -47,6 +47,7 @@ struct RootView: View {
         }
         .sheet(isPresented: $app.renameSheet) { RenameSheet(app: app) }
         .sheet(isPresented: $app.showOnboarding) { OnboardingSheet(app: app) }
+        .sheet(item: $app.tagSheet) { item in TagEditorSheet(app: app, url: item.url) }
     }
 }
 

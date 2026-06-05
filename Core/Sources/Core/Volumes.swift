@@ -30,8 +30,15 @@ public struct Volume: Identifiable, Hashable, Sendable {
         self.availableCapacity = availableCapacity
     }
 
-    /// True for USB sticks / external disks / DMGs — anything we can eject.
-    public var canEject: Bool { isEjectable || isRemovable }
+    /// True for USB sticks / external disks / DMGs / network shares — anything
+    /// the user can unmount. Many external HDDs report neither `isEjectable` nor
+    /// `isRemovable`, so fall back to "not internal" (external or network). The
+    /// boot/root volume is internal, so it's correctly excluded; guard the root
+    /// path too in case a system misreports it.
+    public var canEject: Bool {
+        if url.path == "/" { return false }
+        return isEjectable || isRemovable || !isInternal
+    }
 
     /// Network mount (SMB/AFP/NFS) — shown under "Network", not "Devices".
     public var isNetwork: Bool { !isLocal }

@@ -2,7 +2,7 @@
 
 **Yet Another File Manager for macOS.** A fast, keyboard-driven, modern alternative to Finder — that never freezes silently.
 
-> Status: early development. v0.1 + v0.2 + v0.2.1 (daily-driver UX) done. Native Swift / SwiftUI.
+> Status: early development. v0.1 + v0.2 + v0.2.1 (daily-driver UX) + v0.2.2 (UX bugfixes) done. Native Swift / SwiftUI.
 
 ## Why
 

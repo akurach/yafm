@@ -49,6 +49,17 @@ closes that. Full spec in [TZ.md](TZ.md).
 - [x] Access on launch: Info.plist usage strings + Full Disk Access onboarding + honest
   "limited access" banner (never silent empty folders); removable/network volume consent
 
+## v0.2.2 — UX bugfixes & polish
+
+Post-0.2.1 bug report fixes. Full notes in [`CHANGELOG.md`](CHANGELOG.md).
+
+- [x] QuickLook follows the keyboard cursor (Space → preview, arrows update it in place)
+- [x] Instant mouse single-click (no double-click disambiguation stall / dropped clicks)
+- [x] No table jank while loading — floating "Reading…" badge + disabled implicit row animations
+- [x] External-HDD eject button appears (eject fallback for any non-internal volume)
+- [x] Custom tag editor UI (swatches + chips + inline add) replacing the Finder-style submenu
+- [x] Context menus across all sidebar sections (Favorites / Locations / Devices / Tags)
+
 ## v0.3 — Platform
 
 - [ ] JS plugin runtime (JavaScriptCore) + 2–3 extension points exposed
@@ -66,6 +77,10 @@ closes that. Full spec in [TZ.md](TZ.md).
 
 Parked feature requests with complete specs. Not scheduled; pull into a milestone when prioritized.
 
+- [ ] **Device Detection & Classification** — on mount, async-collect volume metadata (filesystem,
+  capacity, free space, writable/read-only, vendor/model, transport) via DiskArbitration + IOKit and
+  classify the device (SSD/HDD/USB/SD/camera card/backup/network) with a confidence score; device-type
+  icons in the sidebar. Reused later by Photo Ingest. Spec: [`device-detection.md`](docs/feature-requests/device-detection.md)
 - [ ] **Photo Ingest** — import from camera cards (SD/CFexpress/USB): detect camera media, import
   wizard, preview, copy+verify (checksum), duplicate handling, `import-report.json`, safe eject.
   Spec: [`photo-ingest.md`](docs/feature-requests/photo-ingest.md)

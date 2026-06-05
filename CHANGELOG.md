@@ -6,6 +6,35 @@ the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed — v0.2.2 (post-0.2.1 UX bug report)
+- **QuickLook follows the keyboard cursor.** With the Space preview open, arrowing through the
+  list now swaps the previewed file in place (Finder behaviour) via `QuickLook.updateIfVisible`,
+  driven from the cursor-change handler in `FileTableView`.
+- **Mouse single-click no longer lags or drops.** The row had `onTapGesture(count: 2)` +
+  `onTapGesture` together, so SwiftUI stalled every single tap ~0.3 s waiting to rule out a
+  double-click (and dropped clicks under jitter). Single tap now selects instantly; double-click
+  opens via an independent `simultaneousGesture(TapGesture(count: 2))`.
+- **Table no longer janks while a folder loads.** The "Reading… (N)" indicator was stacked above
+  the rows and shifted the whole table on every navigation; it's now a floating overlay badge.
+  Implicit row animations are disabled (`transaction.disablesAnimations`) so streamed partial
+  batches stop tearing the scroll.
+- **External HDD eject now appears.** Many external disks report neither `isEjectable` nor
+  `isRemovable`; `Volume.canEject` falls back to "not internal" (external or network), with the
+  root volume always excluded.
+
+### Added — v0.2.2
+- **Custom tag editor** (`TagEditorSheet`) replaces the Finder-style nested checkbox submenu:
+  large tappable color swatches, free-form tags as removable chips, an inline auto-focused "add
+  tag" field, and a small `FlowLayout` for wrapping. Opened from the row context menu's "Tags…".
+- **Sidebar context menus** across Favorites (Open / Open in New Tab / Remove), Locations and
+  Devices (Open / New Tab / Add to Favorites / Reveal / **Eject** for removables), and Tags (Show
+  Tagged Files). Plus "Add to Favorites" on folder rows and "Add Current Folder to Favorites" in
+  the background menu (`AppState.addBookmark`/`removeBookmark`/`openInNewTab`).
+- **Device Detection & Classification** spec parked in the backlog
+  (`docs/feature-requests/device-detection.md`): async volume metadata (filesystem, capacity, free
+  space, writable/read-only, vendor/model, transport via DiskArbitration + IOKit) and device-type
+  classification with a confidence score. Metadata-only MVP; reused later by Photo Ingest.
+
 ### Added — v0.1 spine
 - SwiftPM scaffold: `Core` (async filesystem provider, streamed cancellable listing) and
   `App` (SwiftUI dual-pane entry).
