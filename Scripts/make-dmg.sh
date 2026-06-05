@@ -46,7 +46,7 @@ mkdir -p "$STAGE"
 cp -R "$APP" "$STAGE/"
 ln -s /Applications "$STAGE/Applications"
 
-echo "▸ Creating $DMG…"
+echo "▸ Creating ${DMG}…"
 hdiutil create -volname "yafm $VERSION" -srcfolder "$STAGE" -ov -format UDZO "$DMG" >/dev/null
 rm -rf "$STAGE"
 
