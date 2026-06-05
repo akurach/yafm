@@ -41,6 +41,7 @@ swift build                    # compile Core + yafm
 swift test                     # Core unit tests
 Scripts/make-app.sh            # wrap .build/debug/yafm into .build/debug/yafm.app
 open .build/debug/yafm.app     # run
+Scripts/make-dmg.sh            # release build → notarized .dmg (set CODESIGN_IDENTITY + AC_NOTARY_PROFILE)
 ```
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the module layout and [ROADMAP.md](ROADMAP.md) for status.
