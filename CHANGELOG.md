@@ -6,6 +6,31 @@ the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added — v0.2.3 Settings & app shell
+- **Settings window (⌘,)** backed by `UserDefaults` (`AppSettings` / `SettingsView`) with five
+  tabs: General · Appearance · Operations · Tags · Updates. Settings change real behaviour.
+- **"Right arrow opens files"** setting — default **off**: → enters folders only and ignores
+  files (Enter always opens); opt in to also open files on →. Wired through
+  `AppState.enterCursor` / `openCursor(allowFileOpen:)`.
+- **"Show hidden files in new tabs"** — new tabs/panes inherit it (`TabModel`/`PaneModel` take a
+  `showHidden` default).
+- **Start folder** (General) — Home / Last used / a specific folder (with picker); new windows open
+  there (`AppSettings.startDirectory`, last folder remembered on scene-phase change).
+- **Operations tab** — confirm-before-delete (default **on**; delete is permanent, not Trash) and a
+  default copy/move collision policy (keep both / skip / replace), plumbed through new
+  `Core.CollisionPolicy` + `OperationTask.collision` + `FileEngine.plannedDestination`.
+- **Tags tab** — rescan and clear the tag index (`TagService.clear`, `AppState.rescanTags` /
+  `clearTags`).
+- **Updates tab** — "Check for Updates" via the GitHub Releases API (`UpdateChecker`): honest
+  status (checking / up to date / available → opens the release page / error), non-blocking. No
+  auto-install (Sparkle deferred).
+- **Theme Light / Dark / System** (Appearance) via `.preferredColorScheme`, persisted.
+- **About yafm** — standard about panel (version from Info.plist), `CommandGroup(replacing: .appInfo)`.
+
+### Fixed — v0.2.3
+- Tag editor now closes when you click outside it: it was a modal `.sheet` (no outside-dismiss);
+  reworked into a `.popover` anchored to the row.
+
 ### Fixed — v0.2.2 (post-0.2.1 UX bug report)
 - **QuickLook follows the keyboard cursor.** With the Space preview open, arrowing through the
   list now swaps the previewed file in place (Finder behaviour) via `QuickLook.updateIfVisible`,

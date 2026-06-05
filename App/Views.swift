@@ -195,6 +195,11 @@ struct FileTableView: View {
                                 if entry.isDirectory { tab.open(entry.url) } else { app.openFile(entry.url) }
                             })
                             .contextMenu { rowMenu(entry) }
+                            // Popover (not a sheet) so clicking outside dismisses
+                            // the tag editor, anchored to the row it acts on.
+                            .popover(isPresented: tagPopover(entry), arrowEdge: .trailing) {
+                                TagEditorSheet(app: app, url: entry.url)
+                            }
                     }
                 } header: {
                     columnHeader
@@ -249,6 +254,14 @@ struct FileTableView: View {
 
     private func tabBelongsToLeft() -> Bool {
         app.left.tabs.contains { $0.id == tab.id }
+    }
+
+    /// Drives the per-row tag popover off the shared `app.tagSheet` target.
+    private func tagPopover(_ entry: FSEntry) -> Binding<Bool> {
+        Binding(
+            get: { app.tagSheet?.url == entry.url },
+            set: { if !$0 { app.tagSheet = nil } }
+        )
     }
 
     private func row(_ entry: FSEntry) -> some View {

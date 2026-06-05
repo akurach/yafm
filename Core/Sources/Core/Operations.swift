@@ -20,6 +20,12 @@ public enum FileOperationKind: Sendable, Equatable {
     }
 }
 
+/// How copy/move resolves an existing file at the destination.
+/// `keepBoth` (default) is the historical behaviour ("file copy.txt").
+public enum CollisionPolicy: String, Sendable, Equatable, CaseIterable {
+    case keepBoth, skip, replace
+}
+
 /// One queued unit of work. `destination` is the target *directory* for
 /// copy/move, the parent for rename, and nil for delete.
 public struct OperationTask: Identifiable, Sendable, Equatable {
@@ -27,12 +33,15 @@ public struct OperationTask: Identifiable, Sendable, Equatable {
     public let kind: FileOperationKind
     public let sources: [URL]
     public let destination: URL?
+    public let collision: CollisionPolicy
 
-    public init(id: UUID = UUID(), kind: FileOperationKind, sources: [URL], destination: URL? = nil) {
+    public init(id: UUID = UUID(), kind: FileOperationKind, sources: [URL],
+                destination: URL? = nil, collision: CollisionPolicy = .keepBoth) {
         self.id = id
         self.kind = kind
         self.sources = sources
         self.destination = destination
+        self.collision = collision
     }
 }
 
@@ -127,13 +136,17 @@ public actor FileEngine {
                     progress(dst, .running)
                 case .move:
                     guard let dir = task.destination else { throw OpError.noDestination }
-                    let dst = Self.uniqueDestination(for: source, in: dir)
+                    guard let dst = try Self.plannedDestination(for: source, in: dir, policy: task.collision) else {
+                        done += Self.size(of: source); progress(source, .running); continue   // skipped
+                    }
                     try FileManager.default.moveItem(at: source, to: dst)
                     done += Self.size(of: source)
                     progress(dst, .running)
                 case .copy:
                     guard let dir = task.destination else { throw OpError.noDestination }
-                    let dst = Self.uniqueDestination(for: source, in: dir)
+                    guard let dst = try Self.plannedDestination(for: source, in: dir, policy: task.collision) else {
+                        done += Self.contentBytes(of: source); progress(source, .running); continue   // skipped
+                    }
                     try copy(source, to: dst, taskID: task.id, done: &done, total: total, emit: emit)
                 }
             }
@@ -217,6 +230,23 @@ public actor FileEngine {
             case .cannotWrite: return "Can't write to destination."
             case .readFailed: return "Read failed."
             }
+        }
+    }
+
+    /// Resolve the destination per collision policy. Returns nil to signal
+    /// "skip this source". `replace` removes the existing item first.
+    static func plannedDestination(for source: URL, in dir: URL, policy: CollisionPolicy) throws -> URL? {
+        let fm = FileManager.default
+        switch policy {
+        case .keepBoth:
+            return uniqueDestination(for: source, in: dir)
+        case .skip:
+            let dst = dir.appendingPathComponent(source.lastPathComponent)
+            return fm.fileExists(atPath: dst.path) ? nil : dst
+        case .replace:
+            let dst = dir.appendingPathComponent(source.lastPathComponent)
+            if fm.fileExists(atPath: dst.path) { try fm.removeItem(at: dst) }
+            return dst
         }
     }
 

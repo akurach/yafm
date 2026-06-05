@@ -75,7 +75,7 @@ struct KeyboardMonitor: NSViewRepresentable {
         case 126: tab.moveCursor(by: -1, extend: c.shift); return true // Up
         case 125: tab.moveCursor(by: 1, extend: c.shift); return true  // Down
         case 123: app.run(CommandID.goUp); return true      // Left -> up
-        case 124: app.run(CommandID.open); return true      // Right -> into
+        case 124: app.enterCursor(); return true            // Right -> into folder (files gated by setting)
         default: break
         }
 

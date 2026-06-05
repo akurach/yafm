@@ -101,6 +101,84 @@ final class OperationsTests: XCTestCase {
         XCTAssertEqual(unique.lastPathComponent, "a copy 3.txt")
     }
 
+    // MARK: T-5b — collision policy: skip leaves the existing file untouched
+
+    func testCollisionSkipKeepsExistingAndSkipsSource() async throws {
+        let dir = try tmpDir(); defer { try? FileManager.default.removeItem(at: dir) }
+        let src = dir.appendingPathComponent("a.txt")
+        let dst = dir.appendingPathComponent("dest")
+        try FileManager.default.createDirectory(at: dst, withIntermediateDirectories: true)
+        try "new".write(to: src, atomically: true, encoding: .utf8)
+        try "old".write(to: dst.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+
+        let engine = FileEngine()
+        var last: OperationProgress?
+        for await p in engine.run(OperationTask(kind: .copy, sources: [src], destination: dst, collision: .skip)) { last = p }
+
+        XCTAssertEqual(last?.state, .done)
+        // No "a copy.txt" created, and the existing file is unchanged.
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dst.appendingPathComponent("a copy.txt").path))
+        let kept = try String(contentsOf: dst.appendingPathComponent("a.txt"), encoding: .utf8)
+        XCTAssertEqual(kept, "old")
+    }
+
+    // MARK: T-5c — collision policy: replace overwrites the existing file
+
+    func testCollisionReplaceOverwritesExisting() async throws {
+        let dir = try tmpDir(); defer { try? FileManager.default.removeItem(at: dir) }
+        let src = dir.appendingPathComponent("a.txt")
+        let dst = dir.appendingPathComponent("dest")
+        try FileManager.default.createDirectory(at: dst, withIntermediateDirectories: true)
+        try "new".write(to: src, atomically: true, encoding: .utf8)
+        try "old".write(to: dst.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+
+        let engine = FileEngine()
+        var last: OperationProgress?
+        for await p in engine.run(OperationTask(kind: .copy, sources: [src], destination: dst, collision: .replace)) { last = p }
+
+        XCTAssertEqual(last?.state, .done)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dst.appendingPathComponent("a copy.txt").path))
+        let replaced = try String(contentsOf: dst.appendingPathComponent("a.txt"), encoding: .utf8)
+        XCTAssertEqual(replaced, "new")
+    }
+
+    // MARK: T-5d — collision policy: keepBoth (default) renames the copy
+
+    func testCollisionKeepBothRenamesCopy() async throws {
+        let dir = try tmpDir(); defer { try? FileManager.default.removeItem(at: dir) }
+        let src = dir.appendingPathComponent("a.txt")
+        let dst = dir.appendingPathComponent("dest")
+        try FileManager.default.createDirectory(at: dst, withIntermediateDirectories: true)
+        try "new".write(to: src, atomically: true, encoding: .utf8)
+        try "old".write(to: dst.appendingPathComponent("a.txt"), atomically: true, encoding: .utf8)
+
+        let engine = FileEngine()
+        for await _ in engine.run(OperationTask(kind: .copy, sources: [src], destination: dst, collision: .keepBoth)) {}
+
+        // Both survive: original untouched, source landed as "a copy.txt".
+        XCTAssertEqual(try String(contentsOf: dst.appendingPathComponent("a.txt"), encoding: .utf8), "old")
+        XCTAssertEqual(try String(contentsOf: dst.appendingPathComponent("a copy.txt"), encoding: .utf8), "new")
+    }
+
+    // MARK: T-5e — clear() drops the in-memory index without touching xattrs
+
+    func testClearDropsIndex() async throws {
+        let dir = try tmpDir(); defer { try? FileManager.default.removeItem(at: dir) }
+        let f = dir.appendingPathComponent("c.txt")
+        try "x".write(to: f, atomically: true, encoding: .utf8)
+        let service = TagService(storeURL: nil)
+        try await service.setTags([Tag(name: "Live")], on: f)
+        let known = await service.allKnownTags()
+        XCTAssertFalse(known.isEmpty)
+
+        await service.clear()
+        let afterClear = await service.allKnownTags()
+        XCTAssertTrue(afterClear.isEmpty)
+        // xattr untouched — a fresh read still sees the tag on disk.
+        let onDisk = await service.tags(of: f)
+        XCTAssertTrue(onDisk.contains { $0.name == "Live" })
+    }
+
     // MARK: T-6 — delete reports real, non-zero byte progress (M-9/M-10)
 
     func testDeleteFolderReportsRecursiveBytes() async throws {

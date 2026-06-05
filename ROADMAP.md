@@ -60,6 +60,23 @@ Post-0.2.1 bug report fixes. Full notes in [`CHANGELOG.md`](CHANGELOG.md).
 - [x] Custom tag editor UI (swatches + chips + inline add) replacing the Finder-style submenu
 - [x] Context menus across all sidebar sections (Favorites / Locations / Devices / Tags)
 
+## v0.2.3 — Settings & app shell
+
+App-shell milestone pulled out of the backlog. Full spec: [`app-shell.md`](docs/feature-requests/app-shell.md).
+
+- [x] Settings window (⌘,) backed by `UserDefaults` (`AppSettings`, `SettingsView`)
+- [x] **General → "Right arrow opens files"** — default off (→ enters folders only; Enter always
+  opens), opt-in to also open files on →
+- [x] General → "Show hidden files in new tabs" (applies to newly opened tabs/panes)
+- [x] Appearance → theme Light / Dark / System (`.preferredColorScheme`, persisted)
+- [x] About yafm (standard panel, version from Info.plist)
+- [x] General → start folder (Home / last used / specified, with folder picker)
+- [x] Operations tab — confirm-before-delete (default on; permanent delete) + default
+  collision behavior (keep both / skip / replace) plumbed through `OperationTask.collision`
+- [x] Tags tab — rescan / clear the tag index (`TagService.clear`, `AppState.rescanTags/clearTags`)
+- [x] Auto-update MVP — "Check for Updates" via GitHub Releases API, honest status, opens the
+  release page (option 2 from the spec; Sparkle auto-install still deferred)
+
 ## v0.3 — Platform
 
 - [ ] JS plugin runtime (JavaScriptCore) + 2–3 extension points exposed
@@ -84,8 +101,9 @@ Parked feature requests with complete specs. Not scheduled; pull into a mileston
 - [ ] **Photo Ingest** — import from camera cards (SD/CFexpress/USB): detect camera media, import
   wizard, preview, copy+verify (checksum), duplicate handling, `import-report.json`, safe eject.
   Spec: [`photo-ingest.md`](docs/feature-requests/photo-ingest.md)
-- [ ] **App shell** — Settings window (⌘,), About, auto-updater (Sparkle vs GitHub-releases check —
-  TBD), and Light/Dark/System theme. Spec: [`app-shell.md`](docs/feature-requests/app-shell.md)
+- [x] **App shell** — Settings (⌘,) General/Appearance/Operations/Tags/Updates + About + theme +
+  GitHub-releases update check, all landed in v0.2.3. Only Sparkle seamless auto-install remains
+  deferred. Spec: [`app-shell.md`](docs/feature-requests/app-shell.md)
 
 ## Hardening backlog (from the security + Swift audit — see `SECURITY.md`)
 

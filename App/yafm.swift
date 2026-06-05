@@ -1,20 +1,39 @@
 import SwiftUI
+import AppKit
 import Quartz
 import Core
 
 @main
 struct YafmApp: App {
     @State private var app = AppState()
+    @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup("yafm") {
             RootView(app: app)
                 .frame(minWidth: 900, minHeight: 520)
+                .preferredColorScheme(app.settings.theme.colorScheme)
                 .onAppear { app.start() }
                 .background(KeyboardMonitor(app: app).frame(width: 0, height: 0))
         }
+        .onChange(of: scenePhase) { _, phase in
+            // Persist the last folder for the "Last used" start option.
+            if phase != .active { app.settings.rememberLastFolder(app.activeTab.directory) }
+        }
         .windowStyle(.titleBar)
-        .commands { CommandMenus(app: app) }
+        .commands {
+            CommandMenus(app: app)
+            CommandGroup(replacing: .appInfo) {
+                Button("About yafm") {
+                    NSApp.orderFrontStandardAboutPanel(options: [
+                        .applicationName: "yafm",
+                        .init(rawValue: "Copyright"): "Yet Another File Manager for macOS",
+                    ])
+                }
+            }
+        }
+
+        Settings { SettingsView(app: app) }
     }
 }
 
@@ -47,7 +66,6 @@ struct RootView: View {
         }
         .sheet(isPresented: $app.renameSheet) { RenameSheet(app: app) }
         .sheet(isPresented: $app.showOnboarding) { OnboardingSheet(app: app) }
-        .sheet(item: $app.tagSheet) { item in TagEditorSheet(app: app, url: item.url) }
     }
 }
 

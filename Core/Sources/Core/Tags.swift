@@ -20,6 +20,9 @@ public protocol TagServing: Sendable {
     /// Load / save the on-disk index so a cold start doesn't full-rescan Home.
     func loadPersisted() async
     func persist() async
+    /// Drop the whole in-memory index (Settings → Tags → Clear). Does not touch
+    /// the xattrs on disk — a rescan rebuilds it.
+    func clear() async
 }
 
 public actor TagService: TagServing {
@@ -178,6 +181,13 @@ public actor TagService: TagServing {
         let plainIndex = index.mapValues { $0.map(\.path) }
         let p = Persisted(colors: plainColors, index: plainIndex)
         if let data = try? JSONEncoder().encode(p) { try? data.write(to: storeURL) }
+    }
+
+    public func clear() async {
+        colors.removeAll()
+        index.removeAll()
+        urlTags.removeAll()
+        await persist()
     }
 
     // MARK: xattr bridge

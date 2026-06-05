@@ -27,10 +27,11 @@ final class TabModel: Identifiable {
 
     private var task: Task<Void, Never>?
 
-    init(fs: FileSystemProvider, tags: TagServing, directory: URL) {
+    init(fs: FileSystemProvider, tags: TagServing, directory: URL, showHidden: Bool = false) {
         self.fs = fs
         self.tags = tags
         self.directory = directory
+        self.showHidden = showHidden
     }
 
     var title: String {
@@ -160,18 +161,21 @@ final class PaneModel: Identifiable {
 
     var tabs: [TabModel]
     var activeIndex = 0
+    /// New tabs inherit this (from `AppSettings.showHiddenByDefault`).
+    private let defaultShowHidden: Bool
 
-    init(fs: FileSystemProvider, tags: TagServing, directory: URL) {
+    init(fs: FileSystemProvider, tags: TagServing, directory: URL, showHidden: Bool = false) {
         self.fs = fs
         self.tags = tags
-        self.tabs = [TabModel(fs: fs, tags: tags, directory: directory)]
+        self.defaultShowHidden = showHidden
+        self.tabs = [TabModel(fs: fs, tags: tags, directory: directory, showHidden: showHidden)]
     }
 
     var active: TabModel { tabs[min(activeIndex, tabs.count - 1)] }
 
     func newTab(at directory: URL? = nil) {
         let dir = directory ?? active.directory
-        tabs.append(TabModel(fs: fs, tags: tags, directory: dir))
+        tabs.append(TabModel(fs: fs, tags: tags, directory: dir, showHidden: defaultShowHidden))
         activeIndex = tabs.count - 1
         active.load()
     }
@@ -220,6 +224,7 @@ final class AppState {
     let engine = FileEngine()
     let registry = ExtensionRegistry()
     let volumeService = VolumeService()
+    let settings = AppSettings()
 
     let left: PaneModel
     let right: PaneModel
@@ -271,9 +276,10 @@ final class AppState {
     var clipboard: (urls: [URL], cut: Bool)?
 
     init() {
-        let home = FileManager.default.homeDirectoryForCurrentUser
-        left = PaneModel(fs: fs, tags: tags, directory: home)
-        right = PaneModel(fs: fs, tags: tags, directory: home)
+        let start = settings.startDirectory()
+        let hidden = settings.showHiddenByDefault
+        left = PaneModel(fs: fs, tags: tags, directory: start, showHidden: hidden)
+        right = PaneModel(fs: fs, tags: tags, directory: start, showHidden: hidden)
         bookmarks = AppState.defaultBookmarks()
     }
 
@@ -379,6 +385,27 @@ final class AppState {
         }
     }
 
+    /// Settings → Tags → Rescan: rebuild the index from Home, refresh, persist.
+    func rescanTags() {
+        indexTask?.cancel()
+        indexTask = Task { [weak self] in
+            guard let self else { return }
+            await self.tags.index(roots: [FileManager.default.homeDirectoryForCurrentUser])
+            if Task.isCancelled { return }
+            self.refreshTags()
+            await self.tags.persist()
+        }
+    }
+
+    /// Settings → Tags → Clear: drop the in-memory index (xattrs untouched).
+    func clearTags() {
+        Task { [weak self] in
+            guard let self else { return }
+            await self.tags.clear()
+            self.refreshTags()
+        }
+    }
+
     /// Click a tag → stream every file carrying it into a virtual listing, so a
     /// large tag doesn't block on building the whole array first (was: built
     /// synchronously, no streaming). Re-entry cancels the prior open (H-2).
@@ -465,18 +492,24 @@ final class AppState {
         }
     }
 
-    func openCursor() {
+    /// `allowFileOpen: false` makes the action enter folders only and ignore
+    /// files — that's the → (right arrow) default, gated by the setting.
+    func openCursor(allowFileOpen: Bool = true) {
         guard let entry = activeTab.actionable.first ?? activeTab.displayed.first(where: { $0.url == activeTab.cursor }) else { return }
         if entry.isDirectory { activeTab.open(entry.url) }
-        else { openFile(entry.url) }
+        else if allowFileOpen { openFile(entry.url) }
     }
+
+    /// → key: enter folders always; open files only if the setting allows it.
+    func enterCursor() { openCursor(allowFileOpen: settings.rightArrowOpensFiles) }
 
     // MARK: File operations
 
     func enqueue(_ kind: FileOperationKind, to destination: URL) {
         let sources = activeTab.actionable.map(\.url)
         guard !sources.isEmpty else { return }
-        let task = OperationTask(kind: kind, sources: sources, destination: destination)
+        let task = OperationTask(kind: kind, sources: sources, destination: destination,
+                                 collision: settings.collisionDefault)
         runTask(task) { [weak self] in
             self?.inactivePane.active.load()
             if case .move = kind {
@@ -489,6 +522,17 @@ final class AppState {
     func enqueueDelete() {
         let sources = activeTab.actionable.map(\.url)
         guard !sources.isEmpty else { return }
+        if settings.confirmBeforeDelete {
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = sources.count == 1
+                ? "Delete “\(sources[0].lastPathComponent)”?"
+                : "Delete \(sources.count) items?"
+            alert.informativeText = "This is permanent and can't be undone."
+            alert.addButton(withTitle: "Delete")
+            alert.addButton(withTitle: "Cancel")
+            guard alert.runModal() == .alertFirstButtonReturn else { return }
+        }
         let task = OperationTask(kind: .delete, sources: sources)
         runTask(task) { [weak self] in
             self?.forgetTagged(sources)   // deleted paths must leave the index
@@ -567,7 +611,8 @@ final class AppState {
         // Consume a cut immediately so a second ⌘V can't double-move it (H-6);
         // the clipboard isn't needed once the task is enqueued.
         if clip.cut { clipboard = nil }
-        let task = OperationTask(kind: clip.cut ? .move : .copy, sources: clip.urls, destination: dest)
+        let task = OperationTask(kind: clip.cut ? .move : .copy, sources: clip.urls, destination: dest,
+                                 collision: settings.collisionDefault)
         runTask(task) { [weak self] in
             if clip.cut { self?.forgetTagged(clip.urls) }   // moved out of source
             self?.activeTab.load()
