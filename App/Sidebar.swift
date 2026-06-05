@@ -81,7 +81,7 @@ struct TagCloudRow: View {
     var body: some View {
         HStack(spacing: 6) {
             Circle().fill(Color.named(tag.colorName) ?? .secondary)
-                .frame(width: 9, height: 9)
+                .frame(width: Theme.Col.tagDot, height: Theme.Col.tagDot)
             Text(tag.name).lineLimit(1)
             Spacer()
             Text("\(count)").font(.caption2).foregroundStyle(.secondary)

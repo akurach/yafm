@@ -16,6 +16,10 @@ enum Theme {
         static let rowV: CGFloat = 2       // vertical row padding
         static let pane: CGFloat = 6
         static let tight: CGFloat = 4
+        static let section: CGFloat = 12   // grouped sections / inspector blocks
+        /// Leading/trailing inset shared by the file-table header AND rows so
+        /// columns line up regardless of the List's default insets (design audit).
+        static let rowLeading: CGFloat = 12
     }
 
     // MARK: Column widths (Name flexes; the rest are fixed and header-aligned)
@@ -29,6 +33,7 @@ enum Theme {
         static let icon: CGFloat = 16      // row icon box; matches the header spacer
 
         static let tagDot: CGFloat = 8
+        static let tagDotLarge: CGFloat = 14   // inspector tag editor swatches
     }
 
     // MARK: Type scale
@@ -40,6 +45,7 @@ enum Theme {
         static let header = SwiftUI.Font.caption.bold()
         static let badge = SwiftUI.Font.caption
         static let chevron = SwiftUI.Font.system(size: 7)
+        static let micro = SwiftUI.Font.system(size: 9)   // tiny one-offs (close glyph, capacity)
     }
 
     // MARK: Semantic colors
@@ -50,10 +56,13 @@ enum Theme {
         /// (see `Theme.cursorStroke`) so "where focus is" is unmistakable even on
         /// an unselected row — the v0.3 build made them differ by ~15% opacity.
         static let selectionFill = Color.accentColor.opacity(0.22)
-        static let cursorFill = Color.accentColor.opacity(0.08)
+        static let cursorFill = Color.accentColor.opacity(0.12)   // raised for light-mode contrast (design audit)
         static let cursorStroke = Color.accentColor
         static let activePaneTint = Color.accentColor.opacity(0.06)
         static let tabActive = Color.accentColor.opacity(0.20)
+        /// Generic control fill/hover so the function bar etc. stop using literal grays.
+        static let controlHover = Color.accentColor.opacity(0.22)
+        static let controlFill = Color.secondary.opacity(0.12)
 
         // Git markers: untracked/added green, modified orange, deleted red.
         static let gitAdded = Color.green

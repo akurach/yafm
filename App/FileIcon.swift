@@ -29,10 +29,11 @@ enum FileIcon {
 /// SwiftUI wrapper that renders the cached file-type icon at a fixed box.
 struct FileIconView: View {
     let entry: FSEntry
+    var size: CGFloat = Theme.Col.icon
     var body: some View {
         Image(nsImage: FileIcon.image(for: entry))
             .resizable()
             .interpolation(.high)
-            .frame(width: 16, height: 16)
+            .frame(width: size, height: size)
     }
 }

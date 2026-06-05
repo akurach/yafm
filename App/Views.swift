@@ -40,12 +40,10 @@ struct PaneView: View {
             Divider()
             FileTableView(tab: pane.active, app: app)
         }
+        // One active-pane signal: a subtle full-pane tint. The old extra 2pt top
+        // accent bar sat above the tab strip and cut across it (design audit) —
+        // removed; the per-row cursor bar marks focus within the active pane.
         .background(isActive ? Theme.Palette.activePaneTint : Color.clear)
-        .overlay(alignment: .top) {
-            if isActive {
-                Rectangle().fill(Theme.Palette.cursorStroke).frame(height: 2)
-            }
-        }
         .contentShape(Rectangle())
         .onTapGesture { app.activePaneIsLeft = (pane.id == app.left.id) }
     }
@@ -70,9 +68,9 @@ struct TabBarView: View {
                             .accessibilityLabel("Close tab \(tab.title)")
                         }
                     }
-                    .padding(.horizontal, 8).padding(.vertical, 4)
-                    .background(idx == pane.activeIndex ? Color.accentColor.opacity(0.2) : Color.clear)
-                    .clipShape(RoundedRectangle(cornerRadius: 5))
+                    .padding(.horizontal, Theme.Space.row).padding(.vertical, Theme.Space.tight)
+                    .background(idx == pane.activeIndex ? Theme.Palette.tabActive : Color.clear)
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.cornerRadius))
                     .onTapGesture { pane.select(tab.id) }
                 }
                 Button { pane.newTab() } label: { Image(systemName: "plus") }
@@ -232,6 +230,11 @@ struct FileTableView: View {
                     ForEach(tab.displayed) { entry in
                         row(entry)
                             .id(entry.url)
+                            // Deterministic leading/trailing inset = the header's,
+                            // so columns line up (design audit). Vertical comes
+                            // from the row's own density padding.
+                            .listRowInsets(EdgeInsets(top: 0, leading: Theme.Space.rowLeading,
+                                                      bottom: 0, trailing: Theme.Space.rowLeading))
                             .listRowBackground(rowBackground(entry))
                             .contentShape(Rectangle())
                             // Single-tap selects INSTANTLY; double-tap opens. Both
@@ -313,8 +316,10 @@ struct FileTableView: View {
     }
 
     private var columnHeader: some View {
-        HStack(spacing: 8) {
-            Color.clear.frame(width: 16)   // aligns with the row icon
+        HStack(spacing: Theme.Space.row) {
+            // Spacer tracks the density-sized row icon so headers stay over their
+            // columns across density modes (design audit alignment fix).
+            Color.clear.frame(width: app.settings.density.iconSize)
             headerButton("Name", .name).frame(maxWidth: .infinity, alignment: .leading)
             headerButton("Size", .size).frame(width: sizeW, alignment: .trailing)
             headerButton("Modified", .modified).frame(width: modW, alignment: .trailing)
@@ -326,9 +331,9 @@ struct FileTableView: View {
                 Text(col.title).lineLimit(1).frame(width: pluginW, alignment: .leading)
             }
         }
-        .font(.caption.bold())
+        .font(Theme.Font.header)
         .foregroundStyle(.secondary)
-        .padding(.horizontal, 14).padding(.vertical, 4)
+        .padding(.horizontal, Theme.Space.rowLeading).padding(.vertical, Theme.Space.tight)
         .background(.bar)
     }
 
@@ -374,7 +379,7 @@ struct FileTableView: View {
         return HStack(spacing: Theme.Space.row) {
             // Real macOS file-type icon (cached). A color-coding rule, if any,
             // now tints the name instead of the icon so the true icon shows.
-            FileIconView(entry: entry)
+            FileIconView(entry: entry, size: density.iconSize)
                 .frame(width: density.iconSize)
             Text(entry.name)
                 .font(density.rowFont)
@@ -382,7 +387,8 @@ struct FileTableView: View {
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
             ForEach(entry.tags, id: \.name) { tag in
-                Circle().fill(Color.named(tag.colorName) ?? .secondary).frame(width: 8, height: 8)
+                Circle().fill(Color.named(tag.colorName) ?? .secondary)
+                    .frame(width: Theme.Col.tagDot, height: Theme.Col.tagDot)
             }
             Text(entry.isDirectory ? "--" : (entry.size.map(byteString) ?? "--"))
                 .font(.caption.monospaced()).foregroundStyle(.secondary)

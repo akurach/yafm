@@ -114,8 +114,8 @@ struct InfoPanel: View {
                 let name = Tag.colorNames[i]
                 let on = entry.tags.contains { $0.name == name }
                 Circle().fill(Color.named(name) ?? .secondary)
-                    .frame(width: 16, height: 16)
-                    .overlay { if on { Image(systemName: "checkmark").font(.system(size: 9, weight: .bold)).foregroundStyle(.white) } }
+                    .frame(width: Theme.Col.tagDotLarge, height: Theme.Col.tagDotLarge)
+                    .overlay { if on { Image(systemName: "checkmark").font(Theme.Font.micro.bold()).foregroundStyle(.white) } }
                     .overlay { Circle().stroke(.secondary.opacity(0.4)) }
                     .onTapGesture { app.toggleColorTag(name: name, colorIndex: i, on: entry) }
             }
@@ -156,15 +156,16 @@ struct InfoPanel: View {
     }()
 }
 
-/// Simple wrapping row of named (non-color) tag chips.
+/// Wrapping row of named (non-color) tag chips — real flow layout so many tags
+/// wrap to the next line instead of overflowing the inspector (design audit).
 struct FlowTags: View {
     let names: [String]
     var body: some View {
-        HStack(spacing: 4) {
+        FlowLayout(spacing: Theme.Space.tight) {
             ForEach(names, id: \.self) { n in
                 Text(n).font(.caption2)
-                    .padding(.horizontal, 6).padding(.vertical, 2)
-                    .background(Capsule().fill(.secondary.opacity(0.15)))
+                    .padding(.horizontal, Theme.Space.pane).padding(.vertical, 2)
+                    .background(Capsule().fill(Theme.Palette.controlFill))
             }
         }
     }

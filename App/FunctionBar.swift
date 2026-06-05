@@ -50,11 +50,11 @@ struct FunctionKeyButton: View {
                 Text("F\(number)").font(.caption2.bold()).foregroundStyle(.secondary)
                 if !compact { Text(label).font(.caption) }
             }
-            .padding(.horizontal, 8).padding(.vertical, 3)
+            .padding(.horizontal, Theme.Space.row).padding(.vertical, Theme.Space.tight)
             .frame(maxWidth: .infinity)
             .background(
-                RoundedRectangle(cornerRadius: 5)
-                    .fill(hover ? Color.accentColor.opacity(0.25) : Color.gray.opacity(0.12))
+                RoundedRectangle(cornerRadius: Theme.cornerRadius)
+                    .fill(hover ? Theme.Palette.controlHover : Theme.Palette.controlFill)
             )
         }
         .buttonStyle(.plain)
