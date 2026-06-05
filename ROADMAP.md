@@ -86,6 +86,8 @@ App-shell milestone pulled out of the backlog. Full spec: [`app-shell.md`](docs/
 
 ## Later
 
+- [ ] Seamless auto-install updates (Sparkle) — v0.2.3 shipped the GitHub-releases *check*; this is
+  the remaining app-shell piece (signed appcast + EdDSA, accounts for the notarized-DMG/no-sandbox model)
 - [ ] FTP / SMB / cloud as virtual filesystems (XPC)
 - [ ] Plugin marketplace
 - [ ] Archive mounting
@@ -101,9 +103,9 @@ Parked feature requests with complete specs. Not scheduled; pull into a mileston
 - [ ] **Photo Ingest** — import from camera cards (SD/CFexpress/USB): detect camera media, import
   wizard, preview, copy+verify (checksum), duplicate handling, `import-report.json`, safe eject.
   Spec: [`photo-ingest.md`](docs/feature-requests/photo-ingest.md)
-- [x] **App shell** — Settings (⌘,) General/Appearance/Operations/Tags/Updates + About + theme +
-  GitHub-releases update check, all landed in v0.2.3. Only Sparkle seamless auto-install remains
-  deferred. Spec: [`app-shell.md`](docs/feature-requests/app-shell.md)
+- ✅ **App shell** — delivered in v0.2.3 (Settings ⌘, with General/Appearance/Operations/Tags/Updates,
+  About, theme, GitHub-releases update check). Spec: [`app-shell.md`](docs/feature-requests/app-shell.md).
+  Residual (Sparkle seamless auto-install) tracked under **Later**.
 
 ## Hardening backlog (from the security + Swift audit — see `SECURITY.md`)
 
@@ -118,6 +120,8 @@ precompiled `ColorRule` regex + ReDoS length caps; cached `TabModel.displayed`; 
 progress recurses; +13 tests (cancel/move/rename/recursive/collision/regex/persistence).
 
 Deferred (tracked, not yet done):
+- [ ] **OPS-1** (audit 2026-06-05): `.replace` collision removes the destination *before* writing —
+  a failed/cancelled copy loses both files. Copy to a temp sibling + `replaceItemAt` (atomic swap).
 - [ ] TOCTOU: open copy output with `O_EXCL` instead of exists-check + truncate
 - [~] Plugin capability boundary: `PluginContext` type drafted in `Commands.swift`; enforce it at
   the registry before any JS API is exposed (v0.3)

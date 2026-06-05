@@ -1,5 +1,11 @@
 # yafm
 
+[![CI](https://github.com/akurach/yafm/actions/workflows/ci.yml/badge.svg)](https://github.com/akurach/yafm/actions/workflows/ci.yml)
+[![License: GPL-3.0 + plugin exception](https://img.shields.io/badge/license-GPL--3.0%20%2B%20plugin%20exception-blue.svg)](LICENSE)
+![Platform: macOS 14+](https://img.shields.io/badge/platform-macOS%2014%2B-lightgrey.svg)
+![Swift 6](https://img.shields.io/badge/swift-6-orange.svg)
+[![Latest release](https://img.shields.io/github/v/release/akurach/yafm?include_prereleases&sort=semver)](https://github.com/akurach/yafm/releases)
+
 **Yet Another File Manager for macOS.** A fast, keyboard-driven, modern alternative to Finder — that never freezes silently.
 
 > Status: early development. v0.1 + v0.2 + v0.2.1 (daily-driver UX) + v0.2.2 (UX bugfixes) + v0.2.3 (Settings) done. Native Swift / SwiftUI.
@@ -42,4 +48,15 @@ Parked feature specs (Photo Ingest, app shell) live in [docs/feature-requests/](
 
 ## License
 
-TBD
+**GNU GPL v3.0 with a Plugin Exception** — see [LICENSE](LICENSE).
+
+What this means in practice:
+
+- yafm itself is copyleft: any fork or modified version of the app **must also be open source
+  under the GPL**. You can't take this code and ship a closed-source / proprietary fork.
+- **Plugins are exempt.** Anything that talks to yafm only through its published Plugin API
+  (JavaScript plugins via JavaScriptCore, or native/XPC extensions through the extension registry)
+  is **not** a derivative work and may be licensed however you like — including **proprietary and
+  paid** plugins.
+
+Contributions are accepted under the same license.

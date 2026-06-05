@@ -1,0 +1,54 @@
+name: Bug report
+description: Something in yafm misbehaves, crashes, or freezes.
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting. yafm's core promise is "never freezes silently" — if it stalled, that's a bug we very much want.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: What did you do, and what went wrong?
+      placeholder: e.g. Opened an external SMB volume, the pane stayed empty with no "reading…" state.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. …
+        2. …
+        3. …
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: yafm version
+      description: yafm → About yafm (or the release tag).
+      placeholder: e.g. 0.2.3
+    validations:
+      required: true
+  - type: input
+    id: macos
+    attributes:
+      label: macOS version
+      placeholder: e.g. macOS 15.5 (Apple Silicon)
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs / screenshots
+      description: Console output, a screen recording of the freeze, etc. (optional)
+    validations:
+      required: false

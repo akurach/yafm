@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Roadmap & parked feature specs
+    url: https://github.com/akurach/yafm/blob/main/ROADMAP.md
+    about: Check what's already planned or parked before filing a feature request.

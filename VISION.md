@@ -31,6 +31,10 @@ yafm is the daily driver Finder should have been: fast, keyboard-driven, modern,
 - **File operations:** our **own engine** — visible queue, progress, cancel. Finder hides this; we show it.
 - **Plugins:** community plugins are **JavaScript** via **JavaScriptCore** (ships with macOS, zero deps). Model is Obsidian/Chrome: download a file → it loads → it works. Toggle on/off, marketplace later. No rebuild. Plugins can only do what the host API exposes. Heavy first-party features (SMB, archive mounting) may be native/XPC but appear in the same plugin registry for a uniform UX.
 - **Preview panel:** toggleable.
+- **License:** **GPL-3.0 + a Plugin Exception** (see [`LICENSE`](LICENSE)). The app is copyleft —
+  no closed-source forks — but plugins talking to the published Plugin API (JS via JavaScriptCore,
+  native/XPC via the registry) are exempt and may be proprietary/paid. Picked to protect the core
+  from closed commercial forks while letting a paid-plugin ecosystem grow.
 
 ## Plugin extension points (the long-term API contract)
 
@@ -46,31 +50,17 @@ Design the registry/loader correctly from day one; ship points incrementally.
 
 ## Roadmap
 
-### v0.1 — Spine (already better than Finder for daily use)
-- Dual pane + tabs per pane
-- **Async listing + visible "reading…" state** (the foundation everything sits on)
-- Keyboard TC-style: arrows/Enter, Tab=switch pane, F5/F6/F8, multi-select
-- Own file engine: copy/move/delete/rename + visible queue, progress, cancel
-- QuickLook on Space
-- Hidden files toggle (⌘⇧.)
-- Path bar (type a path) + breadcrumbs
-- **Tags: native + index + UI**
+The detailed, status-tracked roadmap lives in **[`ROADMAP.md`](ROADMAP.md)** (kept current as
+features land); parked feature specs are in [`docs/feature-requests/`](docs/feature-requests/).
+The arc in brief:
 
-Architecturally present in v0.1 but invisible: async FS layer, and internal extension points (columns / commands / context-menu) — first-party features go through them. No JS loader/marketplace yet, but the contract is laid.
-
-### v0.2 — Differentiators
-- Preview panel (toggle)
-- Color coding by rules / type / tags
-- Bulk rename with regex
-- Bookmarks / favorites
-
-### v0.3 — Platform
-- JS plugin runtime (JavaScriptCore) + 2–3 extension points exposed
-- First community plugin (e.g. git-status column) as proof
-- Search (mdfind/Spotlight + our own)
-- AirDrop / Share from the UI
-
-### Later
-- FTP / SMB / cloud as virtual filesystems (XPC)
-- Plugin marketplace
-- Archive mounting
+- **v0.1 — Spine.** Dual pane + tabs, async listing with a visible "reading…" state, TC-style
+  keyboard nav, own file engine (queue/progress/cancel), QuickLook, tags (native + index + UI).
+  Async FS layer and internal extension points (columns/commands/context-menu) present but invisible.
+- **v0.2 — Differentiators.** Preview panel, color coding, bulk rename, bookmarks.
+- **v0.2.1–v0.2.3 — Daily-driver UX & shell.** Context menus, sidebar volumes/devices, function-key
+  bar, columns + info inspector, tag cloud, access onboarding; UX bugfixes; Settings window (⌘,)
+  with theme, start folder, operations, tags, and a GitHub-releases update check.
+- **v0.3 — Platform.** JS plugin runtime (JavaScriptCore) + first community plugin, search
+  (mdfind/Spotlight + own), AirDrop/Share.
+- **Later.** FTP/SMB/cloud as virtual filesystems (XPC), plugin marketplace, archive mounting.

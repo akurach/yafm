@@ -1,0 +1,41 @@
+name: Feature request
+description: Suggest a capability or improvement.
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Before filing, skim [ROADMAP.md](../../ROADMAP.md) and [docs/feature-requests/](../../docs/feature-requests/) — it may already be planned.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / motivation
+      description: What are you trying to do that yafm makes hard today?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed solution
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+    validations:
+      required: false
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Navigation / keyboard
+        - File operations
+        - Tags
+        - Volumes / devices
+        - Settings
+        - Plugins / extensibility
+        - Other
+    validations:
+      required: false

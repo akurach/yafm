@@ -6,6 +6,13 @@ the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Project
+- **License: GPL-3.0 with a Plugin Exception** ([`LICENSE`](LICENSE)). yafm itself is copyleft (no
+  closed-source forks); plugins using the published Plugin API may be proprietary/paid.
+- GitHub repo polish: README badges + License section, CI workflow (`swift build` + `swift test`
+  on macOS), issue templates (bug report / feature request), `icon.png` source untracked
+  (shipped icon stays `App/Resources/AppIcon.icns`). VISION roadmap deduped to point at `ROADMAP.md`.
+
 ### Added — v0.2.3 Settings & app shell
 - **Settings window (⌘,)** backed by `UserDefaults` (`AppSettings` / `SettingsView`) with five
   tabs: General · Appearance · Operations · Tags · Updates. Settings change real behaviour.
