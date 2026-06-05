@@ -8,7 +8,13 @@
 
 **Yet Another File Manager for macOS.** A fast, keyboard-driven, modern alternative to Finder — that never freezes silently.
 
-> Status: early development. v0.1 + v0.2 + v0.2.1 (daily-driver UX) + v0.2.2 (UX bugfixes) + v0.2.3 (Settings) + v0.3 (Platform: JS plugins, git column, search, Share) done. Native Swift / SwiftUI.
+> Status: **v0.9.1 — 1.0 candidate.** Native Swift / SwiftUI. The spine (v0.1–0.3:
+> dual-pane + tabs, async listing, own file engine, tags, JS plugins, git, search) is
+> done; v0.4–0.9 added the keyboard-first speed layer, visual polish, content search,
+> SMB, the plugin capability model, archives, accessibility, and a Russian UI — then a
+> five-dimension audit pass (perf · security · UX · design). See [ROADMAP.md](ROADMAP.md)
+> and [CHANGELOG.md](CHANGELOG.md). **New here? Read the [User Guide](docs/USER_GUIDE.md)
+> ([RU](docs/USER_GUIDE.ru.md)).**
 
 ## Why
 
@@ -16,19 +22,27 @@ Finder is a rudiment of old releases: weak tags, garbage color coding, and it fr
 
 See **[VISION.md](VISION.md)** for the full vision, locked decisions, and roadmap.
 
-## Highlights (target)
+## Highlights
 
-- Dual pane + tabs, keyboard-first (Total Commander–style)
-- Async listing — always shows what it's loading, never a dead empty folder
-- Own file-operation engine with a visible queue, progress, and cancel
-- Real macOS tags (native + fast index + proper UI) — sidebar tag cloud, click to filter
-- Right-click context menus, TC-style function-key bar, sortable columns + info inspector
-- Mounted drives / USB / network volumes in the sidebar (live, with eject)
-- QuickLook, toggleable preview panel, hidden-files toggle
-- Honest access onboarding — explains Full Disk Access instead of silently-empty folders
-- Find within a folder (⌘F) — Spotlight with our own name-scan fallback
-- Git-status column + Share / AirDrop from the row menu
-- JavaScript plugins (JavaScriptCore) — drop a `.js` file, it just works. See [docs/plugins.md](docs/plugins.md)
+**Core**
+- Dual pane + tabs, keyboard-first (Total Commander–style) — F-key bar, arrows, multi-select (⇧/Insert/⌘-click), Home/End/PageUp-Down
+- Async listing — always shows what it's loading, never a dead empty folder; honest empty/error/limited states
+- Own file-operation engine with a visible queue, progress, cancel — **atomic replace** (no data loss on a failed copy)
+- **Move to Trash** (F8) or permanent delete (⇧F8); real macOS tags + fast index + sidebar tag cloud
+- Right-click menus, sortable columns + info inspector, live volumes/USB/network in the sidebar (with eject), QuickLook + preview panel
+
+**Speed & polish (v0.4–0.5)**
+- **⌘K command palette** (fuzzy jump to commands / favorites / subfolders), type-to-filter, real file-type icons
+- **Density modes**, full drag-and-drop (⌘ to move), scoped animation, keyboard tab-switching (⌃Tab / ⌘1–9), ⌘/ cheat sheet
+
+**Reach (v0.6–0.7)**
+- **Content search** (grep-in-files) — streaming, cancellable, bounded; inline find bar (⌘F, name or contents)
+- **SMB shares** mount natively behind a filesystem router (⌘⇧K) — a slow share loads, never freezes
+- **VoiceOver + Dynamic Type**; **Russian UI** + language picker
+
+**Extensibility (v0.8–0.9)**
+- **JavaScript plugins** with a capability model — manifests, per-plugin enable/disable, scoped file reads (`read:cwd`), commands & menu items. See [docs/plugins.md](docs/plugins.md)
+- **Browse `.zip` archives** read-only like any folder; bulk-rename transformers + custom previewers; plugin API frozen at 1.0
 
 ## Distribution
 
@@ -57,7 +71,7 @@ Scripts/make-dmg.sh            # release build → .dmg (unnotarized; set CODESI
 ```
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the module layout and [ROADMAP.md](ROADMAP.md) for status.
-Parked feature specs (Photo Ingest, app shell) live in [docs/feature-requests/](docs/feature-requests/).
+Triaged feature specs (all closed — shipped or deferred post-1.0) live in [docs/feature-requests/](docs/feature-requests/).
 
 ## License
 
