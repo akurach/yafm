@@ -91,32 +91,110 @@ App-shell milestone pulled out of the backlog. Full spec: [`app-shell.md`](docs/
   recursive name-substring fallback, results shown as a virtual listing.
 - [x] AirDrop / Share from UI — `NSSharingService` "Share ▸" in the row menu.
 
-## Later
+---
 
-- [ ] **Russian interface (localization / i18n)** — move all UI strings to
-  `Localizable.strings`, add a `ru` localization, and a language picker in
-  Settings ▸ General (System / English / Русский). Today every label is a
-  hard-coded English literal across `App/*.swift`; first pass is extracting them.
-- [ ] Seamless auto-install updates (Sparkle) — v0.2.3 shipped the GitHub-releases *check*; this is
-  the remaining app-shell piece (signed appcast + EdDSA, accounts for the notarized-DMG/no-sandbox model)
-- [ ] FTP / SMB / cloud as virtual filesystems (XPC)
-- [ ] Plugin marketplace
-- [ ] Archive mounting
+# Forward plan: v0.4 → v0.9
 
-## Someday / backlog (full specs in [`docs/feature-requests/`](docs/feature-requests/))
+> Planned with an architecture + product review (2026-06-05). The headline thesis: with **zero users**,
+> the wedge is the **keyboard-driven Mac power user (skewed developer)** who hates Finder's silent
+> freezes. Win them with *speed + keyboard fluency + visual polish + honest states + content search*
+> **first**; the **public plugin surface is frozen** (internal `ExtensionRegistry` keeps absorbing
+> first-party features) and **re-opens in v0.8** once an audience exists. Three "cheap-insurance"
+> seams (`FileSystemRouter`, async plugin-value path, UI tokens layer) land **early** — invisible
+> plumbing that makes the hard hooks (VFS, marketplace, a11y) cheap instead of a rewrite.
+>
+> **Validation rule:** every milestone must produce one thing a stranger would screenshot/link
+> unprompted (Show HN / r/macapps / Mastodon). If you can't name that artifact before building it,
+> the milestone is plumbing — re-scope it.
 
-Parked feature requests with complete specs. Not scheduled; pull into a milestone when prioritized.
+## The dependency spine (seams before features)
 
-- [ ] **Device Detection & Classification** — on mount, async-collect volume metadata (filesystem,
-  capacity, free space, writable/read-only, vendor/model, transport) via DiskArbitration + IOKit and
-  classify the device (SSD/HDD/USB/SD/camera card/backup/network) with a confidence score; device-type
-  icons in the sidebar. Reused later by Photo Ingest. Spec: [`device-detection.md`](docs/feature-requests/device-detection.md)
-- [ ] **Photo Ingest** — import from camera cards (SD/CFexpress/USB): detect camera media, import
-  wizard, preview, copy+verify (checksum), duplicate handling, `import-report.json`, safe eject.
-  Spec: [`photo-ingest.md`](docs/feature-requests/photo-ingest.md)
-- ✅ **App shell** — delivered in v0.2.3 (Settings ⌘, with General/Appearance/Operations/Tags/Updates,
-  About, theme, GitHub-releases update check). Spec: [`app-shell.md`](docs/feature-requests/app-shell.md).
-  Residual (Sparkle seamless auto-install) tracked under **Later**.
+| Seam | Lands | Consumed by | Cost if deferred |
+|------|-------|-------------|------------------|
+| **`FileSystemRouter`** (scheme→provider) | v0.4 | SMB VFS (v0.7), archive mount (v0.8) | Rewrite every `TabModel`/`AppState` call site under deadline (`State.swift:200`,`:251`) |
+| **Async plugin-value path** | v0.5 | VFS-backed columns (v0.7), marketplace plugins (v0.8) | Breaking change to `PluginColumn.evaluate` (`Commands.swift:150`) after plugins ship in the wild |
+| **UI tokens / theme layer** | v0.4 | all UX polish (v0.6), accessibility (v0.7) | Dynamic Type + polish retrofit touches every literal across a much larger `Views.swift` |
+
+## v0.4 — "Fast as your editor" (command & navigation speed + foundations) ✅ shipped
+
+- [x] **Command palette (⌘K)** — fuzzy over `DefaultCommands.all` + Favorites + current-folder
+  subfolders; ↑↓/Enter/Esc. The keyboard-first pillar made visible. (`App/CommandPalette.swift`.)
+- [x] **Inline type-to-filter** in the current folder (bare-letter typing; Esc clears, Backspace edits).
+  (`TabModel.filter`, `App/Keyboard.swift`.)
+- [x] **Real file-type icons** (cached NSWorkspace icons) replacing the single `doc` glyph;
+  color-coding now tints the name. (`App/FileIcon.swift`.)
+- [x] Keyboard tab-switching (⌃Tab / ⌃⇧Tab / ⌘1–9) + a ⌘/ shortcut cheat-sheet overlay. (`CheatSheet`.)
+- [x] **Seam — `FileSystemRouter`**: provider-by-URL-scheme, local default; wired at `State.swift`.
+  SMB/FTP (v0.7) + archives (v0.8) register a scheme with no call-site change. (+ routing tests.)
+- [x] **Seam — UI tokens layer** (`App/Theme.swift`): spacing/fonts/colors/widths in one place;
+  migrated `Views.swift`; cursor-ring vs selection-fill now distinct.
+- [x] **i18n hygiene**: new UI strings wrapped in `String(localized:)`.
+- **Plugin API: frozen** (as planned) — internal registry unchanged, nothing new author-facing.
+
+## v0.5 — "Looks as good as it runs" (visual & interaction polish)
+
+- [ ] **Density modes** (Compact / Cozy / Comfortable) — power users want more rows than Finder; today it's one fixed density.
+- [ ] **Redesigned cursor/selection** — today selected vs cursor differ by ~15% opacity (`accentColor.opacity(0.25)` vs `0.10`), nearly invisible. Distinct ring/bar.
+- [ ] **Full drag-and-drop** — inter-pane copy/move + drop-onto-folder + drag in/out of app (currently absent; its absence reads as "not real yet"). Built on the existing gesture model (`Views.swift:191-198`) + `focusContextTarget` (`State.swift:762`).
+- [ ] **Scoped animation** — replace the global `disablesAnimations` kill-switch (`Views.swift:215`) with per-mutation animation (selection/navigation glide) referencing token timings; keep streaming inserts suppressed.
+- [ ] **Seam — async plugin-value path**: make `PluginColumn.evaluate` (`Commands.swift:150`) async-capable before VFS forces it as a breaking change.
+
+## v0.6 — "Never a dead end" (honest states + search that doesn't freeze)
+
+- [ ] **Content search** (grep-in-files) — streaming, cancellable, visible state; persistent results
+  pane that remembers origin. Extends `SearchService` (`Search.swift:12`, today name-only). The
+  canonical "could freeze 30s" op — the never-freeze pillar proving itself under load.
+- [ ] **Inline (non-modal) search bar** replacing the `SearchSheet` modal — modal search breaks keyboard flow.
+- [ ] **Unified empty/error/loading/limited-access state-view** over the four `ListingState` cases
+  (`FileSystem.swift:52`). Today `.failed` is handled (`Views.swift:145`) but `.idle` is `Color.clear`
+  (`:143`) and an empty folder renders nothing — a mild violation of the core pillar.
+- [ ] **Sparkle seamless auto-update** (signed appcast + EdDSA, fits the notarized-DMG / no-sandbox model).
+  Land it *before* asking users to make yafm a daily driver — trust/retention.
+- [ ] **Device detection** (DiskArbitration + IOKit metadata → device-type icons in the sidebar).
+  Spec: [`device-detection.md`](docs/feature-requests/device-detection.md). Reused by photo-ingest (v0.9).
+
+## v0.7 — "Remote disks, finally native" (reach + accessibility)
+
+- [ ] **SMB as a virtual filesystem** — a `FileSystemProvider` (`FileSystem.swift:88`) over **XPC**,
+  behind the v0.4 router, so a hung network mount can't freeze the app (never-freeze at network latency).
+  One protocol done excellently first (SMB = most-requested on Mac); FTP/cloud follow.
+- [ ] VFS connection/credential/error UX — reuses the v0.6 unified state-view (a connecting share is just `.loading`).
+- [ ] **Accessibility** — VoiceOver labels on the file table (today a bare `HStack` of `Text`,
+  `Views.swift:277`), Dynamic Type (today fixed `.caption`/`.caption2`). Cheap *if* the v0.4 tokens layer landed; a rewrite if not.
+- [ ] **i18n / Russian** — `Localizable.strings` + `ru` + language picker in Settings ▸ General. Strings
+  have stabilized by now; if the v0.4 hygiene held, extraction is bounded.
+- **Depends on:** router (v0.4) + async providers (v0.5). A synchronous SMB provider would freeze — the async seam is non-negotiable here.
+- **Risk:** XPC lifecycle + credential security in a non-sandboxed app. Treat the XPC boundary as the trust boundary.
+
+## v0.8 — "Make it yours" (extensibility re-opens — now there's an audience)
+
+- [ ] **Public plugin surface re-opened** — JS commands + context-menu items (reuse dormant
+  `CommandProvider`/`ContextMenuProvider`, `Commands.swift:126`,`:136`).
+- [ ] **Plugin manifests** (sidecar `<plugin>.json`: `manifest:1`, reverse-DNS `id`, `version`,
+  `apiVersion`, `capabilities`, `contributes`) + per-plugin enable/disable in Settings ▸ Plugins
+  (`Settings.swift:167`). Bare `.js` with no sidecar → `compute`-only fallback (keeps drop-a-file UX).
+- [ ] **Scoped-FS capability** (`PluginContext.resolve`, `Commands.swift:180`) — **opaque handles, not
+  paths**: `yafm.readText(entry, ".git/HEAD")` resolves host-side against a granted root. Scope = `read:cwd`.
+  Consent **at enable-time in Settings**, never plugin-triggered. Async + size-capped (a sync 2 GB read = freeze).
+  `O_NOFOLLOW` against TOCTOU. Ships a real **JS git plugin** as the flagship, partially retiring `Git.swift`'s rationale.
+- [ ] **Plugin signing / trust tier** — a marketplace shipping arbitrary JS with FS capability into a non-sandboxed app needs provenance.
+- [ ] **Plugin marketplace** — discovery/install/update built on the manifest `capabilities`, presented honestly before install.
+- [ ] **Archive mounting** — `.zip`/`.tar` as a read-only `FileSystemProvider` behind the router (same shape as SMB).
+
+## v0.9 — "1.0 candidate"
+
+- [ ] **Freeze `apiVersion 1.0`** — plugin contract becomes a compatibility promise + capability deprecation policy. Only freeze what v0.8 marketplace plugins actually exercised.
+- [ ] **Transformers** extension point (bulk-rename rules, converters) + **custom previewers** — the last VISION extension points (`VISION.md:50`), now safe atop mature async-value + capability machinery.
+- [ ] **Photo Ingest** as an *optional first-party plugin* (not core) — consumes v0.6 device detection +
+  the v0.3 copy+verify engine; doubles as proof of the heavy-plugin path. Spec: [`photo-ingest.md`](docs/feature-requests/photo-ingest.md).
+- [ ] Close the deferred data-loss audit items before 1.0 (see Hardening backlog: OPS-1 atomic replace, TOCTOU `O_EXCL`).
+- [ ] **Notarized DMG** (paid Apple Developer ID) — removes the "Open Anyway" acquisition tax before any 1.0 push.
+
+## Open questions to revisit
+
+- **SMB in v0.7 for a solo dev** — XPC + a network filesystem is the heaviest single item; may need its own point release or a narrower first cut (read-only browse before write).
+- **i18n timing** — v0.7 assumes the string surface stabilized; if community demand (esp. RU) shows up earlier, pull it forward — it's cheap *if* the v0.4 hygiene held.
+- **Validation cadence** — confirm the per-milestone public-channel post + 5-user screen-share loop actually happens; it's the only signal in a no-telemetry product.
 
 ## Hardening backlog (from the security + Swift audit — see `SECURITY.md`)
 
@@ -141,10 +219,11 @@ Deferred (tracked, not yet done):
 
 ## Next up
 
-v0.3 platform shipped (JS runtime, native git-status column, search, Share). Next:
-- Widen the plugin surface beyond columns — context-menu items and commands from JS,
-  then a vetted scoped-FS capability (`PluginContext.resolve`) so a plugin can read files
-  it's granted, opening the door to a real JS git plugin and community plugins.
-- Plugin metadata/manifests + enable/disable per plugin in Settings.
-- Content search (beyond name) and a results pane that remembers its origin.
-- Then the **Later** items: Sparkle seamless auto-install, FTP/SMB virtual filesystems.
+**v0.4 shipped** (command palette ⌘K, type-to-filter, real file-type icons, keyboard tab-switching,
+⌘/ cheat sheet, `FileSystemRouter` + UI tokens seams). The public plugin surface stays **frozen**
+until v0.8 per the re-sequenced plan. Next is **v0.5 — "Looks as good as it runs"**:
+
+- Density modes (Compact / Cozy / Comfortable) + drag-and-drop (inter-pane + in/out of app).
+- Scoped animation (replace the global `disablesAnimations` kill-switch with per-mutation glide).
+- **Seam — async plugin-value path**: make `PluginColumn.evaluate` (`Commands.swift`) async-capable
+  before VFS (v0.7) forces it as a breaking change.

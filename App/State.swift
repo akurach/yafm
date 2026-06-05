@@ -18,6 +18,19 @@ final class TabModel: Identifiable {
     var sortOrder = SortOrder() { didSet { recomputeDisplayed() } }
     var showHidden = false { didSet { recomputeDisplayed() } }
 
+    /// Type-to-filter: a live name substring the user typed into the pane. Empty
+    /// = inactive. `filterActive` tracks the typing session so Esc/Backspace
+    /// behave even after the text is emptied. Changing it re-derives `displayed`.
+    private(set) var filter = "" { didSet { recomputeDisplayed() } }
+    private(set) var filterActive = false
+
+    func appendFilter(_ s: String) { filterActive = true; filter += s }
+    func backspaceFilter() {
+        guard filterActive else { return }
+        if filter.isEmpty { filterActive = false } else { filter.removeLast() }
+    }
+    func clearFilter() { filterActive = false; filter = "" }
+
     /// Non-nil when the tab shows a virtual listing (e.g. "everything tagged X")
     /// instead of a real directory. Cleared the moment the user navigates.
     private(set) var virtualName: String?
@@ -59,8 +72,15 @@ final class TabModel: Identifiable {
         case .loaded(let e): base = e
         default: base = []
         }
-        let filtered = showHidden ? base : base.filter { !$0.isHidden }
+        var filtered = showHidden ? base : base.filter { !$0.isHidden }
+        if filterActive, !filter.isEmpty {
+            filtered = filtered.filter { $0.name.range(of: filter, options: .caseInsensitive) != nil }
+        }
         displayed = filtered.sorted(by: sortOrder)
+        // Keep the cursor on a visible row as the filter narrows the list.
+        if let c = cursor, !displayed.contains(where: { $0.url == c }) {
+            cursor = displayed.first?.url
+        }
     }
 
     func open(_ url: URL) {
@@ -69,6 +89,7 @@ final class TabModel: Identifiable {
         selection = []
         cursor = nil
         gitStatus = [:]
+        clearFilter()
         load()
     }
 
@@ -218,6 +239,18 @@ final class PaneModel: Identifiable {
     func select(_ id: UUID) {
         if let i = tabs.firstIndex(where: { $0.id == id }) { activeIndex = i }
     }
+
+    /// Cycle tabs (⌃Tab / ⌃⇧Tab), wrapping around.
+    func cycleTab(by delta: Int) {
+        guard tabs.count > 1 else { return }
+        activeIndex = (activeIndex + delta + tabs.count) % tabs.count
+    }
+
+    /// Jump to tab N (⌘1–⌘9); 1-based, out-of-range is ignored.
+    func selectIndex(_ n: Int) {
+        guard n >= 1, n <= tabs.count else { return }
+        activeIndex = n - 1
+    }
 }
 
 // MARK: - A running operation shown in the queue
@@ -248,7 +281,10 @@ final class OperationItem: Identifiable {
 @MainActor
 @Observable
 final class AppState {
-    let fs: FileSystemProvider = LocalFileSystem()
+    // Routed through FileSystemRouter so virtual filesystems (SMB/FTP in v0.7,
+    // archives in v0.8) register by scheme without touching any call site. Today
+    // every URL is local and falls through to LocalFileSystem unchanged.
+    let fs: FileSystemProvider = FileSystemRouter()
     let tags: TagServing = TagService()
     let engine = FileEngine()
     let registry = ExtensionRegistry()
@@ -257,6 +293,10 @@ final class AppState {
     let gitService = GitStatusService()
     let pluginHost = JSPluginHost()
     let searchService = SearchService()
+
+    /// Command palette (⌘K) + shortcut cheat sheet (⌘/) overlay state.
+    var commandPalette = false
+    var cheatSheet = false
 
     /// Find-within-folder (⌘F) sheet state.
     var searchSheet = false
@@ -656,6 +696,10 @@ final class AppState {
         case CommandID.quickLook, CommandID.view: QuickLook.toggle(urls: activeTab.actionable.map(\.url))
         case CommandID.edit: editCursor()
         case CommandID.search: searchQuery = ""; searchSheet = true
+        case CommandID.commandPalette: commandPalette = true
+        case CommandID.cheatSheet: cheatSheet = true
+        case CommandID.nextTab: activePane.cycleTab(by: 1)
+        case CommandID.prevTab: activePane.cycleTab(by: -1)
         default: break
         }
     }

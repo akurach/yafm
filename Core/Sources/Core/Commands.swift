@@ -66,6 +66,11 @@ public enum CommandID {
     public static let edit = "op.edit"             // F4 open in editor
     // v0.3 platform commands
     public static let search = "view.search"       // ⌘F find within the folder
+    // v0.4 keyboard-first commands
+    public static let commandPalette = "app.palette" // ⌘K fuzzy jump-to-anything
+    public static let cheatSheet = "help.shortcuts"  // ⌘/ shortcut overlay
+    public static let nextTab = "tab.next"           // ⌃Tab
+    public static let prevTab = "tab.prev"           // ⌃⇧Tab
 }
 
 /// The default Total Commander-style bindings.
@@ -94,6 +99,10 @@ public enum DefaultCommands {
         Command(id: CommandID.view, title: "View", defaultKey: KeyBinding(.function(3))),
         Command(id: CommandID.edit, title: "Edit", defaultKey: KeyBinding(.function(4))),
         Command(id: CommandID.search, title: "Search", defaultKey: KeyBinding(.char("f"), [.command])),
+        Command(id: CommandID.commandPalette, title: "Command Palette", defaultKey: KeyBinding(.char("k"), [.command])),
+        Command(id: CommandID.cheatSheet, title: "Keyboard Shortcuts", defaultKey: KeyBinding(.char("/"), [.command])),
+        Command(id: CommandID.nextTab, title: "Next Tab", defaultKey: KeyBinding(.tab, [.control])),
+        Command(id: CommandID.prevTab, title: "Previous Tab", defaultKey: KeyBinding(.tab, [.control, .shift])),
     ]
 
     /// Single source of truth for key dispatch: binding → command id, derived

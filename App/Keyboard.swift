@@ -69,6 +69,29 @@ struct KeyboardMonitor: NSViewRepresentable {
 
         let tab = app.activeTab
 
+        var mods: KeyBinding.Modifiers = []
+        if c.command { mods.insert(.command) }
+        if c.shift { mods.insert(.shift) }
+        if c.control { mods.insert(.control) }
+        if c.option { mods.insert(.option) }
+
+        // ⌘1–⌘9: jump straight to tab N in the active pane.
+        if c.command, !c.control, !c.option,
+           let n = c.chars?.first?.wholeNumberValue, (1...9).contains(n) {
+            app.activePane.selectIndex(n); return true
+        }
+
+        // Active type-to-filter session: Esc clears, Backspace edits, a plain
+        // printable key extends the filter. Arrows/Enter fall through so the
+        // filtered list is still navigable.
+        if tab.filterActive {
+            if c.keyCode == 53 { tab.clearFilter(); return true }      // Esc
+            if c.keyCode == 51 { tab.backspaceFilter(); return true }  // Backspace
+            if Self.isPlainTyping(c, mods), let s = c.chars, Self.isFilterChar(s) {
+                tab.appendFilter(s); return true
+            }
+        }
+
         // Cursor movement and the Left/Right nav aliases aren't modeled as
         // commands (no binding), so they stay explicit.
         switch c.keyCode {
@@ -81,12 +104,6 @@ struct KeyboardMonitor: NSViewRepresentable {
 
         // Everything else: decode the chord into a KeyBinding and dispatch via
         // the single source of truth (DefaultCommands.byBinding).
-        var mods: KeyBinding.Modifiers = []
-        if c.command { mods.insert(.command) }
-        if c.shift { mods.insert(.shift) }
-        if c.control { mods.insert(.control) }
-        if c.option { mods.insert(.option) }
-
         if let key = Self.keyByCode[c.keyCode],
            let id = DefaultCommands.byBinding[KeyBinding(key, mods)] {
             app.run(id); return true
@@ -95,6 +112,27 @@ struct KeyboardMonitor: NSViewRepresentable {
            let id = DefaultCommands.byBinding[KeyBinding(.char(ch), mods)] {
             app.run(id); return true
         }
+
+        // Total Commander-style quick search: the first bare alphanumeric
+        // keystroke starts a type-to-filter session in the current folder.
+        if Self.isPlainTyping(c, mods), let s = c.chars, let ch = s.first,
+           ch.isLetter || ch.isNumber {
+            tab.appendFilter(s); return true
+        }
         return false
+    }
+
+    /// A single printable character typed with no command/control/option (Shift
+    /// is fine for capitals) — i.e. plain typing, not a shortcut chord.
+    private static func isPlainTyping(_ c: KeyChord, _ mods: KeyBinding.Modifiers) -> Bool {
+        !c.command && !c.control && !c.option && (c.chars?.count == 1)
+    }
+
+    /// Characters allowed to extend an active filter (filename-ish). Kept to
+    /// alphanumerics, space, and a small safe set so an active filter doesn't
+    /// swallow punctuation/symbol command shortcuts (TC quick-search behaviour).
+    private static func isFilterChar(_ s: String) -> Bool {
+        guard let ch = s.first else { return false }
+        return ch.isLetter || ch.isNumber || ch == " " || ch == "." || ch == "-" || ch == "_"
     }
 }
