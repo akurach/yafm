@@ -6,6 +6,36 @@ the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+_On `main`, not yet tagged/released — ship as **v0.9.2** next session (bump
+Info.plist + tag + DMG + GitHub release)._
+
+### Fixed
+- **Big-folder freeze on open / re-sort — root cause found & fixed.** It was the
+  per-row **`.contextMenu`**: SwiftUI builds a row's context-menu content *eagerly
+  for every row*, and the **Open With** + **Share** submenus enumerated apps /
+  share services (with images) per row — so a ~286-file folder (Downloads) rebuilt
+  that whole menu tree 286× on open and on every re-sort, freezing both panes.
+  (Core listing was never the problem: ~15 ms list, ~1.5 ms sort.) The row menu is
+  now **flat** — Open With… and Share… open the system picker on demand
+  (`NSSharingServicePicker`). Profiling: main-thread layout samples during a sort
+  dropped from hundreds to **0**. (`Views.swift` `rowMenu`, `AppState.sharePicker`.)
+- **Rename selects the basename**, not the extension, via an AppKit field bridge
+  (`BasenameField` in `RenameSheet.swift`).
+
+### Docs
+- README refreshed from its stale v0.3 state to v0.9.x (full highlights + User
+  Guide links). All feature-requests triaged & closed (shipped or deferred post-1.0).
+
+### Known / deferred (next)
+- **Open With** lost its inline top-apps list (that enumeration was the freeze) —
+  could come back as a *lazy* submenu (built only on hover) without the per-row cost.
+- **P0-B** (SwiftUI `List` O(n) identity diff) turned out **not** to be the felt
+  lag — the context menu was. A custom virtualized table is only worth it if a
+  much larger folder still stutters; fold into the redesign if so.
+- The **visual redesign** ("переделка дизайна") is the next phase — foundation laid
+  (design-system tokens adopted, the two layout bugs fixed). User chose "finish the
+  remainder first" (done); approach for the new look still TBD (reference vs. options).
+
 ## [0.9.1] — Audit pass (perf · security · UX · design)
 
 A sweep through the five-dimension audit (`AUDIT.md`): everything actionable, fixed.
