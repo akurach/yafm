@@ -6,6 +6,48 @@ the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.9.1] — Audit pass (perf · security · UX · design)
+
+A sweep through the five-dimension audit (`AUDIT.md`): everything actionable, fixed.
+
+### Performance
+- **Per-row work made cheap** so cursor moves / sorts don't stutter on big folders:
+  sync plugin-column values are cached (was a JSC call per row per render); `UTType`
+  kind cached by extension (was a LaunchServices query per row); one shared
+  `ByteCountFormatter` (was an alloc per row).
+- **O(1) cursor ops** — a `[URL:Int]` index makes arrow keys / `actionable` constant
+  time (was an O(n) linear scan per keystroke). Hoisted the resource-key `Set` and
+  dropped ICU compare for the kind sort.
+
+### Security
+- **Plugin scope: mid-path symlink escape closed** — `PluginContext.resolve` returns
+  the symlink-resolved path, not the candidate.
+- **xattr `XATTR_NOFOLLOW`** on tag read/write/remove (a planted symlink can't redirect).
+- **Spotlight predicate fully sanitized** (all metacharacters, not just `"`/`*`).
+- **Archive: validates a real local `.zip`** and caps entries (100k); **rename rejects**
+  `/`, NUL, `.`, `..` at the engine.
+
+### Code
+- JS `exceptionHandler` restored after a command/menu run; TCC full-disk probe moved
+  off the main actor; `ArchiveError` instead of a borrowed `SMBError`; move/rename
+  capture size before the move (progress was stuck at 0%); keyboard uses a proper
+  `NSTextInputClient` check; plugin readText handles deduped by URL (was an unbounded leak).
+
+### UX
+- **Keyboard multi-select** — Insert toggles + advances; **⌘A** select-all; **Invert
+  Selection**; **⌘-click / ⇧-click** mouse multi-select.
+- **Move to Trash** is now the default destructive action (**F8**, recoverable);
+  permanent delete moved to **⇧F8** / a separate menu item (with confirm).
+- **Home / End / PageUp / PageDown** cursor jumps.
+- Command palette lists plugin commands; cheat sheet covers the new keys.
+
+### Design (layout-bug fixes + tokens, prepping the redesign)
+- **Row icon is density-sized** (was hardcoded 16) — fixes columns drifting between
+  density modes; header spacer + deterministic row insets line columns up.
+- **One active-pane signal** — removed the 2pt top bar that cut across the tab strip.
+- Tokenized tag dots, corner radius, tab-active, function-bar control colors, header
+  font; raised the cursor wash for light-mode contrast; tag chips wrap properly.
+
 ## [0.9.0] — 1.0 candidate
 
 Stability + the last extension points. This release is mostly about making yafm
