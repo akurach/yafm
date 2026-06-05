@@ -61,6 +61,8 @@ The arc in brief:
 - **v0.2.1–v0.2.3 — Daily-driver UX & shell.** Context menus, sidebar volumes/devices, function-key
   bar, columns + info inspector, tag cloud, access onboarding; UX bugfixes; Settings window (⌘,)
   with theme, start folder, operations, tags, and a GitHub-releases update check.
-- **v0.3 — Platform.** JS plugin runtime (JavaScriptCore) + first community plugin, search
-  (mdfind/Spotlight + own), AirDrop/Share.
+- **v0.3 — Platform. ✅ shipped.** JS plugin runtime (JavaScriptCore) — sandboxed column
+  plugins via `yafm.registerColumn`, an editable example seeded on first run; native git-status
+  column in the same registry; find-within-folder search (mdfind/Spotlight + own fallback);
+  AirDrop/Share. Plugin API: [`docs/plugins.md`](docs/plugins.md).
 - **Later.** FTP/SMB/cloud as virtual filesystems (XPC), plugin marketplace, archive mounting.

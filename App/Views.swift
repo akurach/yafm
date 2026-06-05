@@ -168,6 +168,8 @@ struct FileTableView: View {
     private let sizeW: CGFloat = 78
     private let modW: CGFloat = 124
     private let kindW: CGFloat = 92
+    private let gitW: CGFloat = 34
+    private let pluginW: CGFloat = 104
 
     // The List is the only child and fills the pane natively; the column header
     // rides along as a pinned Section header (a plain List inside a VStack would
@@ -229,7 +231,15 @@ struct FileTableView: View {
             headerButton("Size", .size).frame(width: sizeW, alignment: .trailing)
             headerButton("Modified", .modified).frame(width: modW, alignment: .trailing)
             headerButton("Kind", .kind).frame(width: kindW, alignment: .leading)
+            if !tab.gitStatus.isEmpty {
+                Text("Git").frame(width: gitW, alignment: .center)
+            }
+            ForEach(app.registry.pluginColumns) { col in
+                Text(col.title).lineLimit(1).frame(width: pluginW, alignment: .leading)
+            }
         }
+        .font(.caption.bold())
+        .foregroundStyle(.secondary)
         .padding(.horizontal, 14).padding(.vertical, 4)
         .background(.bar)
     }
@@ -285,8 +295,39 @@ struct FileTableView: View {
             Text(kindText(entry))
                 .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 .frame(width: kindW, alignment: .leading)
+            if !tab.gitStatus.isEmpty {
+                Text(tab.gitStatus[entry.url] ?? "")
+                    .font(.caption.monospaced().bold())
+                    .foregroundStyle(gitColor(tab.gitStatus[entry.url]))
+                    .frame(width: gitW, alignment: .center)
+            }
+            ForEach(app.registry.pluginColumns) { col in
+                Text(pluginText(col, entry))
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    .frame(width: pluginW, alignment: .leading)
+            }
         }
         .padding(.vertical, 1)
+    }
+
+    /// Tint a VCS marker: untracked/added green, modified orange, deleted red.
+    private func gitColor(_ marker: String?) -> Color {
+        switch marker {
+        case "?", "A": return .green
+        case "D": return .red
+        case "M", "•": return .orange
+        default: return .secondary
+        }
+    }
+
+    /// Render a plugin/native column value for a row.
+    private func pluginText(_ col: PluginColumn, _ entry: FSEntry) -> String {
+        switch col.evaluate(entry) {
+        case .text(let s): return s
+        case .number(let n): return n == n.rounded() ? String(Int(n)) : String(n)
+        case .date(let d): return Self.dateText(d)
+        case .none: return ""
+        }
     }
 
     private func kindText(_ entry: FSEntry) -> String {
@@ -363,6 +404,7 @@ struct FileTableView: View {
         Button { focus(entry); app.tagSheet = .init(url: entry.url) } label: {
             Label("Tags…", systemImage: "tag")
         }
+        shareMenu(entry)
 
         if entry.isDirectory {
             Divider()
@@ -373,6 +415,22 @@ struct FileTableView: View {
         Button { focus(entry); app.run(CommandID.reveal) } label: { Label("Reveal in Finder", systemImage: "magnifyingglass") }
         Button { focus(entry); app.run(CommandID.getInfo) } label: { Label("Get Info", systemImage: "info.circle") }
         Button { focus(entry); app.run(CommandID.copyPath) } label: { Label("Copy Path", systemImage: "link") }
+    }
+
+    /// Share / AirDrop the row (or the whole selection when the row is in it).
+    @ViewBuilder
+    private func shareMenu(_ entry: FSEntry) -> some View {
+        let urls = tab.selection.contains(entry.url) ? Array(tab.selection) : [entry.url]
+        let services = app.sharingServices(for: urls)
+        if !services.isEmpty {
+            Menu {
+                ForEach(services, id: \.title) { svc in
+                    Button { app.share(urls, with: svc) } label: {
+                        Label { Text(svc.title) } icon: { Image(nsImage: svc.image) }
+                    }
+                }
+            } label: { Label("Share", systemImage: "square.and.arrow.up") }
+        }
     }
 
     /// Menu for empty pane background — no selection target.
@@ -401,6 +459,7 @@ struct FileTableView: View {
             Label("Show Hidden Files", systemImage: tab.showHidden ? "checkmark" : "")
         }
         Divider()
+        Button("Search…") { app.activePaneIsLeft = tabBelongsToLeft(); app.run(CommandID.search) }
         Button("Add Current Folder to Favorites") { app.addBookmark(tab.directory) }
         Button("Refresh") { tab.load() }
     }

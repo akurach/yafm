@@ -79,10 +79,17 @@ App-shell milestone pulled out of the backlog. Full spec: [`app-shell.md`](docs/
 
 ## v0.3 — Platform
 
-- [ ] JS plugin runtime (JavaScriptCore) + 2–3 extension points exposed
-- [ ] First community plugin (git-status column) as proof
-- [ ] Search (mdfind/Spotlight + own)
-- [ ] AirDrop / Share from UI
+- [x] JS plugin runtime (JavaScriptCore) behind `ExtensionRegistry` — plugins
+  contribute table columns via `yafm.registerColumn`, each file its own sandboxed
+  `JSContext` (no FS / network / process; only a path-free entry snapshot).
+  Seeds an editable `example-kind.js` on first run. Settings ▸ Plugins manages it.
+- [x] git-status column as proof — first-party **native** `GitStatusService`
+  (per VISION: heavy first-party features may be native yet appear in the same
+  registry). Per-file markers (M/A/?/D, `•` rolled-up folders), tinted in the table.
+  A JS-reachable git/exec capability is intentionally still withheld (see below).
+- [x] Search (mdfind/Spotlight + own) — ⌘F find-within-folder, Spotlight with a
+  recursive name-substring fallback, results shown as a virtual listing.
+- [x] AirDrop / Share from UI — `NSSharingService` "Share ▸" in the row menu.
 
 ## Later
 
@@ -123,10 +130,17 @@ Deferred (tracked, not yet done):
 - [ ] **OPS-1** (audit 2026-06-05): `.replace` collision removes the destination *before* writing —
   a failed/cancelled copy loses both files. Copy to a temp sibling + `replaceItemAt` (atomic swap).
 - [ ] TOCTOU: open copy output with `O_EXCL` instead of exists-check + truncate
-- [~] Plugin capability boundary: `PluginContext` type drafted in `Commands.swift`; enforce it at
-  the registry before any JS API is exposed (v0.3)
+- [x] Plugin capability boundary enforced (v0.3): JS plugins get only a path-free entry
+  snapshot — no `url`/path, FS, network, or process — and each runs in its own `JSContext`.
+  `JSPluginHost.snapshot(of:in:)` is the single widening point. `PluginContext.resolve`
+  remains the chokepoint for the day a scoped-FS capability is added.
 
 ## Next up
 
-v0.3 platform work: JS plugin runtime (JavaScriptCore) behind the `ExtensionRegistry` contract,
-starting with the deferred `PluginContext` capability boundary, then a git-status column plugin.
+v0.3 platform shipped (JS runtime, native git-status column, search, Share). Next:
+- Widen the plugin surface beyond columns — context-menu items and commands from JS,
+  then a vetted scoped-FS capability (`PluginContext.resolve`) so a plugin can read files
+  it's granted, opening the door to a real JS git plugin and community plugins.
+- Plugin metadata/manifests + enable/disable per plugin in Settings.
+- Content search (beyond name) and a results pane that remembers its origin.
+- Then the **Later** items: Sparkle seamless auto-install, FTP/SMB virtual filesystems.

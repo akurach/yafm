@@ -6,14 +6,66 @@ the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.3.0] — Platform
+
+The platform milestone: yafm grows a plugin runtime. Community plugins are
+JavaScript run through JavaScriptCore (the Obsidian / Chrome model — drop a `.js`
+file in the plugins folder and it works), sandboxed to a vetted host API. Plus a
+native git-status column, find-within-folder search, and Share / AirDrop.
+
+### Added — JS plugin runtime
+- **JavaScriptCore plugin host** (`Core/Plugins.swift`, `JSPluginHost`). Each
+  `*.js` in `~/Library/Application Support/yafm/plugins/` is evaluated in its own
+  `JSContext` and may contribute table columns via `yafm.registerColumn({ id,
+  title, value })`. Columns render in the file table after the native ones.
+- **Sandbox by construction.** A plugin sees only a path-free, read-only snapshot
+  of each entry — `{ name, ext, isDirectory, isHidden, size, modified, tags }` —
+  never a `url`/absolute path. No filesystem, network, `Process`, `require`, or
+  timers are exposed; the default JSC globals (`Math`/`JSON`/`Date`) are
+  pure-compute. `JSPluginHost.snapshot(of:in:)` is the single place to widen the
+  surface later. This is the boundary `PluginContext` was drafted for.
+- **Robust loading.** A malformed or throwing plugin is recorded as a load error
+  (surfaced in Settings ▸ Plugins) and skipped; a column function that throws at
+  render degrades to an empty cell, never a crash.
+- **Bundled example.** An editable `example-kind.js` (a "Type" column that
+  classifies files by extension) is seeded into an empty plugins folder on first
+  run, so the runtime has something to show and a template to copy.
+- **Settings ▸ Plugins** — open the plugins folder, reload plugins, and see what
+  loaded (with per-file errors).
+
+### Added — git-status column (first-party native)
+- **`GitStatusService`** (`Core/Git.swift`) shells out to `git status --porcelain`
+  and maps each immediate child of the directory to a one-glyph marker — `M`
+  modified · `A` added/staged · `?` untracked · `D` deleted · `•` a folder
+  containing changes. Recomputed on each listing (never stale), empty outside a
+  repo, and silently absent when `git` isn't installed. Rendered as a tinted
+  "Git" column that appears only inside a work tree. Native by design: running
+  `git` is exactly the capability the JS sandbox withholds, and VISION allows
+  heavy first-party features to be native yet share the registry.
+
+### Added — search
+- **Find within folder (⌘F)** — `SearchService` (`Core/Search.swift`) queries
+  Spotlight (`mdfind -onlyin`) and falls back to our own recursive,
+  case-insensitive name-substring walk when Spotlight has nothing (unindexed
+  disks, temp trees). Results stream into a virtual "Search: …" listing, like the
+  tag cloud. Name-only by design for v0.3. Reachable from the Go menu, the pane
+  background menu, and ⌘F.
+
+### Added — Share / AirDrop
+- **Share ▸** in the row context menu lists the system `NSSharingService`s
+  (AirDrop, Mail, Messages, …) for the selection and performs the chosen one.
+
 ### Project
 - **License: GPL-3.0 with a Plugin Exception** ([`LICENSE`](LICENSE)). yafm itself is copyleft (no
   closed-source forks); plugins using the published Plugin API may be proprietary/paid.
 - GitHub repo polish: README badges + License section, CI workflow (`swift build` + `swift test`
   on macOS), issue templates (bug report / feature request), `icon.png` source untracked
   (shipped icon stays `App/Resources/AppIcon.icns`). VISION roadmap deduped to point at `ROADMAP.md`.
+- New plugin API reference: [`docs/plugins.md`](docs/plugins.md).
 
-### Added — v0.2.3 Settings & app shell
+## [0.2.3] — Settings & app shell
+
+### Added
 - **Settings window (⌘,)** backed by `UserDefaults` (`AppSettings` / `SettingsView`) with five
   tabs: General · Appearance · Operations · Tags · Updates. Settings change real behaviour.
 - **"Right arrow opens files"** setting — default **off**: → enters folders only and ignores

@@ -164,9 +164,10 @@ struct SettingsView: View {
             appearance.tabItem { Label("Appearance", systemImage: "paintbrush") }
             operations.tabItem { Label("Operations", systemImage: "arrow.left.arrow.right") }
             tags.tabItem { Label("Tags", systemImage: "tag") }
+            plugins.tabItem { Label("Plugins", systemImage: "puzzlepiece.extension") }
             updatesTab.tabItem { Label("Updates", systemImage: "arrow.down.circle") }
         }
-        .frame(width: 500, height: 320)
+        .frame(width: 500, height: 340)
     }
 
     private var general: some View {
@@ -234,6 +235,39 @@ struct SettingsView: View {
                 HStack {
                     Button("Rescan now") { app.rescanTags() }
                     Button("Clear index") { app.clearTags() }
+                }
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private var plugins: some View {
+        Form {
+            Section("JavaScript plugins") {
+                Text("Drop a .js file in the plugins folder to add table columns. Plugins run in a sandbox: no filesystem, network, or process access — only the host API.")
+                    .font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    Button("Open Plugins Folder") { app.revealPluginsFolder() }
+                    Button("Reload Plugins") { app.loadPlugins() }
+                }
+            }
+            Section("Loaded") {
+                if app.pluginHost.loaded.isEmpty {
+                    Text("No plugins loaded.").font(.caption).foregroundStyle(.secondary)
+                } else {
+                    ForEach(app.pluginHost.loaded, id: \.name) { p in
+                        HStack {
+                            Image(systemName: "puzzlepiece.extension.fill").foregroundStyle(.secondary)
+                            Text(p.name)
+                            Spacer()
+                            Text(p.columnTitles.joined(separator: ", "))
+                                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                    }
+                }
+                ForEach(app.pluginHost.errors, id: \.name) { e in
+                    Label("\(e.name): \(e.message)", systemImage: "exclamationmark.triangle")
+                        .font(.caption).foregroundStyle(.red).lineLimit(2)
                 }
             }
         }

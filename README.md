@@ -8,7 +8,7 @@
 
 **Yet Another File Manager for macOS.** A fast, keyboard-driven, modern alternative to Finder — that never freezes silently.
 
-> Status: early development. v0.1 + v0.2 + v0.2.1 (daily-driver UX) + v0.2.2 (UX bugfixes) + v0.2.3 (Settings) done. Native Swift / SwiftUI.
+> Status: early development. v0.1 + v0.2 + v0.2.1 (daily-driver UX) + v0.2.2 (UX bugfixes) + v0.2.3 (Settings) + v0.3 (Platform: JS plugins, git column, search, Share) done. Native Swift / SwiftUI.
 
 ## Why
 
@@ -26,7 +26,9 @@ See **[VISION.md](VISION.md)** for the full vision, locked decisions, and roadma
 - Mounted drives / USB / network volumes in the sidebar (live, with eject)
 - QuickLook, toggleable preview panel, hidden-files toggle
 - Honest access onboarding — explains Full Disk Access instead of silently-empty folders
-- JavaScript plugins (JavaScriptCore) — download a plugin, it just works *(planned, v0.3)*
+- Find within a folder (⌘F) — Spotlight with our own name-scan fallback
+- Git-status column + Share / AirDrop from the row menu
+- JavaScript plugins (JavaScriptCore) — drop a `.js` file, it just works. See [docs/plugins.md](docs/plugins.md)
 
 ## Distribution
 

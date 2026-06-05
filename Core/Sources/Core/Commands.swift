@@ -64,6 +64,8 @@ public enum CommandID {
     public static let refresh = "view.refresh"     // ⌘R
     public static let view = "view.view"           // F3 QuickLook
     public static let edit = "op.edit"             // F4 open in editor
+    // v0.3 platform commands
+    public static let search = "view.search"       // ⌘F find within the folder
 }
 
 /// The default Total Commander-style bindings.
@@ -91,6 +93,7 @@ public enum DefaultCommands {
         Command(id: CommandID.refresh, title: "Refresh", defaultKey: KeyBinding(.char("r"), [.command])),
         Command(id: CommandID.view, title: "View", defaultKey: KeyBinding(.function(3))),
         Command(id: CommandID.edit, title: "Edit", defaultKey: KeyBinding(.function(4))),
+        Command(id: CommandID.search, title: "Search", defaultKey: KeyBinding(.char("f"), [.command])),
     ]
 
     /// Single source of truth for key dispatch: binding → command id, derived
@@ -134,6 +137,25 @@ public protocol ContextMenuProvider: Sendable {
     func items(for selection: [FSEntry]) -> [MenuItem]
 }
 
+/// A column contributed at runtime — by a JS plugin or a first-party native
+/// provider. Unlike `ColumnProvider` (a `Sendable` protocol for pure value
+/// types), this carries a `@MainActor` closure so it can wrap a JavaScriptCore
+/// `JSValue` (not `Sendable`) or read main-actor app state (git status). The
+/// table renders one trailing column per registered `PluginColumn`.
+@MainActor
+public struct PluginColumn: Identifiable {
+    public let id: String
+    public let title: String
+    /// Computed on the main actor as the table builds each row.
+    public let evaluate: (FSEntry) -> ColumnValue
+
+    public init(id: String, title: String, evaluate: @escaping (FSEntry) -> ColumnValue) {
+        self.id = id
+        self.title = title
+        self.evaluate = evaluate
+    }
+}
+
 // MARK: - Plugin capability boundary (design-ahead for the v0.3 JS loader)
 
 /// The vetted surface a plugin (column/command/menu provider) is allowed to
@@ -174,12 +196,22 @@ public final class ExtensionRegistry {
     public private(set) var columns: [ColumnProvider] = []
     public private(set) var commandProviders: [CommandProvider] = []
     public private(set) var contextMenus: [ContextMenuProvider] = []
+    /// Runtime columns from JS plugins + native first-party providers (git).
+    /// The file table renders one trailing column per entry here.
+    public private(set) var pluginColumns: [PluginColumn] = []
 
     public init() {}
 
     public func register(column: ColumnProvider) { columns.append(column) }
     public func register(commands: CommandProvider) { commandProviders.append(commands) }
     public func register(contextMenu: ContextMenuProvider) { contextMenus.append(contextMenu) }
+    public func register(pluginColumn: PluginColumn) { pluginColumns.append(pluginColumn) }
+
+    /// Drop plugin columns whose id has the given prefix (e.g. reload a plugin
+    /// set). Native columns use a distinct prefix so they survive.
+    public func removePluginColumns(idPrefix: String) {
+        pluginColumns.removeAll { $0.id.hasPrefix(idPrefix) }
+    }
 
     public func contextItems(for selection: [FSEntry]) -> [MenuItem] {
         contextMenus.flatMap { $0.items(for: selection) }

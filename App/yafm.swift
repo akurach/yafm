@@ -66,6 +66,7 @@ struct RootView: View {
         }
         .sheet(isPresented: $app.renameSheet) { RenameSheet(app: app) }
         .sheet(isPresented: $app.showOnboarding) { OnboardingSheet(app: app) }
+        .sheet(isPresented: $app.searchSheet) { SearchSheet(app: app) }
     }
 }
 
@@ -105,6 +106,9 @@ struct CommandMenus: Commands {
 
     var body: some Commands {
         CommandMenu("Go") {
+            Button("Search…") { app.run(CommandID.search) }
+                .keyboardShortcut("f", modifiers: [.command])
+            Divider()
             Button("Up") { app.run(CommandID.goUp) }
             Button("Toggle Hidden Files") { app.run(CommandID.toggleHidden) }
                 .keyboardShortcut(".", modifiers: [.command, .shift])

@@ -11,6 +11,7 @@ final class TabModel: Identifiable {
     let id = UUID()
     private let fs: FileSystemProvider
     private let tags: TagServing
+    private let git: GitStatusService?
 
     private(set) var directory: URL
     private(set) var state: ListingState = .idle { didSet { recomputeDisplayed() } }
@@ -25,11 +26,18 @@ final class TabModel: Identifiable {
     var selection: Set<URL> = []
     var cursor: URL?
 
-    private var task: Task<Void, Never>?
+    /// VCS markers for the entries in this listing, keyed by entry URL. Filled
+    /// asynchronously after a directory finishes loading; empty outside a repo.
+    private(set) var gitStatus: [URL: String] = [:]
 
-    init(fs: FileSystemProvider, tags: TagServing, directory: URL, showHidden: Bool = false) {
+    private var task: Task<Void, Never>?
+    private var gitTask: Task<Void, Never>?
+
+    init(fs: FileSystemProvider, tags: TagServing, directory: URL, showHidden: Bool = false,
+         git: GitStatusService? = nil) {
         self.fs = fs
         self.tags = tags
+        self.git = git
         self.directory = directory
         self.showHidden = showHidden
     }
@@ -60,6 +68,7 @@ final class TabModel: Identifiable {
         directory = url
         selection = []
         cursor = nil
+        gitStatus = [:]
         load()
     }
 
@@ -104,6 +113,7 @@ final class TabModel: Identifiable {
                 case .finished:
                     self.state = .loaded(partial)
                     if self.cursor == nil { self.cursor = self.displayed.first?.url }
+                    self.refreshGitStatus(for: self.directory)
                     await self.fillTags(partial, forDirectory: self.directory)
                 case .failed(let message):
                     self.state = .failed(message)
@@ -122,6 +132,22 @@ final class TabModel: Identifiable {
         }
         guard directory == dir, case .loaded = state else { return }
         state = .loaded(current)
+    }
+
+    /// Ask the git service for child statuses and key them by entry URL. A new
+    /// listing supersedes any in-flight compute; a navigated-away result is dropped.
+    private func refreshGitStatus(for dir: URL) {
+        guard let git else { return }
+        gitTask?.cancel()
+        gitTask = Task { [weak self] in
+            let map = await git.status(forDirectory: dir)
+            guard let self, self.directory == dir, self.virtualName == nil else { return }
+            var keyed: [URL: String] = [:]
+            for (name, marker) in map {
+                keyed[dir.appendingPathComponent(name)] = marker
+            }
+            self.gitStatus = keyed
+        }
     }
 
     // MARK: Keyboard cursor movement
@@ -158,24 +184,27 @@ final class PaneModel: Identifiable {
     let id = UUID()
     private let fs: FileSystemProvider
     private let tags: TagServing
+    private let git: GitStatusService?
 
     var tabs: [TabModel]
     var activeIndex = 0
     /// New tabs inherit this (from `AppSettings.showHiddenByDefault`).
     private let defaultShowHidden: Bool
 
-    init(fs: FileSystemProvider, tags: TagServing, directory: URL, showHidden: Bool = false) {
+    init(fs: FileSystemProvider, tags: TagServing, directory: URL, showHidden: Bool = false,
+         git: GitStatusService? = nil) {
         self.fs = fs
         self.tags = tags
+        self.git = git
         self.defaultShowHidden = showHidden
-        self.tabs = [TabModel(fs: fs, tags: tags, directory: directory, showHidden: showHidden)]
+        self.tabs = [TabModel(fs: fs, tags: tags, directory: directory, showHidden: showHidden, git: git)]
     }
 
     var active: TabModel { tabs[min(activeIndex, tabs.count - 1)] }
 
     func newTab(at directory: URL? = nil) {
         let dir = directory ?? active.directory
-        tabs.append(TabModel(fs: fs, tags: tags, directory: dir, showHidden: defaultShowHidden))
+        tabs.append(TabModel(fs: fs, tags: tags, directory: dir, showHidden: defaultShowHidden, git: git))
         activeIndex = tabs.count - 1
         active.load()
     }
@@ -225,6 +254,14 @@ final class AppState {
     let registry = ExtensionRegistry()
     let volumeService = VolumeService()
     let settings = AppSettings()
+    let gitService = GitStatusService()
+    let pluginHost = JSPluginHost()
+    let searchService = SearchService()
+
+    /// Find-within-folder (⌘F) sheet state.
+    var searchSheet = false
+    var searchQuery = ""
+    private var searchTask: Task<Void, Never>?
 
     let left: PaneModel
     let right: PaneModel
@@ -278,8 +315,8 @@ final class AppState {
     init() {
         let start = settings.startDirectory()
         let hidden = settings.showHiddenByDefault
-        left = PaneModel(fs: fs, tags: tags, directory: start, showHidden: hidden)
-        right = PaneModel(fs: fs, tags: tags, directory: start, showHidden: hidden)
+        left = PaneModel(fs: fs, tags: tags, directory: start, showHidden: hidden, git: gitService)
+        right = PaneModel(fs: fs, tags: tags, directory: start, showHidden: hidden, git: gitService)
         bookmarks = AppState.defaultBookmarks()
     }
 
@@ -311,6 +348,75 @@ final class AppState {
         observeVolumes()
         indexTagsInBackground()
         checkAccess()
+        loadPlugins()
+    }
+
+    // MARK: Plugins (v0.3 Platform)
+
+    /// Install the bundled example on first run, then load every `.js` in the
+    /// plugins folder and register their columns. Reloadable from Settings.
+    func loadPlugins() {
+        guard let dir = JSPluginHost.defaultPluginsDirectory() else { return }
+        installBundledPluginsIfNeeded(into: dir)
+        registry.removePluginColumns(idPrefix: JSPluginHost.columnIDPrefix)
+        for column in pluginHost.loadPlugins(from: dir) {
+            registry.register(pluginColumn: column)
+        }
+    }
+
+    /// Drop the example plugin into an empty plugins folder so the runtime has
+    /// something to show — the "drop a file, it works" model, seeded once.
+    private func installBundledPluginsIfNeeded(into dir: URL) {
+        let example = dir.appendingPathComponent("example-kind.js")
+        let installed = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
+        let hasJS = installed.contains { $0.hasSuffix(".js") }
+        guard !hasJS, !FileManager.default.fileExists(atPath: example.path) else { return }
+        try? JSPluginHost.exampleColumnPlugin.write(to: example, atomically: true, encoding: .utf8)
+    }
+
+    /// Open the plugins folder in Finder (Settings affordance).
+    func revealPluginsFolder() {
+        guard let dir = JSPluginHost.defaultPluginsDirectory() else { return }
+        NSWorkspace.shared.activateFileViewerSelecting([dir])
+    }
+
+    // MARK: Search (v0.3 Platform)
+
+    /// Find-within-folder: search the active tab's directory and show the hits as
+    /// a virtual listing (like the tag cloud). Spotlight with our own fallback.
+    func runSearch(_ query: String) {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !q.isEmpty else { return }
+        let dir = activeTab.directory
+        let tab = activeTab
+        searchTask?.cancel()
+        searchTask = Task { [weak self] in
+            guard let self else { return }
+            let urls = await self.searchService.search(q, in: dir)
+            tab.beginVirtual(title: "Search: \(q)")
+            var entries: [FSEntry] = []
+            for url in urls {
+                if Task.isCancelled { return }
+                guard var e = try? await self.fs.metadata(of: url) else { continue }
+                e.tags = await self.tags.tags(of: url)
+                entries.append(e)
+                if entries.count % 64 == 0 { tab.appendVirtual(entries) }
+            }
+            if Task.isCancelled { return }
+            tab.appendVirtual(entries)
+        }
+    }
+
+    // MARK: Share / AirDrop (v0.3 Platform)
+
+    /// Share services available for a selection (includes AirDrop when reachable).
+    func sharingServices(for urls: [URL]) -> [NSSharingService] {
+        NSSharingService.sharingServices(forItems: urls)
+    }
+
+    func share(_ urls: [URL], with service: NSSharingService) {
+        guard !urls.isEmpty else { return }
+        service.perform(withItems: urls)
     }
 
     // MARK: Volumes (§2)
@@ -488,6 +594,7 @@ final class AppState {
         case CommandID.refresh: activeTab.load()
         case CommandID.quickLook, CommandID.view: QuickLook.toggle(urls: activeTab.actionable.map(\.url))
         case CommandID.edit: editCursor()
+        case CommandID.search: searchQuery = ""; searchSheet = true
         default: break
         }
     }
