@@ -1,45 +1,92 @@
-/* yafm — Russian localization (v0.7).
-   Keys are the English UI literals; SwiftUI's LocalizedStringKey resolves them
-   here when the app runs in Russian. Coverage grows each release. */
+/* yafm — Russian localization (v0.7.1).
+   Keys are the exact English UI literals used as SwiftUI LocalizedStringKey;
+   their Russian values appear when the app runs in Russian. Full coverage of the
+   static UI surface; interpolated formats covered where the generated key is stable. */
 
 /* — Common actions — */
 "Open" = "Открыть";
 "Open With" = "Открыть в программе";
+"Open in New Tab" = "Открыть в новой вкладке";
 "Other…" = "Другая…";
 "Quick Look" = "Быстрый просмотр";
 "Copy" = "Скопировать";
 "Cut" = "Вырезать";
 "Paste" = "Вставить";
+"Rename" = "Переименовать";
 "Rename…" = "Переименовать…";
 "New Folder…" = "Новая папка…";
-"New Folder" = "Новая папка";
 "Delete" = "Удалить";
 "Cancel" = "Отмена";
+"Continue" = "Продолжить";
+"Add" = "Добавить";
+"Go" = "Перейти";
+"Up" = "Вверх";
+"Done" = "Готово";
+"Choose…" = "Выбрать…";
 "Search" = "Найти";
 "Search…" = "Найти…";
+"Find" = "Найти";
 "Connect" = "Подключиться";
 "Refresh" = "Обновить";
 "Get Info" = "Свойства";
 "Copy Path" = "Скопировать путь";
 "Reveal in Finder" = "Показать в Finder";
 "Share" = "Поделиться";
+"Eject" = "Извлечь";
+"Preview" = "Предпросмотр";
+"Info" = "Сведения";
+"Path" = "Путь";
+
+/* — Tags — */
+"Tags" = "Метки";
 "Tags…" = "Метки…";
-"Add to Favorites" = "В избранное";
+"TAGS" = "МЕТКИ";
+"COLOR" = "ЦВЕТ";
+"New tag" = "Новая метка";
+"Add a tag…" = "Добавить метку…";
+"No color" = "Без цвета";
+"No tags yet" = "Меток пока нет";
+"Manage tags" = "Управление метками";
+"Tag index" = "Индекс меток";
+"Rescan now" = "Пересканировать";
+"Clear index" = "Очистить индекс";
+"Rename across all files" = "Переименовать во всех файлах";
+"Remove from all files" = "Удалить из всех файлов";
+"Show Tagged Files" = "Показать файлы с меткой";
+"No tags yet. Tag a file, or Rescan if you tagged files outside yafm." = "Меток пока нет. Назначьте метку файлу или нажмите «Пересканировать», если помечали файлы вне yafm.";
+"The sidebar cloud and this list are built from an index of your files. Rescan after tagging outside yafm; clear to rebuild from scratch." = "Облако меток и этот список строятся из индекса ваших файлов. Пересканируйте после пометки вне yafm; очистите, чтобы перестроить с нуля.";
 
 /* — Row context / pane menus — */
 "Copy to other pane" = "Скопировать в другую панель";
 "Move to other pane" = "Переместить в другую панель";
+"Copy → other pane" = "Скопировать → в другую панель";
+"Move → other pane" = "Переместить → в другую панель";
+"Add to Favorites" = "В избранное";
+"Add Current Folder to Favorites" = "Добавить папку в избранное";
+"Remove from Favorites" = "Убрать из избранного";
 "Sort By" = "Сортировка";
 "Show Hidden Files" = "Показывать скрытые файлы";
-"Add Current Folder to Favorites" = "Добавить папку в избранное";
+"New name" = "Новое имя";
+
+/* — Sidebar sections — */
+"Favorites" = "Избранное";
+"Locations" = "Места";
+"Devices" = "Устройства";
+"Network" = "Сеть";
+
+/* — Columns — */
+"Name" = "Имя";
+"Size" = "Размер";
+"Modified" = "Изменён";
+"Kind" = "Тип";
+"Git" = "Git";
 
 /* — Search bar — */
 "File name contains…" = "Имя файла содержит…";
 "Text in files…" = "Текст в файлах…";
-"Name" = "Имя";
 "Contents" = "Содержимое";
 
-/* — States — */
+/* — States / loading — */
 "Nothing open yet" = "Пока ничего не открыто";
 "Pick a folder from the sidebar or type a path above." = "Выберите папку слева или введите путь сверху.";
 "Can't open folder" = "Не удаётся открыть папку";
@@ -47,29 +94,110 @@
 "This folder has no items." = "В этой папке ничего нет.";
 "No matches" = "Совпадений нет";
 "Searching…" = "Идёт поиск…";
+"Limited access — some folders are hidden." = "Ограниченный доступ — некоторые папки скрыты.";
 
 /* — Connect to Server — */
 "Connect to Server" = "Подключение к серверу";
 "Connect to Server…" = "Подключение к серверу…";
+"Enter a server address. SMB shares mount natively — macOS handles credentials (Keychain)." = "Введите адрес сервера. SMB-ресурсы монтируются нативно — macOS управляет учётными данными (Keychain).";
+"Example: smb://nas.local/Media" = "Пример: smb://nas.local/Media";
 
-/* — Settings — */
+/* — Command palette / shortcuts — */
+"Command Palette…" = "Палитра команд…";
+"Keyboard Shortcuts" = "Горячие клавиши";
+"Next Tab" = "Следующая вкладка";
+"Previous Tab" = "Предыдущая вкладка";
+"New tab" = "Новая вкладка";
+"Toggle Hidden Files" = "Показать/скрыть скрытые файлы";
+"Toggle Preview" = "Показать/скрыть предпросмотр";
+"Edit path" = "Изменить путь";
+
+/* — Settings: tabs & sections — */
 "General" = "Основные";
 "Appearance" = "Оформление";
 "Operations" = "Операции";
-"Tags" = "Метки";
 "Plugins" = "Плагины";
 "Updates" = "Обновления";
+"Navigation" = "Навигация";
+"Listing" = "Список";
+"Language" = "Язык";
 "Theme" = "Тема";
 "Density" = "Плотность";
 "Motion" = "Анимация";
+
+/* — Settings: General — */
+"Start folder" = "Стартовая папка";
+"New windows open at" = "Новые окна открывать в";
+"Right arrow opens files" = "Стрелка вправо открывает файлы";
+"Off (default): → only enters folders. On: → also opens files. Enter always opens." = "Выкл (по умолчанию): → только входит в папки. Вкл: → также открывает файлы. Enter открывает всегда.";
+"Show hidden files in new tabs" = "Показывать скрытые файлы в новых вкладках";
+"Takes effect after you quit and reopen yafm." = "Применится после выхода и повторного запуска yafm.";
+
+/* — Settings: Appearance — */
 "Row density" = "Плотность строк";
-"Language" = "Язык";
+"Compact packs more rows on screen; Comfortable gives each row room." = "Compact умещает больше строк; Comfortable даёт каждой строке простор.";
+"Animate selection & navigation" = "Анимировать выделение и навигацию";
+"Off: instant, no motion. Streaming row inserts never animate either way." = "Выкл: мгновенно, без анимации. Потоковая вставка строк не анимируется в любом случае.";
+
+/* — Settings: Operations — */
+"Confirm before deleting" = "Подтверждать удаление";
+"Delete is permanent (not Trash). Keep this on unless you're sure." = "Удаление безвозвратно (не в Корзину). Не выключайте без уверенности.";
+"Copy / Move collisions" = "Конфликты при копировании/перемещении";
+"When a file already exists" = "Когда файл уже существует";
+"Keep both" = "Оставить оба";
+"Skip" = "Пропустить";
+"Replace" = "Заменить";
+
+/* — Settings: Plugins — */
+"JavaScript plugins" = "Плагины на JavaScript";
+"Drop a .js file in the plugins folder to add table columns. Plugins run in a sandbox: no filesystem, network, or process access — only the host API." = "Положите файл .js в папку плагинов, чтобы добавить колонки таблицы. Плагины работают в песочнице: без доступа к файлам, сети и процессам — только хост-API.";
+"Open Plugins Folder" = "Открыть папку плагинов";
+"Reload Plugins" = "Перезагрузить плагины";
+"Loaded" = "Загружено";
+"No plugins loaded." = "Плагины не загружены.";
+
+/* — Settings: Updates — */
 "Check for Updates" = "Проверить обновления";
 "Up to date" = "Установлена последняя версия";
-"Confirm before deleting" = "Подтверждать удаление";
 
-/* — Function bar — */
-"Rename" = "Переименовать";
+/* — Bulk rename — */
+"Bulk regex rename" = "Массовое переименование (regex)";
+"Use regex" = "Использовать regex";
+"Replace (# = counter)" = "Замена (# = счётчик)";
+
+/* — Function bar / labels — */
+"File Ops" = "Операции";
+
+/* — Onboarding / access — */
+"Welcome to yafm" = "Добро пожаловать в yafm";
+"A fast, honest file manager." = "Быстрый и честный файловый менеджер.";
+"Grant Full Disk Access" = "Предоставить полный доступ к диску";
+"Enable Full Disk Access" = "Включить полный доступ к диску";
+"Open System Settings…" = "Открыть Системные настройки…";
+"After granting access, relaunch yafm so it can see the new folders." = "После предоставления доступа перезапустите yafm, чтобы он увидел новые папки.";
+"Removable and network volumes prompt on first use — that system dialog is normal." = "Съёмные и сетевые тома запрашивают доступ при первом использовании — это нормальный системный диалог.";
+
+/* — About — */
+"About yafm" = "О программе yafm";
+
+/* — Command palette & cheat sheet (String(localized:)) — */
+"Filter…" = "Фильтр…";
+"⎋ clear" = "⎋ очистить";
+"Files" = "Файлы";
 "View" = "Просмотр";
-"Edit" = "Изменить";
-"Move" = "Переместить";
+"Folder in this directory" = "Папка в этом каталоге";
+"Jump to a command, favorite, or folder…" = "Перейти к команде, избранному или папке…";
+"Jump to tab 1–9" = "Перейти к вкладке 1–9";
+"Into folder / up a level" = "В папку / на уровень вверх";
+"Move cursor" = "Переместить курсор";
+"Search & Palette" = "Поиск и палитра";
+"Type to filter the current folder" = "Печатайте, чтобы отфильтровать текущую папку";
+
+/* — Interpolated formats (stable generated keys) — */
+"%lld items" = "%lld объект(ов)";
+"%lld found" = "%lld найдено";
+"Reading… (%lld)" = "Чтение… (%lld)";
+"Searching… %lld" = "Идёт поиск… %lld";
+"Get %@" = "Получить %@";
+"Close tab %@" = "Закрыть вкладку %@";
+"Cancel %@" = "Отменить %@";

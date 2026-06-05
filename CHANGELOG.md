@@ -6,6 +6,16 @@ the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [0.7.1] — Russian, in full
+
+- **Fix: most of the UI stayed English when switching to Russian.** v0.7 shipped
+  only a partial `ru.lproj`, so over half the interface didn't translate. This
+  fills it out: every static UI literal across the app — sidebar sections, all
+  settings tabs/sections, menus, the command palette, cheat sheet, onboarding,
+  bulk rename, plugin & update panels, empty/loading states — is now translated,
+  plus the common interpolated formats (`%lld items`, `%lld found`, "Reading…",
+  "Searching…"). Resolution verified key-by-key against the bundled strings table.
+
 ## [0.7.0] — Remote disks, finally native
 
 Reach + accessibility. yafm grows past the local disk: SMB shares mount natively
