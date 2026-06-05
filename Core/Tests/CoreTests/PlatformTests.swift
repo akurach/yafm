@@ -141,6 +141,38 @@ final class PlatformTests: XCTestCase {
         XCTAssertTrue(map.isEmpty)
     }
 
+    // MARK: Tag manager (rename / delete / recolor across files)
+
+    func testTagRecolorRenameDeleteAcrossFiles() async throws {
+        let dir = try tmpDir(); defer { try? FileManager.default.removeItem(at: dir) }
+        let f = dir.appendingPathComponent("a.txt")
+        try "x".write(to: f, atomically: true, encoding: .utf8)
+
+        let svc = TagService(storeURL: nil)
+        try await svc.setTags([Tag(name: "work", colorIndex: 5)], on: f)
+
+        // Recolor across all files carrying it.
+        let recolored = await svc.recolorTag("work", colorIndex: 6)
+        XCTAssertEqual(recolored, 1)
+        let afterRecolor = await svc.tags(of: f).first?.colorIndex
+        XCTAssertEqual(afterRecolor, 6)
+
+        // Rename across all files (xattr rewritten).
+        let renamed = await svc.renameTag("work", to: "job")
+        XCTAssertEqual(renamed, 1)
+        let afterRename = await svc.tags(of: f).map(\.name)
+        XCTAssertEqual(afterRename, ["job"])
+        let known = await svc.allKnownTags().map(\.name)
+        XCTAssertFalse(known.contains("work"))
+
+        // Delete from all files; the file itself survives.
+        let deleted = await svc.deleteTag("job")
+        XCTAssertEqual(deleted, 1)
+        let afterDelete = await svc.tags(of: f)
+        XCTAssertTrue(afterDelete.isEmpty)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: f.path))
+    }
+
     @discardableResult
     private func runGit(_ args: [String], in dir: URL) -> Bool {
         let p = Process()

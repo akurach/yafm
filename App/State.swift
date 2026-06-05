@@ -512,6 +512,67 @@ final class AppState {
         }
     }
 
+    /// Tag manager (Settings → Tags): rename / delete / recolor a tag across
+    /// every file that carries it, then persist, refresh the cloud, and reload
+    /// the visible listing so the change shows immediately.
+    func renameTag(_ old: String, to new: String) {
+        Task { [weak self] in
+            guard let self else { return }
+            _ = await self.tags.renameTag(old, to: new)
+            await self.tags.persist()
+            self.refreshTags()
+            self.activeTab.load()
+        }
+    }
+
+    func deleteTag(_ name: String) {
+        Task { [weak self] in
+            guard let self else { return }
+            _ = await self.tags.deleteTag(name)
+            await self.tags.persist()
+            self.refreshTags()
+            self.activeTab.load()
+        }
+    }
+
+    func recolorTag(_ name: String, colorIndex: Int?) {
+        Task { [weak self] in
+            guard let self else { return }
+            _ = await self.tags.recolorTag(name, colorIndex: colorIndex)
+            await self.tags.persist()
+            self.refreshTags()
+            self.activeTab.load()
+        }
+    }
+
+    /// NSAlert prompt to rename a tag (Settings affordance).
+    func promptRenameTag(_ tag: Tag) {
+        let alert = NSAlert()
+        alert.messageText = "Rename Tag"
+        alert.informativeText = "Rename “\(tag.name)” on every file that carries it."
+        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
+        field.stringValue = tag.name
+        alert.accessoryView = field
+        alert.addButton(withTitle: "Rename")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        let new = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !new.isEmpty, new != tag.name else { return }
+        renameTag(tag.name, to: new)
+    }
+
+    /// Confirm + delete a tag from every file.
+    func promptDeleteTag(_ tag: Tag) {
+        let alert = NSAlert()
+        alert.alertStyle = .warning
+        alert.messageText = "Delete tag “\(tag.name)”?"
+        alert.informativeText = "Removes it from every file that carries it (\(tagCounts[tag.name] ?? 0)). The files themselves are untouched."
+        alert.addButton(withTitle: "Delete")
+        alert.addButton(withTitle: "Cancel")
+        guard alert.runModal() == .alertFirstButtonReturn else { return }
+        deleteTag(tag.name)
+    }
+
     /// Click a tag → stream every file carrying it into a virtual listing, so a
     /// large tag doesn't block on building the whole array first (was: built
     /// synchronously, no streaming). Re-entry cancels the prior open (H-2).

@@ -6,6 +6,17 @@ the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- **Tag manager (Settings ▸ Tags).** A real management tool, not just rescan/clear:
+  every known tag with its color swatch and file count, each editable in place —
+  recolor (7 Finder colors / none), rename across every file that carries it, or
+  delete from every file (the files themselves untouched). Backed by new
+  `TagService.renameTag/deleteTag/recolorTag` (bulk xattr rewrites) + a Core test.
+
+### Roadmap
+- **Russian interface (i18n)** parked under *Later*: extract UI strings to
+  `Localizable.strings`, add a `ru` localization + a Settings language picker.
+
 ## [0.3.0] — Platform
 
 The platform milestone: yafm grows a plugin runtime. Community plugins are

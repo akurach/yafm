@@ -93,6 +93,10 @@ App-shell milestone pulled out of the backlog. Full spec: [`app-shell.md`](docs/
 
 ## Later
 
+- [ ] **Russian interface (localization / i18n)** — move all UI strings to
+  `Localizable.strings`, add a `ru` localization, and a language picker in
+  Settings ▸ General (System / English / Русский). Today every label is a
+  hard-coded English literal across `App/*.swift`; first pass is extracting them.
 - [ ] Seamless auto-install updates (Sparkle) — v0.2.3 shipped the GitHub-releases *check*; this is
   the remaining app-shell piece (signed appcast + EdDSA, accounts for the notarized-DMG/no-sandbox model)
 - [ ] FTP / SMB / cloud as virtual filesystems (XPC)

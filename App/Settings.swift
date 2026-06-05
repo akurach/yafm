@@ -227,19 +227,7 @@ struct SettingsView: View {
         .formStyle(.grouped)
     }
 
-    private var tags: some View {
-        Form {
-            Section("Tag index") {
-                Text("The sidebar tag cloud is built from an index of your files. Rescan after tagging outside yafm; clear to rebuild from scratch.")
-                    .font(.caption).foregroundStyle(.secondary)
-                HStack {
-                    Button("Rescan now") { app.rescanTags() }
-                    Button("Clear index") { app.clearTags() }
-                }
-            }
-        }
-        .formStyle(.grouped)
-    }
+    private var tags: some View { TagManagerView(app: app) }
 
     private var plugins: some View {
         Form {
@@ -308,5 +296,79 @@ struct SettingsView: View {
         panel.canChooseFiles = false
         panel.allowsMultipleSelection = false
         if panel.runModal() == .OK, let url = panel.url { settings.customStartPath = url.path }
+    }
+}
+
+// MARK: - Tag manager (Settings → Tags)
+
+/// A proper tag-management tool: every known tag with its color and file count,
+/// each editable in place — recolor, rename across all files, or delete from all
+/// files — plus the index rescan/clear controls.
+struct TagManagerView: View {
+    @Bindable var app: AppState
+
+    private var tags: [Tag] {
+        app.knownTags.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    var body: some View {
+        Form {
+            Section("Manage tags") {
+                if tags.isEmpty {
+                    Text("No tags yet. Tag a file, or Rescan if you tagged files outside yafm.")
+                        .font(.caption).foregroundStyle(.secondary)
+                } else {
+                    ForEach(tags, id: \.name) { tag in row(tag) }
+                }
+            }
+            Section("Tag index") {
+                Text("The sidebar cloud and this list are built from an index of your files. Rescan after tagging outside yafm; clear to rebuild from scratch.")
+                    .font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    Button("Rescan now") { app.rescanTags() }
+                    Button("Clear index") { app.clearTags() }
+                }
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private func row(_ tag: Tag) -> some View {
+        HStack(spacing: 10) {
+            colorMenu(tag)
+            Text(tag.name).lineLimit(1)
+            Spacer()
+            Text("\(app.tagCounts[tag.name] ?? 0)")
+                .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+            Button { app.promptRenameTag(tag) } label: { Image(systemName: "pencil") }
+                .buttonStyle(.borderless).help("Rename across all files")
+            Button(role: .destructive) { app.promptDeleteTag(tag) } label: {
+                Image(systemName: "trash")
+            }
+            .buttonStyle(.borderless).help("Remove from all files")
+        }
+    }
+
+    /// A swatch that opens the 7 Finder colors + "No color"; picking recolors the
+    /// tag on every file that carries it.
+    private func colorMenu(_ tag: Tag) -> some View {
+        Menu {
+            Button("No color") { app.recolorTag(tag.name, colorIndex: nil) }
+            ForEach(1..<Tag.colorNames.count, id: \.self) { i in
+                Button {
+                    app.recolorTag(tag.name, colorIndex: i)
+                } label: {
+                    Label(Tag.colorNames[i], systemImage: "circle.fill")
+                }
+            }
+        } label: {
+            Circle()
+                .fill(Color.named(tag.colorName) ?? .secondary.opacity(0.4))
+                .frame(width: 12, height: 12)
+                .overlay(Circle().strokeBorder(.secondary.opacity(0.3)))
+        }
+        .menuStyle(.borderlessButton)
+        .menuIndicator(.hidden)
+        .fixedSize()
     }
 }

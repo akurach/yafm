@@ -17,6 +17,15 @@ public protocol TagServing: Sendable {
     /// Forget a URL after it was moved/renamed/deleted, so the cloud counts and
     /// "everything tagged X" listings don't reference a path that's gone.
     func forget(_ url: URL) async
+    /// Rename a tag across every file that carries it (rewrites the xattrs).
+    /// Merges into the destination if a file already has both. Returns the count
+    /// of files updated.
+    func renameTag(_ old: String, to new: String) async -> Int
+    /// Remove a tag from every file that carries it. Returns the count updated.
+    func deleteTag(_ name: String) async -> Int
+    /// Recolor a tag on every file that carries it (nil = no color). Returns the
+    /// count updated.
+    func recolorTag(_ name: String, colorIndex: Int?) async -> Int
     /// Load / save the on-disk index so a cold start doesn't full-rescan Home.
     func loadPersisted() async
     func persist() async
@@ -129,6 +138,52 @@ public actor TagService: TagServing {
     public func forget(_ url: URL) {
         for name in urlTags[url] ?? [] { index[name]?.remove(url) }
         urlTags[url] = nil
+    }
+
+    // MARK: Bulk tag management (Settings → Tags manager)
+
+    public func renameTag(_ old: String, to new: String) async -> Int {
+        let target = new.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !target.isEmpty, !target.contains("\n"), target != old else { return 0 }
+        var updated = 0
+        for url in Array(index[old] ?? []) {
+            var tags = Self.readTags(url)
+            guard let i = tags.firstIndex(where: { $0.name == old }) else { continue }
+            let color = tags[i].colorIndex
+            if tags.contains(where: { $0.name == target }) {
+                tags.remove(at: i)                       // already has both → just drop old
+            } else {
+                tags[i] = Tag(name: target, colorIndex: color)
+            }
+            if (try? Self.writeTags(tags, url)) != nil { reindex(url, tags); updated += 1 }
+        }
+        if index[old]?.isEmpty ?? true { index[old] = nil; colors[old] = nil }
+        return updated
+    }
+
+    public func deleteTag(_ name: String) async -> Int {
+        var updated = 0
+        for url in Array(index[name] ?? []) {
+            var tags = Self.readTags(url)
+            let before = tags.count
+            tags.removeAll { $0.name == name }
+            guard tags.count != before else { continue }
+            if (try? Self.writeTags(tags, url)) != nil { reindex(url, tags); updated += 1 }
+        }
+        index[name] = nil; colors[name] = nil
+        return updated
+    }
+
+    public func recolorTag(_ name: String, colorIndex: Int?) async -> Int {
+        var updated = 0
+        for url in Array(index[name] ?? []) {
+            var tags = Self.readTags(url)
+            guard let i = tags.firstIndex(where: { $0.name == name }) else { continue }
+            tags[i] = Tag(name: name, colorIndex: colorIndex)
+            if (try? Self.writeTags(tags, url)) != nil { reindex(url, tags); updated += 1 }
+        }
+        colors[name] = colorIndex
+        return updated
     }
 
     private func reindex(_ url: URL, _ tags: [Tag]) {
