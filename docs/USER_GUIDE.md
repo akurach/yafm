@@ -91,7 +91,14 @@ While a pane is focused, just **start typing letters or numbers** to live-filter
 
 ### ⌘F — Search within a folder
 
-Press **⌘F** to search within the current folder and its subfolders. yafm uses Spotlight (`mdfind`) with its own name-scan fallback, and shows the matches as a virtual listing you can act on like any folder.
+Press **⌘F** to open the **find bar** under the path bar (it's inline — it won't cover the list or steal your place). Toggle between:
+
+- **Name** — find files by name. Uses Spotlight (`mdfind`) with yafm's own name-scan fallback.
+- **Contents** — *grep-in-files*: find files that contain a piece of text.
+
+Hits stream in as they're found, with a live **"Searching… N"** count, and show up as a listing you can act on like any folder. Content search is **bounded** (it skips files over 8 MB and binary files) and **cancellable** — press **Esc**, hit **⌘F** again, or start a new query to stop it. A long search never freezes the app, and an empty result says so rather than showing a blank pane.
+
+Press **⌘F** again or **Esc** to close the bar.
 
 ---
 
