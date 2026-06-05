@@ -35,10 +35,10 @@ struct PaneView: View {
             Divider()
             FileTableView(tab: pane.active, app: app)
         }
-        .background(isActive ? Color.accentColor.opacity(0.06) : Color.clear)
+        .background(isActive ? Theme.Palette.activePaneTint : Color.clear)
         .overlay(alignment: .top) {
             if isActive {
-                Rectangle().fill(Color.accentColor).frame(height: 2)
+                Rectangle().fill(Theme.Palette.cursorStroke).frame(height: 2)
             }
         }
         .contentShape(Rectangle())
@@ -162,14 +162,29 @@ struct FileTableView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .overlay(alignment: .bottom) {
+            if tab.filterActive {
+                HStack(spacing: Theme.Space.row) {
+                    Image(systemName: "line.3.horizontal.decrease.circle")
+                    Text(tab.filter.isEmpty ? String(localized: "Filter…") : tab.filter)
+                        .font(Theme.Font.mono)
+                    Text("· \(tab.displayed.count)").foregroundStyle(.secondary)
+                    Text(String(localized: "⎋ clear")).font(.caption2).foregroundStyle(.tertiary)
+                }
+                .font(Theme.Font.badge)
+                .padding(.horizontal, 12).padding(.vertical, 5)
+                .background(.regularMaterial, in: Capsule())
+                .padding(.bottom, 8)
+            }
+        }
     }
 
-    // Fixed column widths; Name flexes. Header aligns to these.
-    private let sizeW: CGFloat = 78
-    private let modW: CGFloat = 124
-    private let kindW: CGFloat = 92
-    private let gitW: CGFloat = 34
-    private let pluginW: CGFloat = 104
+    // Fixed column widths; Name flexes. Header aligns to these. (Tokens layer.)
+    private let sizeW = Theme.Col.size
+    private let modW = Theme.Col.modified
+    private let kindW = Theme.Col.kind
+    private let gitW = Theme.Col.git
+    private let pluginW = Theme.Col.plugin
 
     // The List is the only child and fills the pane natively; the column header
     // rides along as a pinned Section header (a plain List inside a VStack would
@@ -208,7 +223,9 @@ struct FileTableView: View {
                 }
             }
             .contextMenu { backgroundMenu() }   // empty area below the rows
-            .listStyle(.inset)
+            // Plain (edge-to-edge) instead of .inset: denser, Finder/TC-like, and
+            // it drops the rounded inset-card corners that notched the bottom.
+            .listStyle(.plain)
             // Kill implicit row animations: streaming partials inserted rows one
             // batch at a time, and List animated every insert → torn, choppy
             // scrolling while a folder loads. Snappy + instant is what we want.
@@ -275,12 +292,13 @@ struct FileTableView: View {
     }
 
     private func row(_ entry: FSEntry) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: entry.isDirectory ? "folder.fill" : "doc")
-                .foregroundStyle(iconColor(entry))
-                .frame(width: 16)
+        HStack(spacing: Theme.Space.row) {
+            // Real macOS file-type icon (cached). A color-coding rule, if any,
+            // now tints the name instead of the icon so the true icon shows.
+            FileIconView(entry: entry)
+                .frame(width: Theme.Col.icon)
             Text(entry.name)
-                .foregroundStyle(entry.isHidden ? .secondary : .primary)
+                .foregroundStyle(nameColor(entry))
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
             ForEach(entry.tags, id: \.name) { tag in
@@ -307,18 +325,11 @@ struct FileTableView: View {
                     .frame(width: pluginW, alignment: .leading)
             }
         }
-        .padding(.vertical, 1)
+        .padding(.vertical, Theme.Space.rowV)
     }
 
-    /// Tint a VCS marker: untracked/added green, modified orange, deleted red.
-    private func gitColor(_ marker: String?) -> Color {
-        switch marker {
-        case "?", "A": return .green
-        case "D": return .red
-        case "M", "•": return .orange
-        default: return .secondary
-        }
-    }
+    /// Tint a VCS marker via the tokens layer (added green, modified orange, deleted red).
+    private func gitColor(_ marker: String?) -> Color { Theme.Palette.git(marker) }
 
     /// Render a plugin/native column value for a row.
     private func pluginText(_ col: PluginColumn, _ entry: FSEntry) -> String {
@@ -345,18 +356,27 @@ struct FileTableView: View {
         return f
     }()
 
-    private func iconColor(_ entry: FSEntry) -> Color {
+    /// Color-coding rule tints the name (the icon now shows the real file type).
+    private func nameColor(_ entry: FSEntry) -> Color {
         if let c = Color.named(app.colorCoder.colorName(for: entry)) { return c }
-        return entry.isDirectory ? .accentColor : .secondary
+        return entry.isHidden ? .secondary : .primary
     }
 
+    /// Selection is a full-width wash; the keyboard cursor is a thin accent bar
+    /// down the leading edge — distinct from selection without boxing the row in
+    /// a heavy ring (the v0.4 ring read as a clunky border on the focused row).
+    @ViewBuilder
     private func rowBackground(_ entry: FSEntry) -> some View {
         let selected = tab.selection.contains(entry.url)
         let cursored = tab.cursor == entry.url
-        return Rectangle().fill(
-            selected ? Color.accentColor.opacity(0.25) :
-            cursored ? Color.accentColor.opacity(0.10) : Color.clear
-        )
+        HStack(spacing: 0) {
+            Rectangle()
+                .fill(cursored ? Theme.Palette.cursorStroke : Color.clear)
+                .frame(width: Theme.cursorBarWidth)
+            Rectangle()
+                .fill(selected ? Theme.Palette.selectionFill
+                      : cursored ? Theme.Palette.cursorFill : Color.clear)
+        }
     }
 
     private func byteString(_ n: Int64) -> String {
@@ -474,10 +494,13 @@ struct StatusBarView: View {
         let rows = tab.displayed
         let selCount = tab.selection.count
         let selBytes = rows.filter { tab.selection.contains($0.url) }.compactMap(\.size).reduce(0, +)
+        // Only show a byte total when the selection actually has measurable
+        // bytes — folders report no size, so a folder selection showed "Zero KB".
+        let sizePart = selBytes > 0 ? " (\(ByteCountFormatter.string(fromByteCount: selBytes, countStyle: .file)))" : ""
         return HStack {
             Text("\(rows.count) items")
             if selCount > 0 {
-                Text("· \(selCount) selected (\(ByteCountFormatter.string(fromByteCount: selBytes, countStyle: .file)))")
+                Text("· \(selCount) selected\(sizePart)")
             }
             Spacer()
         }

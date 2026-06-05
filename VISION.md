@@ -65,4 +65,11 @@ The arc in brief:
   plugins via `yafm.registerColumn`, an editable example seeded on first run; native git-status
   column in the same registry; find-within-folder search (mdfind/Spotlight + own fallback);
   AirDrop/Share. Plugin API: [`docs/plugins.md`](docs/plugins.md).
-- **Later.** FTP/SMB/cloud as virtual filesystems (XPC), plugin marketplace, archive mounting.
+- **v0.4 → v0.9 (planned, 2026-06-05 review).** Wedge = the keyboard-driven Mac power user who hates
+  Finder's silent freezes; win them with speed + polish + honest states + content search **first**,
+  and **freeze the public plugin surface until v0.8** (no users yet = no ecosystem to widen for). Arc:
+  v0.4 command palette (⌘K) + nav speed + seams (`FileSystemRouter`, UI tokens) · v0.5 visual polish +
+  drag-and-drop · v0.6 content search + honest empty/error states + Sparkle auto-update · v0.7 SMB
+  virtual filesystem (XPC) + accessibility + Russian i18n · v0.8 public plugins re-open (scoped-FS
+  capability, manifests, marketplace, archive mounting) · v0.9 API freeze + photo-ingest + 1.0 prep.
+  Full status-tracked breakdown with the dependency spine in [`ROADMAP.md`](ROADMAP.md).

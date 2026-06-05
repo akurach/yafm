@@ -6,16 +6,54 @@ the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Added
-- **Tag manager (Settings ▸ Tags).** A real management tool, not just rescan/clear:
-  every known tag with its color swatch and file count, each editable in place —
-  recolor (7 Finder colors / none), rename across every file that carries it, or
-  delete from every file (the files themselves untouched). Backed by new
-  `TagService.renameTag/deleteTag/recolorTag` (bulk xattr rewrites) + a Core test.
+## [0.4.0] — Fast as your editor
 
-### Roadmap
-- **Russian interface (i18n)** parked under *Later*: extract UI strings to
-  `Localizable.strings`, add a `ru` localization + a Settings language picker.
+The keyboard-first milestone. The roadmap was re-sequenced (2026-06-05 review):
+with no users yet, the public plugin surface stays **frozen** until v0.8 and
+v0.4 instead targets the wedge — the keyboard-driven power user — with speed,
+navigation, and visual polish. Two invisible "cheap-insurance" seams land now so
+the hard later hooks (virtual filesystems, accessibility) don't force a rewrite.
+
+### Added — keyboard-first
+- **Command palette (⌘K).** Fuzzy "jump to anything": run any command, jump to a
+  Favorite, or open a subfolder of the current directory. Type to filter, ↑↓ to
+  move, Enter to run, Esc to close. The centerpiece of the keyboard-first pillar.
+  (`App/CommandPalette.swift`, `CommandID.commandPalette`.)
+- **Type-to-filter.** Start typing letters/numbers while a pane is focused to
+  live-filter the current folder by name (Total Commander quick-search). Esc
+  clears, Backspace edits; arrows/Enter still navigate the filtered list.
+  (`TabModel.filter`, `App/Keyboard.swift`.)
+- **Keyboard tab-switching.** ⌃Tab next / ⌃⇧Tab previous, ⌘1–⌘9 jump to tab N.
+  (Tab alone still switches the active pane.)
+- **Shortcut cheat sheet (⌘/).** A discoverability overlay listing every
+  keyboard shortcut, grouped. (`CheatSheet`, Help ▸ Keyboard Shortcuts.)
+
+### Added — visual
+- **Real file-type icons.** Each entry shows its true macOS document/app icon
+  (cached per type) instead of a generic glyph; color-coding rules now tint the
+  name. (`App/FileIcon.swift`.)
+- **Distinct cursor vs selection.** The keyboard cursor is a crisp accent ring;
+  the selection is a filled wash — no longer a barely-visible ~15% opacity gap.
+
+### Added — architecture seams (invisible now, load-bearing later)
+- **`FileSystemRouter`** — routes filesystem calls by URL scheme to a provider.
+  Today everything is local and unchanged; v0.7 SMB/FTP and v0.8 archives plug in
+  by registering a scheme, with no call-site changes. (`Core/FileSystemRouter.swift`,
+  + routing/fallback tests.)
+- **UI tokens layer (`Theme`).** Spacing, type scale, semantic colors, and column
+  widths in one place — the seam that makes later polish and accessibility a token
+  edit instead of a hunt across `Views.swift`.
+
+### Added — earlier (carried from Unreleased)
+- **Tag manager (Settings ▸ Tags).** Every known tag with its color swatch and
+  file count, editable in place — recolor (7 Finder colors / none), rename across
+  every file that carries it, or delete from every file (files untouched). Backed
+  by `TagService.renameTag/deleteTag/recolorTag` + a Core test.
+
+### Notes
+- New UI strings wrapped in `String(localized:)` (i18n hygiene) so the eventual
+  Russian localization (v0.7) is a bounded extraction.
+- Full v0.4 → v0.9 roadmap with the dependency spine lives in `ROADMAP.md`.
 
 ## [0.3.0] — Platform
 

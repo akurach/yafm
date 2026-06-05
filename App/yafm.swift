@@ -31,6 +31,10 @@ struct YafmApp: App {
                     ])
                 }
             }
+            CommandGroup(replacing: .help) {
+                Button("Keyboard Shortcuts") { app.run(CommandID.cheatSheet) }
+                    .keyboardShortcut("/", modifiers: [.command])
+            }
         }
 
         Settings { SettingsView(app: app) }
@@ -67,6 +71,8 @@ struct RootView: View {
         .sheet(isPresented: $app.renameSheet) { RenameSheet(app: app) }
         .sheet(isPresented: $app.showOnboarding) { OnboardingSheet(app: app) }
         .sheet(isPresented: $app.searchSheet) { SearchSheet(app: app) }
+        .sheet(isPresented: $app.commandPalette) { CommandPalette(app: app) }
+        .sheet(isPresented: $app.cheatSheet) { CheatSheet(app: app) }
     }
 }
 
@@ -106,8 +112,13 @@ struct CommandMenus: Commands {
 
     var body: some Commands {
         CommandMenu("Go") {
+            Button("Command Palette…") { app.run(CommandID.commandPalette) }
+                .keyboardShortcut("k", modifiers: [.command])
             Button("Search…") { app.run(CommandID.search) }
                 .keyboardShortcut("f", modifiers: [.command])
+            Divider()
+            Button("Next Tab") { app.run(CommandID.nextTab) }
+            Button("Previous Tab") { app.run(CommandID.prevTab) }
             Divider()
             Button("Up") { app.run(CommandID.goUp) }
             Button("Toggle Hidden Files") { app.run(CommandID.toggleHidden) }
