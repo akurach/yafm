@@ -136,6 +136,10 @@ struct FileTableView: View {
     @Bindable var tab: TabModel
     let app: AppState
 
+    /// Folder row (or pane background, `tab.directory`) currently under a drag,
+    /// for the drop highlight. nil = nothing targeted.
+    @State private var dropTarget: URL?
+
     var body: some View {
         Group {
             switch tab.state {
@@ -211,6 +215,18 @@ struct FileTableView: View {
                             .simultaneousGesture(TapGesture(count: 2).onEnded {
                                 if entry.isDirectory { tab.open(entry.url) } else { app.openFile(entry.url) }
                             })
+                            // Drag out: the row's URL becomes the payload, so it
+                            // drops into another pane, Finder, or any app.
+                            .onDrag { dragPayload(entry) }
+                            // Drop onto a folder row → copy (or move with ⌘) into
+                            // it. File rows aren't drop targets.
+                            .modifier(FolderDrop(
+                                enabled: entry.isDirectory,
+                                target: entry.url,
+                                isTargeted: dropTarget == entry.url,
+                                onDrop: { urls in app.dropEntries(urls, onto: entry.url, move: dropIsMove()) },
+                                onTarget: { dropTarget = $0 ? entry.url : (dropTarget == entry.url ? nil : dropTarget) }
+                            ))
                             .contextMenu { rowMenu(entry) }
                             // Popover (not a sheet) so clicking outside dismisses
                             // the tag editor, anchored to the row it acts on.
@@ -223,13 +239,28 @@ struct FileTableView: View {
                 }
             }
             .contextMenu { backgroundMenu() }   // empty area below the rows
+            // Drop onto empty pane area → into the current directory.
+            .dropDestination(for: URL.self) { urls, _ in
+                app.dropEntries(urls, onto: tab.directory, move: dropIsMove()); return true
+            } isTargeted: { dropTarget = $0 ? tab.directory : (dropTarget == tab.directory ? nil : dropTarget) }
+            .overlay {
+                if dropTarget == tab.directory {
+                    RoundedRectangle(cornerRadius: Theme.cornerRadius)
+                        .strokeBorder(Theme.Palette.cursorStroke, lineWidth: 2).padding(2)
+                        .allowsHitTesting(false)
+                }
+            }
             // Plain (edge-to-edge) instead of .inset: denser, Finder/TC-like, and
             // it drops the rounded inset-card corners that notched the bottom.
             .listStyle(.plain)
-            // Kill implicit row animations: streaming partials inserted rows one
-            // batch at a time, and List animated every insert → torn, choppy
-            // scrolling while a folder loads. Snappy + instant is what we want.
-            .transaction { $0.disablesAnimations = true }
+            // Scoped animation (v0.5): suppress implicit animations while a folder
+            // streams in (partial-batch inserts tore the table) and when the user
+            // turns motion off — but let selection/cursor/nav glide once loaded.
+            .transaction { txn in
+                if tab.isStreaming || !app.settings.animations { txn.disablesAnimations = true }
+            }
+            .animation(app.settings.animations && !tab.isStreaming ? Theme.Motion.selection : nil, value: tab.cursor)
+            .animation(app.settings.animations && !tab.isStreaming ? Theme.Motion.selection : nil, value: tab.selection)
             .onChange(of: tab.cursor) { _, new in
                 guard let new else { return }
                 proxy.scrollTo(new, anchor: .center)
@@ -283,6 +314,19 @@ struct FileTableView: View {
         app.left.tabs.contains { $0.id == tab.id }
     }
 
+    // MARK: Drag & drop (§v0.5)
+
+    /// Payload for dragging a row out — the row's file URL, droppable into the
+    /// other pane, Finder, or any app. (SwiftUI `.onDrag` carries one provider /
+    /// one item; a multi-row drag is a later refinement.)
+    private func dragPayload(_ entry: FSEntry) -> NSItemProvider {
+        NSItemProvider(object: entry.url as NSURL)
+    }
+
+    /// ⌘ held at drop time = move; otherwise copy (Finder's convention is the
+    /// inverse, but yafm is move-on-⌘ to match its explicit F6-move muscle memory).
+    private func dropIsMove() -> Bool { NSEvent.modifierFlags.contains(.command) }
+
     /// Drives the per-row tag popover off the shared `app.tagSheet` target.
     private func tagPopover(_ entry: FSEntry) -> Binding<Bool> {
         Binding(
@@ -292,12 +336,16 @@ struct FileTableView: View {
     }
 
     private func row(_ entry: FSEntry) -> some View {
-        HStack(spacing: Theme.Space.row) {
+        let density = app.settings.density
+        // Tie rows to the async-plugin version so a resolved value re-renders.
+        let _ = app.pluginValuesVersion
+        return HStack(spacing: Theme.Space.row) {
             // Real macOS file-type icon (cached). A color-coding rule, if any,
             // now tints the name instead of the icon so the true icon shows.
             FileIconView(entry: entry)
-                .frame(width: Theme.Col.icon)
+                .frame(width: density.iconSize)
             Text(entry.name)
+                .font(density.rowFont)
                 .foregroundStyle(nameColor(entry))
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -325,19 +373,24 @@ struct FileTableView: View {
                     .frame(width: pluginW, alignment: .leading)
             }
         }
-        .padding(.vertical, Theme.Space.rowV)
+        .padding(.vertical, density.rowPadding)
     }
 
     /// Tint a VCS marker via the tokens layer (added green, modified orange, deleted red).
     private func gitColor(_ marker: String?) -> Color { Theme.Palette.git(marker) }
 
-    /// Render a plugin/native column value for a row.
+    /// Render a plugin/native column value for a row. Async columns resolve via
+    /// the shared cache: the placeholder shows now, the real value swaps in once
+    /// the background resolve bumps `pluginValuesVersion` (read in `row`).
     private func pluginText(_ col: PluginColumn, _ entry: FSEntry) -> String {
-        switch col.evaluate(entry) {
+        let value = app.pluginValueCache.value(for: entry, in: col) {
+            app.pluginValuesVersion &+= 1
+        }
+        switch value {
         case .text(let s): return s
         case .number(let n): return n == n.rounded() ? String(Int(n)) : String(n)
         case .date(let d): return Self.dateText(d)
-        case .none: return ""
+        case .none: return col.isAsync ? "…" : ""
         }
     }
 
@@ -482,6 +535,35 @@ struct FileTableView: View {
         Button("Search…") { app.activePaneIsLeft = tabBelongsToLeft(); app.run(CommandID.search) }
         Button("Add Current Folder to Favorites") { app.addBookmark(tab.directory) }
         Button("Refresh") { tab.load() }
+    }
+}
+
+/// Conditional folder-row drop target. Folder rows accept dropped URLs (copy, or
+/// move on ⌘) and draw an accent ring while targeted; file rows opt out so a drop
+/// falls through to the pane background. A modifier keeps the per-row call site in
+/// `Views` to a single line and confines the `if enabled` branch.
+private struct FolderDrop: ViewModifier {
+    let enabled: Bool
+    let target: URL
+    let isTargeted: Bool
+    let onDrop: ([URL]) -> Void
+    let onTarget: (Bool) -> Void
+
+    func body(content: Content) -> some View {
+        if enabled {
+            content
+                .dropDestination(for: URL.self) { urls, _ in onDrop(urls); return true }
+                isTargeted: { onTarget($0) }
+                .overlay {
+                    if isTargeted {
+                        RoundedRectangle(cornerRadius: Theme.cornerRadius)
+                            .strokeBorder(Theme.Palette.cursorStroke, lineWidth: 2)
+                            .allowsHitTesting(false)
+                    }
+                }
+        } else {
+            content
+        }
     }
 }
 

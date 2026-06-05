@@ -60,6 +60,11 @@ final class TabModel: Identifiable {
         return directory.lastPathComponent.isEmpty ? "/" : directory.lastPathComponent
     }
 
+    /// True while a directory is still streaming in. The table suppresses row
+    /// animations during this window so partial-batch inserts don't tear (v0.5
+    /// scoped-animation: selection/nav still glides once loaded).
+    var isStreaming: Bool { if case .loading = state { true } else { false } }
+
     /// Entries after hidden-filter + sort. The single source the table renders.
     /// Cached: recomputed only when `state`/`sortOrder`/`showHidden` change, not
     /// on every access (the table read + re-sorted it per render before).
@@ -294,6 +299,12 @@ final class AppState {
     let pluginHost = JSPluginHost()
     let searchService = SearchService()
 
+    /// Memo for async plugin column values (v0.5 seam). `pluginValuesVersion` is
+    /// observed by the file table and bumped whenever an async value resolves, so
+    /// the affected rows re-render without polling.
+    let pluginValueCache = PluginValueCache()
+    var pluginValuesVersion = 0
+
     /// Command palette (⌘K) + shortcut cheat sheet (⌘/) overlay state.
     var commandPalette = false
     var cheatSheet = false
@@ -399,6 +410,7 @@ final class AppState {
         guard let dir = JSPluginHost.defaultPluginsDirectory() else { return }
         installBundledPluginsIfNeeded(into: dir)
         registry.removePluginColumns(idPrefix: JSPluginHost.columnIDPrefix)
+        pluginValueCache.invalidate()   // stale async values must not survive a reload
         for column in pluginHost.loadPlugins(from: dir) {
             registry.register(pluginColumn: column)
         }
@@ -728,6 +740,31 @@ final class AppState {
                 self?.forgetTagged(sources)   // sources left their old paths
                 self?.activeTab.load()
             }
+        }
+    }
+
+    /// Drag-and-drop landing (v0.5): copy (or move, when ⌘ is held) explicit
+    /// source URLs into `destination`. Distinct from `enqueue`, which derives
+    /// sources from the active selection — a drop carries its own payload and a
+    /// target folder that may not be the active pane. No-ops a self-drop (source
+    /// already in destination) and a drop of a folder onto itself.
+    func dropEntries(_ sources: [URL], onto destination: URL, move: Bool) {
+        let dest = destination.standardizedFileURL
+        let filtered = sources.map { $0.standardizedFileURL }.filter { src in
+            src != dest                                            // onto itself
+            && src.deletingLastPathComponent().standardizedFileURL != dest  // already here
+        }
+        guard !filtered.isEmpty else { return }
+        let task = OperationTask(kind: move ? .move : .copy, sources: filtered,
+                                 destination: dest, collision: settings.collisionDefault)
+        runTask(task) { [weak self] in
+            guard let self else { return }
+            // Reload any visible tab showing the destination or a moved-from dir.
+            let touched = Set([dest] + (move ? filtered.map { $0.deletingLastPathComponent().standardizedFileURL } : []))
+            for pane in [self.left, self.right] {
+                if touched.contains(pane.active.directory.standardizedFileURL) { pane.active.load() }
+            }
+            if move { self.forgetTagged(filtered) }
         }
     }
 

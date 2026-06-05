@@ -115,6 +115,17 @@ yafm has its **own file-operation engine** with a visible queue — every operat
 
 - **⌘C** Copy and **⌘X** Cut into yafm's internal clipboard, then **⌘V** Paste into the target folder.
 
+### Drag & drop
+
+Drag any row to move files around the way you'd expect:
+
+- **Onto the other pane** (empty area) — copies into that pane's current folder.
+- **Onto a folder row** — copies into that folder. The folder lights up with an accent ring while you hover.
+- **Out to Finder or another app** — copies the file there.
+- **In from Finder** — drop files onto a pane to copy them in.
+
+Hold **⌘** while dropping to **move** instead of copy. Every drop still runs through the visible operation queue — nothing happens silently.
+
 ### The operation queue
 
 Long copies/moves/deletes appear in the queue with a label, a progress bar, bytes done + percentage, and a **×** to cancel. Cancelling actually interrupts the running operation.
@@ -169,7 +180,7 @@ The dual-pane workflow is the heart of yafm: browse the source in one pane, the 
 Open Settings with **⌘,**. The window has six tabs:
 
 - **General** — *Start folder* (Home / Last used / a specific folder); *Right arrow opens files* (off by default: → only enters folders, Enter always opens); *Show hidden files in new tabs*.
-- **Appearance** — theme: **Light / Dark / System**.
+- **Appearance** — theme **Light / Dark / System**; **Density** (Compact / Cozy / Comfortable — how many rows fit on screen); **Motion** (animate selection & navigation, or keep it instant).
 - **Operations** — *Confirm before deleting* (on by default; note delete is **permanent**, not Trash); *Copy/Move collisions* default (Keep both / Skip / Replace).
 - **Tags** — the full tag manager (recolor, rename, delete across files) plus *Rescan* / *Clear index*.
 - **Plugins** — open the plugins folder, reload plugins, and see what's loaded (with any errors).

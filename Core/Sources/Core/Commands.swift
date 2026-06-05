@@ -155,13 +155,82 @@ public protocol ContextMenuProvider: Sendable {
 public struct PluginColumn: Identifiable {
     public let id: String
     public let title: String
-    /// Computed on the main actor as the table builds each row.
+    /// Synchronous fast path — computed on the main actor as the table builds
+    /// each row. For a sync column this is the value; for an async column it is
+    /// the *placeholder* shown until `evaluateAsync` resolves.
     public let evaluate: (FSEntry) -> ColumnValue
+    /// Optional async path (v0.5 seam). When set, the renderer shows `evaluate`
+    /// (a placeholder) immediately, then awaits this off the critical path and
+    /// swaps in the result via `PluginValueCache`. A VFS column (read a remote
+    /// `.zip`/SMB attribute) plugs in here without the table — or any existing
+    /// sync plugin — changing. nil = purely synchronous (the v0.3/v0.4 contract).
+    public let evaluateAsync: ((FSEntry) async -> ColumnValue)?
 
+    /// Synchronous column (back-compatible default; `evaluateAsync` stays nil).
     public init(id: String, title: String, evaluate: @escaping (FSEntry) -> ColumnValue) {
         self.id = id
         self.title = title
         self.evaluate = evaluate
+        self.evaluateAsync = nil
+    }
+
+    /// Async column. `placeholder` (default `.none`) renders until the first
+    /// async resolve lands — keeping the never-freeze pillar: a slow value never
+    /// blocks the row.
+    public init(id: String, title: String,
+                placeholder: @escaping (FSEntry) -> ColumnValue = { _ in .none },
+                asyncEvaluate: @escaping (FSEntry) async -> ColumnValue) {
+        self.id = id
+        self.title = title
+        self.evaluate = placeholder
+        self.evaluateAsync = asyncEvaluate
+    }
+
+    public var isAsync: Bool { evaluateAsync != nil }
+}
+
+/// Main-actor memo for async column values, keyed by (column, entry URL). The
+/// table reads `value(for:in:onResolve:)` per cell: for a sync column it returns
+/// the value directly; for an async column it returns the cached result, or the
+/// placeholder while it kicks off a single background resolve (deduped per key)
+/// that fills the cache and calls `onResolve` so the view re-renders. Without
+/// the dedup, every scroll pass would respawn the same fetch.
+@MainActor
+public final class PluginValueCache {
+    private struct Key: Hashable { let column: String; let url: URL }
+    private var values: [Key: ColumnValue] = [:]
+    private var inflight: Set<Key> = []
+
+    public init() {}
+
+    /// Resolve a cell value. `onResolve` fires (on the main actor) once an async
+    /// value lands, so the caller can invalidate the row.
+    public func value(for entry: FSEntry, in column: PluginColumn,
+                      onResolve: @escaping () -> Void) -> ColumnValue {
+        guard let async = column.evaluateAsync else { return column.evaluate(entry) }
+        let key = Key(column: column.id, url: entry.url)
+        if let cached = values[key] { return cached }
+        if !inflight.contains(key) {
+            inflight.insert(key)
+            Task { @MainActor in
+                let resolved = await async(entry)
+                self.values[key] = resolved
+                self.inflight.remove(key)
+                onResolve()
+            }
+        }
+        return column.evaluate(entry)   // placeholder until the resolve lands
+    }
+
+    /// Forget cached values for a column (plugin reload) or everything (nil).
+    public func invalidate(columnID: String? = nil) {
+        if let id = columnID {
+            values = values.filter { $0.key.column != id }
+            inflight = inflight.filter { $0.column != id }
+        } else {
+            values.removeAll()
+            inflight.removeAll()
+        }
     }
 }
 
