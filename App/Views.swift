@@ -108,6 +108,12 @@ struct PathBarView: View {
             } else {
                 breadcrumbs
                 Spacer()
+                Button {
+                    tab.viewMode = tab.viewMode == .list ? .icons : .list
+                } label: {
+                    Image(systemName: tab.viewMode == .list ? "square.grid.2x2" : "list.bullet")
+                }.buttonStyle(.plain)
+                .accessibilityLabel("Toggle view mode")
                 Button { typed = tab.directory.path; editing = true } label: {
                     Image(systemName: "pencil")
                 }.buttonStyle(.plain)
@@ -116,6 +122,10 @@ struct PathBarView: View {
         }
         .padding(.horizontal, 6).padding(.vertical, 4)
         .background(.bar)
+        .onTapGesture {
+            guard !editing else { return }
+            typed = tab.directory.path; editing = true
+        }
     }
 
     private var breadcrumbs: some View {
@@ -161,7 +171,10 @@ struct FileTableView: View {
                 // Loading and loaded both render the same table; the "Reading…"
                 // badge floats as an overlay so it never pushes the rows down
                 // (that layout shift was the jerky-table jank during nav).
-                rows.overlay(alignment: .top) {
+                Group {
+                    if tab.viewMode == .list { rows } else { iconGrid }
+                }
+                .overlay(alignment: .top) {
                     if case .loading(let partial) = tab.state {
                         HStack(spacing: 6) {
                             ProgressView().controlSize(.small)
@@ -193,12 +206,12 @@ struct FileTableView: View {
         }
     }
 
-    // Fixed column widths; Name flexes. Header aligns to these. (Tokens layer.)
-    private let sizeW = Theme.Col.size
-    private let modW = Theme.Col.modified
-    private let kindW = Theme.Col.kind
-    private let gitW = Theme.Col.git
-    private let pluginW = Theme.Col.plugin
+    // Persistent column widths — user-draggable; default from Theme.Col tokens.
+    @AppStorage("colW_size") private var sizeW: Double = 78
+    @AppStorage("colW_mod") private var modW: Double = 124
+    @AppStorage("colW_kind") private var kindW: Double = 92
+    @AppStorage("colW_git") private var gitW: Double = 34
+    @AppStorage("colW_plugin") private var pluginW: Double = 104
 
     // The List is the only child and fills the pane natively; the column header
     // rides along as a pinned Section header (a plain List inside a VStack would
@@ -321,14 +334,21 @@ struct FileTableView: View {
             // columns across density modes (design audit alignment fix).
             Color.clear.frame(width: app.settings.density.iconSize)
             headerButton("Name", .name).frame(maxWidth: .infinity, alignment: .leading)
-            headerButton("Size", .size).frame(width: sizeW, alignment: .trailing)
-            headerButton("Modified", .modified).frame(width: modW, alignment: .trailing)
-            headerButton("Kind", .kind).frame(width: kindW, alignment: .leading)
+            headerButton("Size", .size)
+                .frame(width: CGFloat(sizeW), alignment: .trailing)
+                .overlay(alignment: .trailing) { ColResizeHandle(width: $sizeW) }
+            headerButton("Modified", .modified)
+                .frame(width: CGFloat(modW), alignment: .trailing)
+                .overlay(alignment: .trailing) { ColResizeHandle(width: $modW) }
+            headerButton("Kind", .kind)
+                .frame(width: CGFloat(kindW), alignment: .leading)
+                .overlay(alignment: .trailing) { ColResizeHandle(width: $kindW) }
             if !tab.gitStatus.isEmpty {
-                Text("Git").frame(width: gitW, alignment: .center)
+                Text("Git").frame(width: CGFloat(gitW), alignment: .center)
+                    .overlay(alignment: .trailing) { ColResizeHandle(width: $gitW) }
             }
             ForEach(app.registry.pluginColumns) { col in
-                Text(col.title).lineLimit(1).frame(width: pluginW, alignment: .leading)
+                Text(col.title).lineLimit(1).frame(width: CGFloat(pluginW), alignment: .leading)
             }
         }
         .font(Theme.Font.header)
@@ -392,23 +412,23 @@ struct FileTableView: View {
             }
             Text(entry.isDirectory ? "--" : (entry.size.map(byteString) ?? "--"))
                 .font(.caption.monospaced()).foregroundStyle(.secondary)
-                .frame(width: sizeW, alignment: .trailing)
+                .frame(width: CGFloat(sizeW), alignment: .trailing)
             Text(entry.modified.map(Self.dateText) ?? "--")
                 .font(.caption.monospaced()).foregroundStyle(.secondary)
-                .frame(width: modW, alignment: .trailing)
+                .frame(width: CGFloat(modW), alignment: .trailing)
             Text(kindText(entry))
                 .font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                .frame(width: kindW, alignment: .leading)
+                .frame(width: CGFloat(kindW), alignment: .leading)
             if !tab.gitStatus.isEmpty {
                 Text(tab.gitStatus[entry.url] ?? "")
                     .font(.caption.monospaced().bold())
                     .foregroundStyle(gitColor(tab.gitStatus[entry.url]))
-                    .frame(width: gitW, alignment: .center)
+                    .frame(width: CGFloat(gitW), alignment: .center)
             }
             ForEach(app.registry.pluginColumns) { col in
                 Text(pluginText(col, entry))
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                    .frame(width: pluginW, alignment: .leading)
+                    .frame(width: CGFloat(pluginW), alignment: .leading)
             }
         }
         .padding(.vertical, density.rowPadding)
@@ -501,6 +521,53 @@ struct FileTableView: View {
 
     private func byteString(_ n: Int64) -> String {
         Self.bcf.string(fromByteCount: n)
+    }
+
+    // MARK: Icon grid view
+
+    private var iconGrid: some View {
+        ScrollView {
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 72))], spacing: 12) {
+                ForEach(tab.displayed) { entry in
+                    VStack(spacing: 4) {
+                        FileIconView(entry: entry, size: 48).frame(width: 48, height: 48)
+                        Text(entry.name)
+                            .font(.caption)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.center)
+                            .foregroundStyle(nameColor(entry))
+                    }
+                    .frame(width: 72)
+                    .padding(6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 6)
+                            .fill(tab.selection.contains(entry.url)
+                                  ? Theme.Palette.selectionFill
+                                  : tab.cursor == entry.url ? Theme.Palette.cursorFill : Color.clear)
+                    )
+                    .contentShape(Rectangle())
+                    .onTapGesture {
+                        app.activePaneIsLeft = tabBelongsToLeft()
+                        let mods = NSEvent.modifierFlags
+                        if mods.contains(.command) {
+                            if tab.selection.contains(entry.url) { tab.selection.remove(entry.url) }
+                            else { tab.selection.insert(entry.url) }
+                            tab.cursor = entry.url
+                        } else {
+                            tab.cursor = entry.url
+                            tab.selection = [entry.url]
+                        }
+                    }
+                    .simultaneousGesture(TapGesture(count: 2).onEnded {
+                        if entry.isDirectory { tab.open(entry.url) }
+                        else if entry.url.pathExtension.lowercased() == "zip" { app.browseArchive(entry.url) }
+                        else { app.openFile(entry.url) }
+                    })
+                    .contextMenu { rowMenu(entry) }
+                }
+            }
+            .padding(8)
+        }
     }
 
     // MARK: Context menus (§1)
@@ -688,5 +755,30 @@ struct QueueView: View {
         case .cancelled: return "Cancelled"
         case .failed(let m): return m
         }
+    }
+}
+
+// MARK: - Column resize handle
+
+private struct ColResizeHandle: View {
+    @Binding var width: Double
+    @State private var dragStart: Double = 0
+    @State private var dragging = false
+
+    var body: some View {
+        Color.clear
+            .frame(width: 8)
+            .contentShape(Rectangle())
+            .onHover { inside in
+                if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+            }
+            .gesture(
+                DragGesture(minimumDistance: 2)
+                    .onChanged { v in
+                        if !dragging { dragStart = width; dragging = true }
+                        width = max(40, dragStart + v.translation.width)
+                    }
+                    .onEnded { _ in dragging = false }
+            )
     }
 }

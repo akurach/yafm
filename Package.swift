@@ -9,7 +9,11 @@ let package = Package(
             name: "Core",
             path: "Core/Sources/Core",
             // NetFS: native SMB/AFP share mounting for the v0.7 virtual filesystem.
-            linkerSettings: [.linkedFramework("NetFS")]
+            linkerSettings: [
+                .linkedFramework("NetFS"),
+                .linkedFramework("DiskArbitration"),
+                .linkedFramework("IOKit"),
+            ]
         ),
         .testTarget(
             name: "CoreTests",

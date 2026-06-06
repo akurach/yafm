@@ -5,10 +5,13 @@ import Core
 
 // MARK: - Tab: one directory view with its own selection & cursor
 
+enum PaneViewMode: String { case list, icons }
+
 @MainActor
 @Observable
 final class TabModel: Identifiable {
     let id = UUID()
+    var viewMode: PaneViewMode = .list
     private let fs: FileSystemProvider
     private let tags: TagServing
     private let git: GitStatusService?
@@ -410,9 +413,15 @@ final class AppState {
 
     /// Mounted volumes for the sidebar, kept live via mount/unmount notifications.
     var volumes: [Volume] = []
+    /// Async-enriched classification for each mounted volume (keyed by mount URL).
+    /// Nil while enrichment is in flight; sidebar shows basic info until filled.
+    var volumeClassifications: [URL: VolumeClassification] = [:]
+    @ObservationIgnored private var classificationTasks: [URL: Task<Void, Never>] = [:]
+    @ObservationIgnored private let volumeCollector = VolumeInfoCollector()
+
     // Not observed by the UI; `nonisolated(unsafe)` lets the nonisolated deinit
     // remove the tokens. They're only mutated on the main actor during setup and
-    // read in deinit when no other reference survives (H-1).
+    // read in deniit when no other reference survives (H-1).
     @ObservationIgnored nonisolated(unsafe) private var volumeObservers: [NSObjectProtocol] = []
 
     /// Handles for the fire-and-forget tag tasks so re-entry cancels the prior
@@ -615,7 +624,30 @@ final class AppState {
 
     // MARK: Volumes (§2)
 
-    func refreshVolumes() { volumes = volumeService.mountedVolumes() }
+    func refreshVolumes() {
+        let prev = Set(volumes.map(\.url))
+        volumes = volumeService.mountedVolumes()
+        let curr = Set(volumes.map(\.url))
+
+        // Cancel and drop enrichment for unmounted volumes.
+        for url in prev.subtracting(curr) {
+            classificationTasks[url]?.cancel()
+            classificationTasks.removeValue(forKey: url)
+            volumeClassifications.removeValue(forKey: url)
+        }
+
+        // Enrich new (or not-yet-classified) volumes off the main actor.
+        for vol in volumes where volumeClassifications[vol.url] == nil
+                              && classificationTasks[vol.url] == nil {
+            let collector = volumeCollector   // capture struct value, Sendable
+            let v = vol
+            classificationTasks[vol.url] = Task.detached { [weak self] in
+                let c = collector.collect(volume: v)
+                guard !Task.isCancelled, let self else { return }
+                await MainActor.run { self.volumeClassifications[v.url] = c }
+            }
+        }
+    }
 
     /// Live updates: NSWorkspace posts mount/unmount on the main thread, so the
     /// closures touch main-actor state directly.
@@ -642,6 +674,7 @@ final class AppState {
         // them is thread-safe, so this is fine from a nonisolated deinit (H-1).
         let nc = NSWorkspace.shared.notificationCenter
         for token in volumeObservers { nc.removeObserver(token) }
+        for task in classificationTasks.values { task.cancel() }
     }
 
     func eject(_ volume: Volume) {

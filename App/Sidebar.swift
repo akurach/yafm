@@ -35,13 +35,19 @@ struct BookmarksSidebar: View {
 
             if !devices.isEmpty {
                 Section("Devices") {
-                    ForEach(devices) { vol in VolumeRow(app: app, volume: vol) }
+                    ForEach(devices) { vol in
+                        VolumeRow(app: app, volume: vol,
+                                  classification: app.volumeClassifications[vol.url])
+                    }
                 }
             }
 
             if !networkVolumes.isEmpty {
                 Section("Network") {
-                    ForEach(networkVolumes) { vol in VolumeRow(app: app, volume: vol) }
+                    ForEach(networkVolumes) { vol in
+                        VolumeRow(app: app, volume: vol,
+                                  classification: app.volumeClassifications[vol.url])
+                    }
                 }
             }
 
@@ -94,19 +100,28 @@ struct TagCloudRow: View {
     }
 }
 
-/// One mounted volume: name, capacity bar, eject button for removables.
+/// One mounted volume: classification icon, name, filesystem/transport meta, capacity bar, eject.
 struct VolumeRow: View {
     let app: AppState
     let volume: Volume
+    var classification: VolumeClassification?
 
     var body: some View {
         HStack(spacing: 6) {
             Image(systemName: icon)
             VStack(alignment: .leading, spacing: 2) {
-                Text(volume.name).lineLimit(1)
+                HStack(spacing: 4) {
+                    Text(volume.name).lineLimit(1)
+                    if classification?.isReadOnly == true {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 8)).foregroundStyle(.secondary)
+                    }
+                }
+                if let c = classification, c.confidence > 0 {
+                    metaLine(c)
+                }
                 if let frac = volume.usedFraction {
-                    ProgressView(value: frac)
-                        .controlSize(.mini)
+                    ProgressView(value: frac).controlSize(.mini)
                     if let total = volume.totalCapacity, let avail = volume.availableCapacity {
                         Text("\(byte(total - avail)) of \(byte(total))")
                             .font(.system(size: 9)).foregroundStyle(.secondary)
@@ -131,18 +146,35 @@ struct VolumeRow: View {
             Button("Reveal in Finder") {
                 NSWorkspace.shared.activateFileViewerSelecting([volume.url])
             }
+            if let c = classification, !c.reasons.isEmpty {
+                Divider()
+                Text(c.kind.label + " (\(Int(c.confidence * 100))% confidence)")
+                    .font(.caption2).foregroundStyle(.secondary)
+            }
             if volume.canEject {
                 Divider()
-                Button { app.eject(volume) } label: {
-                    Label("Eject", systemImage: "eject")
-                }
+                Button { app.eject(volume) } label: { Label("Eject", systemImage: "eject") }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func metaLine(_ c: VolumeClassification) -> some View {
+        HStack(spacing: 3) {
+            if let fs = c.filesystem {
+                Text(fs.uppercased()).font(.system(size: 9)).foregroundStyle(.secondary)
+            }
+            if c.transport.label != "" && c.transport != .internalBus {
+                Text("·").font(.system(size: 9)).foregroundStyle(.tertiary)
+                Text(c.transport.label).font(.system(size: 9)).foregroundStyle(.secondary)
             }
         }
     }
 
     private var icon: String {
+        if let c = classification, c.confidence >= 0.5 { return c.kind.icon }
         if volume.isNetwork { return "network" }
-        if volume.canEject { return "externaldrive" }
+        if volume.canEject  { return "externaldrive" }
         return "internaldrive"
     }
 
