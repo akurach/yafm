@@ -454,12 +454,19 @@ final class AppState {
     /// copy or move into the active pane's directory.
     var clipboard: (urls: [URL], cut: Bool)?
 
+    private static let bookmarksKey = "yafm.customBookmarks"
+
     init() {
         let start = settings.startDirectory()
         let hidden = settings.showHiddenByDefault
         left = PaneModel(fs: fs, tags: tags, directory: start, showHidden: hidden, git: gitService)
         right = PaneModel(fs: fs, tags: tags, directory: start, showHidden: hidden, git: gitService)
-        bookmarks = AppState.defaultBookmarks()
+        if let data = UserDefaults.standard.data(forKey: Self.bookmarksKey),
+           let saved = try? JSONDecoder().decode([Bookmark].self, from: data) {
+            bookmarks = saved
+        } else {
+            bookmarks = []
+        }
     }
 
     var activePane: PaneModel { activePaneIsLeft ? left : right }
@@ -473,14 +480,22 @@ final class AppState {
 
     // MARK: Favorites (sidebar)
 
+    private func saveBookmarks() {
+        if let data = try? JSONEncoder().encode(bookmarks) {
+            UserDefaults.standard.set(data, forKey: Self.bookmarksKey)
+        }
+    }
+
     func addBookmark(_ url: URL) {
         guard !bookmarks.contains(where: { $0.path == url.path }) else { return }
         let name = url.lastPathComponent.isEmpty ? "/" : url.lastPathComponent
         bookmarks.append(Bookmark(name: name, path: url.path))
+        saveBookmarks()
     }
 
     func removeBookmark(_ bm: Bookmark) {
         bookmarks.removeAll { $0.id == bm.id }
+        saveBookmarks()
     }
 
     func start() {
@@ -505,9 +520,7 @@ final class AppState {
         pluginHost.openInAppHandler = { url, bundleId in
             // C-1: executable files require explicit user confirmation — same gate
             // as openFile() — so a plugin can't silently run code via Terminal/osascript.
-            let dangerousExts: Set<String> = ["sh", "command", "scpt", "applescript",
-                                               "workflow", "tool", "action", "pkg", "mpkg"]
-            if dangerousExts.contains(url.pathExtension.lowercased()) {
+            if Self.riskyExtensions.contains(url.pathExtension.lowercased()) {
                 let alert = NSAlert()
                 alert.messageText = "Open potentially unsafe file?"
                 alert.informativeText = "\"\(url.lastPathComponent)\" may run code on your Mac. A plugin requested this action."
@@ -675,7 +688,10 @@ final class AppState {
     /// a freeze. nil/garbage addresses are ignored.
     func connectToServer(_ address: String) {
         let trimmed = address.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let url = URL(string: trimmed), url.scheme != nil, url.host != nil else { return }
+        let allowed: Set<String> = ["smb", "ftp", "sftp", "nfs", "afp", "dav", "davs"]
+        guard let url = URL(string: trimmed),
+              allowed.contains(url.scheme?.lowercased() ?? ""),
+              url.host != nil else { return }
         connectSheet = false
         activeTab.open(url)
     }
@@ -765,12 +781,82 @@ final class AppState {
     }
 
     func eject(_ volume: Volume) {
+        // Navigate any tab whose directory is on this volume to Home first;
+        // otherwise yafm itself causes the -47 "busy" error.
+        let home = FileManager.default.homeDirectoryForCurrentUser
+        let volPath = volume.url.standardizedFileURL.path
+        for pane in [left, right] {
+            for tab in pane.tabs where tab.directory.standardizedFileURL.path.hasPrefix(volPath) {
+                tab.open(home)
+            }
+        }
         do {
             try NSWorkspace.shared.unmountAndEjectDevice(at: volume.url)
         } catch {
-            NSAlert(error: error).runModal()
+            let volName = volume.name
+            let volURL  = volume.url
+            // Run lsof in background, then show alert with who's holding the volume.
+            Task { @MainActor in
+                let procs = await Self.busyProcesses(on: volURL, timeout: 3)
+                let alert = NSAlert()
+                alert.messageText = "Could not eject \"\(volName)\""
+                if procs.isEmpty {
+                    alert.informativeText = "Another app may still have a file on this disk open. Close it and try again."
+                } else {
+                    let list = procs.map { "  • \($0)" }.joined(separator: "\n")
+                    alert.informativeText = "The following apps are using files on this disk:\n\n\(list)\n\nQuit them or close their files, then try again."
+                }
+                alert.alertStyle = .warning
+                alert.runModal()
+            }
         }
         refreshVolumes()
+    }
+
+    /// Run `lsof +D path` with a timeout and return unique "AppName (PID)" strings.
+    private static func busyProcesses(on url: URL, timeout: Double) async -> [String] {
+        await withCheckedContinuation { cont in
+            DispatchQueue.global(qos: .userInitiated).async {
+                let proc = Process()
+                proc.executableURL = URL(fileURLWithPath: "/usr/sbin/lsof")
+                proc.arguments = ["+D", url.path]
+                let out = Pipe()
+                proc.standardOutput = out
+                proc.standardError  = Pipe()
+                guard (try? proc.run()) != nil else { cont.resume(returning: []); return }
+
+                let sem = DispatchSemaphore(value: 0)
+                DispatchQueue.global().async { proc.waitUntilExit(); sem.signal() }
+                guard sem.wait(timeout: .now() + timeout) != .timedOut else {
+                    proc.terminate()
+                    cont.resume(returning: [])
+                    return
+                }
+
+                let raw = String(data: out.fileHandleForReading.readDataToEndOfFile(),
+                                 encoding: .utf8) ?? ""
+                // lsof columns: COMMAND PID USER FD ...
+                // Friendly display names for daemon noise.
+                let friendly: [String: String] = [
+                    "mds": "Spotlight (mds)",
+                    "mds_stores": "Spotlight indexer",
+                    "fseventsd": "File Events daemon",
+                    "diskarbitrationd": "Disk Arbitration",
+                ]
+                var seenPIDs = Set<String>()
+                var result: [String] = []
+                for line in raw.split(separator: "\n").dropFirst() {
+                    let cols = line.split(separator: " ", omittingEmptySubsequences: true)
+                    guard cols.count >= 2 else { continue }
+                    let cmd = String(cols[0])
+                    let pid = String(cols[1])
+                    guard seenPIDs.insert(pid).inserted else { continue }
+                    let name = friendly[cmd] ?? cmd
+                    result.append("\(name) (PID \(pid))")
+                }
+                cont.resume(returning: result)
+            }
+        }
     }
 
     // MARK: Tag cloud (§5)
@@ -1122,7 +1208,8 @@ final class AppState {
 
     func rename(entry: FSEntry, to newName: String) {
         // Must be a plain leaf name — reject path traversal ("../etc/passwd").
-        guard !newName.isEmpty, !newName.contains("/"), newName != ".", newName != ".." else { return }
+        guard !newName.isEmpty, !newName.contains("/"), !newName.contains("\0"),
+              newName != ".", newName != ".." else { return }
         let task = OperationTask(kind: .rename(to: newName), sources: [entry.url])
         runTask(task) { [weak self] in
             self?.forgetTagged([entry.url])   // the old leaf name is gone
@@ -1130,11 +1217,19 @@ final class AppState {
         }
     }
 
+    /// Extensions that may execute code — shared by openFile, editCursor, and the
+    /// plugin openInApp handler so the gate can never drift between call sites.
+    static let riskyExtensions: Set<String> = [
+        "sh", "command", "zsh", "bash",
+        "scpt", "applescript", "workflow",
+        "app", "term", "tool", "action",
+        "pkg", "mpkg",
+    ]
+
     /// Open a file in its default app, confirming first for executable/script
     /// types (this app is non-sandboxed with full disk access).
     func openFile(_ url: URL) {
-        let risky: Set<String> = ["sh", "command", "zsh", "bash", "scpt", "workflow", "app", "term", "tool"]
-        if risky.contains(url.pathExtension.lowercased()) {
+        if Self.riskyExtensions.contains(url.pathExtension.lowercased()) {
             let alert = NSAlert()
             alert.messageText = "Open \"\(url.lastPathComponent)\"?"
             alert.informativeText = "This may run code on your Mac."
@@ -1149,7 +1244,7 @@ final class AppState {
     /// user-assignable editor comes later; for now this is the system handler.)
     func editCursor() {
         guard let entry = activeTab.actionable.first, !entry.isDirectory else { return }
-        NSWorkspace.shared.open(entry.url)
+        openFile(entry.url)
     }
 
     // MARK: Context-menu commands (v0.2.1)
@@ -1196,7 +1291,8 @@ final class AppState {
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         let name = field.stringValue
         // Reject empty + path traversal — must be a plain leaf name.
-        guard !name.isEmpty, !name.contains("/"), name != ".", name != ".." else { return }
+        guard !name.isEmpty, !name.contains("/"), !name.contains("\0"),
+              name != ".", name != ".." else { return }
         let url = parent.appendingPathComponent(name, isDirectory: true)
         do {
             // Route mkdir through the engine so all mutating FS work lives in

@@ -217,7 +217,7 @@ struct FileTableView: View {
     @State private var modW: Double = 124
     @State private var kindW: Double = 92
     @State private var gitW: Double = 34
-    @State private var pluginW: Double = 104
+    @State private var pluginWidths: [String: Double] = [:]
     // Plugin columns filtered to those relevant for the current folder's content.
     @State private var visiblePluginCols: [PluginColumn] = []
 
@@ -355,25 +355,22 @@ struct FileTableView: View {
         Binding(get: { nameW }, set: { nameW = max(80, $0) })
     }
     private var sizeBind: Binding<Double> {
-        Binding(get: { sizeW }, set: { newVal in
-            let prev = sizeW
-            sizeW = max(40, newVal)
-            nameW = max(80, nameW - (sizeW - prev))
-        })
+        Binding(get: { sizeW }, set: { sizeW = max(40, $0) })
     }
     private var modBind: Binding<Double> {
-        Binding(get: { modW }, set: { newVal in
-            let prev = modW
-            modW = max(40, newVal)
-            nameW = max(80, nameW - (modW - prev))
-        })
+        Binding(get: { modW }, set: { modW = max(40, $0) })
     }
     private var kindBind: Binding<Double> {
-        Binding(get: { kindW }, set: { newVal in
-            let prev = kindW
-            kindW = max(40, newVal)
-            nameW = max(80, nameW - (kindW - prev))
-        })
+        Binding(get: { kindW }, set: { kindW = max(40, $0) })
+    }
+    private func pluginWidth(_ col: PluginColumn) -> CGFloat {
+        CGFloat(pluginWidths[col.id] ?? 104)
+    }
+    private func pluginWidthBind(_ col: PluginColumn) -> Binding<Double> {
+        Binding(
+            get: { pluginWidths[col.id] ?? 104 },
+            set: { pluginWidths[col.id] = max(40, $0) }
+        )
     }
 
     private var columnHeader: some View {
@@ -398,10 +395,15 @@ struct FileTableView: View {
             if !tab.gitStatus.isEmpty {
                 ColResizeHandle(width: kindBind)
                 Text("Git").frame(width: CGFloat(gitW), alignment: .center)
+                if !visiblePluginCols.isEmpty {
+                    ColResizeHandle(width: Binding(get: { gitW }, set: { gitW = max(28, $0) }))
+                }
+            } else if !visiblePluginCols.isEmpty {
+                ColResizeHandle(width: kindBind)
             }
             ForEach(visiblePluginCols) { col in
-                Color.clear.frame(width: Theme.Space.row)
-                Text(col.title).lineLimit(1).frame(width: CGFloat(pluginW), alignment: .leading)
+                Text(col.title).lineLimit(1).frame(width: pluginWidth(col), alignment: .leading)
+                ColResizeHandle(width: pluginWidthBind(col))
             }
         }
         .font(Theme.Font.header)
@@ -494,7 +496,7 @@ struct FileTableView: View {
             ForEach(visiblePluginCols) { col in
                 Text(pluginText(col, entry))
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                    .frame(width: CGFloat(pluginW), alignment: .leading)
+                    .frame(width: pluginWidth(col), alignment: .leading)
             }
         }
         .padding(.vertical, density.rowPadding)

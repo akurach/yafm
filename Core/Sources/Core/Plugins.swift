@@ -89,9 +89,10 @@ public final class JSPluginHost {
     private var handleURLs: [ObjectIdentifier: [Int: URL]] = [:]
     private var handleByURL: [ObjectIdentifier: [URL: Int]] = [:]
     private var handleSeq = 0
-    /// `readText` call budget per directory session — reset in `clearHandles()`.
-    /// Prevents I/O amplification: 500 × 256 KB = 128 MB max per session.
-    private var readTextCallCount = 0
+    /// Per-context `readText` call budget — reset in `clearHandles()`.
+    /// Keyed by context identity so one plugin can't exhaust another's budget.
+    /// 500 calls × 256 KB = 128 MB max per plugin per session.
+    private var readTextCallCounts: [ObjectIdentifier: Int] = [:]
     public static let readTextCallLimit = 500
     /// Cap a single capability read so a sync read of a 2 GB file can't freeze.
     public static let readTextCap = 256 * 1024   // 256 KB
@@ -347,7 +348,7 @@ public final class JSPluginHost {
     public func clearHandles() {
         handleURLs.removeAll()
         handleByURL.removeAll()
-        readTextCallCount = 0
+        readTextCallCounts = [:]
     }
 
     /// Register a URL → opaque handle scoped to the given JSContext. A plugin can
@@ -489,9 +490,9 @@ public final class JSPluginHost {
                       let handle = entryVal?.objectForKeyedSubscript("__h")?.toNumber()?.intValue,
                       handle >= 0,
                       let base = self.resolveHandle(handle, in: callerCtx),
-                      self.readTextCallCount < Self.readTextCallLimit
+                      (self.readTextCallCounts[ObjectIdentifier(callerCtx)] ?? 0) < Self.readTextCallLimit
                 else { return nil }
-                self.readTextCallCount += 1
+                self.readTextCallCounts[ObjectIdentifier(callerCtx), default: 0] += 1
                 let rel = relVal?.toString() ?? ""
                 var isDir: ObjCBool = false
                 FileManager.default.fileExists(atPath: base.path, isDirectory: &isDir)

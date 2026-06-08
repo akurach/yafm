@@ -127,6 +127,27 @@ final class AppSettings {
     /// Default behaviour when copy/move hits an existing file.
     var collisionDefault: CollisionPolicy { didSet { store.set(collisionDefault.rawValue, forKey: Keys.collisionDefault) } }
 
+    // Sidebar section visibility
+    var sidebarShowFavorites:   Bool { didSet { store.set(sidebarShowFavorites,   forKey: Keys.sidebarShowFavorites) } }
+    var sidebarShowLocations:   Bool { didSet { store.set(sidebarShowLocations,   forKey: Keys.sidebarShowLocations) } }
+    var sidebarShowICloud:      Bool { didSet { store.set(sidebarShowICloud,      forKey: Keys.sidebarShowICloud) } }
+    var sidebarShowDevices:     Bool { didSet { store.set(sidebarShowDevices,     forKey: Keys.sidebarShowDevices) } }
+    var sidebarShowNetwork:     Bool { didSet { store.set(sidebarShowNetwork,     forKey: Keys.sidebarShowNetwork) } }
+    var sidebarShowTags:        Bool { didSet { store.set(sidebarShowTags,        forKey: Keys.sidebarShowTags) } }
+
+    // Standard favorites — which system folders appear in Favorites
+    var favDesktop:      Bool { didSet { store.set(favDesktop,      forKey: Keys.favDesktop) } }
+    var favDocuments:    Bool { didSet { store.set(favDocuments,    forKey: Keys.favDocuments) } }
+    var favDownloads:    Bool { didSet { store.set(favDownloads,    forKey: Keys.favDownloads) } }
+    var favMovies:       Bool { didSet { store.set(favMovies,       forKey: Keys.favMovies) } }
+    var favMusic:        Bool { didSet { store.set(favMusic,        forKey: Keys.favMusic) } }
+    var favPictures:     Bool { didSet { store.set(favPictures,     forKey: Keys.favPictures) } }
+    var favApplications: Bool { didSet { store.set(favApplications, forKey: Keys.favApplications) } }
+
+    // Locations items visibility
+    var locShowComputer: Bool { didSet { store.set(locShowComputer, forKey: Keys.locShowComputer) } }
+    var locShowHome:     Bool { didSet { store.set(locShowHome,     forKey: Keys.locShowHome) } }
+
     @ObservationIgnored private let store = UserDefaults.standard
 
     private enum Keys {
@@ -141,6 +162,21 @@ final class AppSettings {
         static let lastFolder = "lastFolder"
         static let confirmBeforeDelete = "confirmBeforeDelete"
         static let collisionDefault = "collisionDefault"
+        static let sidebarShowFavorites = "sidebarShowFavorites"
+        static let sidebarShowLocations = "sidebarShowLocations"
+        static let sidebarShowICloud    = "sidebarShowICloud"
+        static let sidebarShowDevices   = "sidebarShowDevices"
+        static let sidebarShowNetwork   = "sidebarShowNetwork"
+        static let sidebarShowTags      = "sidebarShowTags"
+        static let favDesktop      = "favDesktop"
+        static let favDocuments    = "favDocuments"
+        static let favDownloads    = "favDownloads"
+        static let favMovies       = "favMovies"
+        static let favMusic        = "favMusic"
+        static let favPictures     = "favPictures"
+        static let favApplications = "favApplications"
+        static let locShowComputer = "locShowComputer"
+        static let locShowHome     = "locShowHome"
     }
 
     init() {
@@ -156,6 +192,21 @@ final class AppSettings {
         // Permanent delete: confirm by default unless the user has explicitly set it.
         confirmBeforeDelete = d.object(forKey: Keys.confirmBeforeDelete) as? Bool ?? true
         collisionDefault = CollisionPolicy(rawValue: d.string(forKey: Keys.collisionDefault) ?? "") ?? .keepBoth
+        sidebarShowFavorites = d.object(forKey: Keys.sidebarShowFavorites) as? Bool ?? true
+        sidebarShowLocations = d.object(forKey: Keys.sidebarShowLocations) as? Bool ?? true
+        sidebarShowICloud    = d.object(forKey: Keys.sidebarShowICloud)    as? Bool ?? true
+        sidebarShowDevices   = d.object(forKey: Keys.sidebarShowDevices)   as? Bool ?? true
+        sidebarShowNetwork   = d.object(forKey: Keys.sidebarShowNetwork)   as? Bool ?? true
+        sidebarShowTags      = d.object(forKey: Keys.sidebarShowTags)      as? Bool ?? true
+        favDesktop      = d.object(forKey: Keys.favDesktop)      as? Bool ?? true
+        favDocuments    = d.object(forKey: Keys.favDocuments)    as? Bool ?? true
+        favDownloads    = d.object(forKey: Keys.favDownloads)    as? Bool ?? true
+        favMovies       = d.object(forKey: Keys.favMovies)       as? Bool ?? false
+        favMusic        = d.object(forKey: Keys.favMusic)        as? Bool ?? false
+        favPictures     = d.object(forKey: Keys.favPictures)     as? Bool ?? false
+        favApplications = d.object(forKey: Keys.favApplications) as? Bool ?? true
+        locShowComputer = d.object(forKey: Keys.locShowComputer) as? Bool ?? true
+        locShowHome     = d.object(forKey: Keys.locShowHome)     as? Bool ?? true
     }
 
     /// Directory new windows open at, falling back to Home when a path is gone.
@@ -239,11 +290,12 @@ struct SettingsView: View {
             general.tabItem { Label("General", systemImage: "gearshape") }
             appearance.tabItem { Label("Appearance", systemImage: "paintbrush") }
             operations.tabItem { Label("Operations", systemImage: "arrow.left.arrow.right") }
+            sidebarTab.tabItem { Label("Sidebar", systemImage: "sidebar.left") }
             tags.tabItem { Label("Tags", systemImage: "tag") }
             plugins.tabItem { Label("Plugins", systemImage: "puzzlepiece.extension") }
             updatesTab.tabItem { Label("Updates", systemImage: "arrow.down.circle") }
         }
-        .frame(width: 500, height: 340)
+        .frame(width: 520, height: 360)
     }
 
     private var general: some View {
@@ -321,6 +373,70 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    private var sidebarTab: some View {
+        Form {
+            Section("Favorites — Standard") {
+                Toggle(isOn: bindable.favDesktop)      { Label("Desktop",      systemImage: "menubar.dock.rectangle") }
+                Toggle(isOn: bindable.favDocuments)    { Label("Documents",    systemImage: "doc.text") }
+                Toggle(isOn: bindable.favDownloads)    { Label("Downloads",    systemImage: "arrow.down.circle") }
+                Toggle(isOn: bindable.favMovies)       { Label("Movies",       systemImage: "film") }
+                Toggle(isOn: bindable.favMusic)        { Label("Music",        systemImage: "music.note") }
+                Toggle(isOn: bindable.favPictures)     { Label("Pictures",     systemImage: "photo") }
+                Toggle(isOn: bindable.favApplications) { Label("Applications", systemImage: "square.grid.2x2") }
+            }
+            .disabled(!settings.sidebarShowFavorites)
+
+            Section("Favorites — Custom") {
+                if app.bookmarks.isEmpty {
+                    Text("No custom folders yet.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                ForEach(app.bookmarks) { bm in
+                    HStack {
+                        Label(bm.name, systemImage: "folder")
+                        Spacer()
+                        Button { app.removeBookmark(bm) } label: {
+                            Image(systemName: "minus.circle.fill").foregroundStyle(.red)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                Button { chooseFavorite() } label: {
+                    Label("Add Folder…", systemImage: "plus.circle")
+                }
+            }
+            .disabled(!settings.sidebarShowFavorites)
+
+            Section("Locations") {
+                Toggle(isOn: bindable.locShowComputer) { Label("Computer",    systemImage: "desktopcomputer") }
+                Toggle(isOn: bindable.locShowHome)     { Label("Home",        systemImage: "house") }
+                Toggle(isOn: bindable.sidebarShowICloud) { Label("iCloud Drive", systemImage: "cloud") }
+            }
+            .disabled(!settings.sidebarShowLocations)
+
+            Section("Sections") {
+                Toggle(isOn: bindable.sidebarShowFavorites) { Label("Favorites", systemImage: "star") }
+                Toggle(isOn: bindable.sidebarShowLocations) { Label("Locations", systemImage: "house") }
+                Toggle(isOn: bindable.sidebarShowDevices)   { Label("Devices",   systemImage: "externaldrive") }
+                Toggle(isOn: bindable.sidebarShowNetwork)   { Label("Network",   systemImage: "network") }
+                Toggle(isOn: bindable.sidebarShowTags)      { Label("Tags",      systemImage: "tag") }
+            }
+        }
+        .formStyle(.grouped)
+    }
+
+    private func chooseFavorite() {
+        let panel = NSOpenPanel()
+        panel.canChooseFiles = false
+        panel.canChooseDirectories = true
+        panel.allowsMultipleSelection = false
+        panel.prompt = "Add to Favorites"
+        panel.message = "Choose a folder to add to Favorites in the sidebar."
+        if panel.runModal() == .OK, let url = panel.url {
+            app.addBookmark(url)
+        }
     }
 
     private var tags: some View { TagManagerView(app: app) }

@@ -115,8 +115,9 @@ public actor ArchiveFileSystem: FileSystemProvider {
             let remainder = String(name.dropFirst(prefix.count))
             if remainder.isEmpty { continue }
             if let slash = remainder.firstIndex(of: "/") {
-                dirs.insert(String(remainder[remainder.startIndex..<slash]))   // immediate subdir
-            } else if !remainder.isEmpty {
+                let dir = String(remainder[remainder.startIndex..<slash])
+                if dir != "." && dir != ".." { dirs.insert(dir) }
+            } else if !remainder.isEmpty && remainder != "." && remainder != ".." {
                 files.append(remainder)
             }
         }

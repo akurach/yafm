@@ -10,31 +10,64 @@ struct BookmarksSidebar: View {
     private var devices: [Volume] { app.volumes.filter { !$0.isNetwork } }
     private var networkVolumes: [Volume] { app.volumes.filter { $0.isNetwork } }
 
+    private static let iCloudDriveURL: URL? = {
+        let url = FileManager.default.homeDirectoryForCurrentUser
+            .appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs")
+        return FileManager.default.fileExists(atPath: url.path) ? url : nil
+    }()
+
+    @ViewBuilder
+    private func sysFav(_ label: String, _ icon: String, _ dir: FileManager.SearchPathDirectory) -> some View {
+        if let url = FileManager.default.urls(for: dir, in: .userDomainMask).first {
+            locationRow(label, icon, url)
+        }
+    }
+
     var body: some View {
         List {
-            Section("Favorites") {
-                ForEach(app.bookmarks) { bm in
-                    Label(bm.name, systemImage: "folder")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .contentShape(Rectangle())
-                        .onTapGesture { app.activeTab.open(bm.url) }
-                        .contextMenu {
-                            Button("Open") { app.activeTab.open(bm.url) }
-                            Button("Open in New Tab") { app.openInNewTab(bm.url) }
-                            Divider()
-                            Button(role: .destructive) { app.removeBookmark(bm) } label: {
-                                Label("Remove from Favorites", systemImage: "minus.circle")
+            if app.settings.sidebarShowFavorites {
+                Section("Favorites") {
+                    if app.settings.favDesktop      { sysFav("Desktop",      "menubar.dock.rectangle", .desktopDirectory) }
+                    if app.settings.favDocuments    { sysFav("Documents",    "doc.text",               .documentDirectory) }
+                    if app.settings.favDownloads    { sysFav("Downloads",    "arrow.down.circle",      .downloadsDirectory) }
+                    if app.settings.favMovies       { sysFav("Movies",       "film",                   .moviesDirectory) }
+                    if app.settings.favMusic        { sysFav("Music",        "music.note",             .musicDirectory) }
+                    if app.settings.favPictures     { sysFav("Pictures",     "photo",                  .picturesDirectory) }
+                    if app.settings.favApplications {
+                        locationRow("Applications", "square.grid.2x2", URL(fileURLWithPath: "/Applications"))
+                    }
+                    ForEach(app.bookmarks) { bm in
+                        Label(bm.name, systemImage: "folder")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                            .onTapGesture { app.activeTab.open(bm.url) }
+                            .contextMenu {
+                                Button("Open") { app.activeTab.open(bm.url) }
+                                Button("Open in New Tab") { app.openInNewTab(bm.url) }
+                                Divider()
+                                Button(role: .destructive) { app.removeBookmark(bm) } label: {
+                                    Label("Remove from Favorites", systemImage: "minus.circle")
+                                }
                             }
-                        }
+                    }
                 }
             }
 
-            Section("Locations") {
-                locationRow("Computer", "desktopcomputer", URL(fileURLWithPath: "/"))
-                locationRow("Home", "house", FileManager.default.homeDirectoryForCurrentUser)
+            if app.settings.sidebarShowLocations {
+                Section("Locations") {
+                    if app.settings.locShowComputer {
+                        locationRow("Computer", "desktopcomputer", URL(fileURLWithPath: "/"))
+                    }
+                    if app.settings.locShowHome {
+                        locationRow("Home", "house", FileManager.default.homeDirectoryForCurrentUser)
+                    }
+                    if app.settings.sidebarShowICloud, let url = Self.iCloudDriveURL {
+                        locationRow("iCloud Drive", "cloud", url)
+                    }
+                }
             }
 
-            if !devices.isEmpty {
+            if app.settings.sidebarShowDevices, !devices.isEmpty {
                 Section("Devices") {
                     ForEach(devices) { vol in
                         VolumeRow(app: app, volume: vol,
@@ -43,7 +76,7 @@ struct BookmarksSidebar: View {
                 }
             }
 
-            if !networkVolumes.isEmpty {
+            if app.settings.sidebarShowNetwork, !networkVolumes.isEmpty {
                 Section("Network") {
                     ForEach(networkVolumes) { vol in
                         VolumeRow(app: app, volume: vol,
@@ -52,7 +85,7 @@ struct BookmarksSidebar: View {
                 }
             }
 
-            if !app.knownTags.isEmpty {
+            if app.settings.sidebarShowTags, !app.knownTags.isEmpty {
                 Section("Tags") {
                     ForEach(app.knownTags, id: \.name) { tag in
                         TagCloudRow(app: app, tag: tag, count: app.tagCounts[tag.name] ?? 0)
