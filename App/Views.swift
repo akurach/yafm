@@ -332,25 +332,26 @@ struct FileTableView: View {
     }
 
     private var columnHeader: some View {
-        // spacing:0 — gaps between columns are explicit ColResizeHandle views (8 pt each),
-        // matching the row HStack spacing so columns stay aligned.
+        // spacing:0 — each fixed column is followed by a ColResizeHandle (8 pt)
+        // that sits on its RIGHT edge, matching the standard table-column UX:
+        // grab the right border of a column and drag to resize it.
         HStack(spacing: 0) {
             Color.clear.frame(width: app.settings.density.iconSize)
             Color.clear.frame(width: Theme.Space.row)   // leading gap after icon
             headerButton("Name", .name).frame(maxWidth: .infinity, alignment: .leading)
-            ColResizeHandle(width: $sizeW)
             headerButton("Size", .size).frame(width: CGFloat(sizeW), alignment: .trailing)
-            ColResizeHandle(width: $modW)
+            ColResizeHandle(width: $sizeW)
             headerButton("Modified", .modified).frame(width: CGFloat(modW), alignment: .trailing)
-            ColResizeHandle(width: $kindW)
+            ColResizeHandle(width: $modW)
             headerButton("Kind", .kind).frame(width: CGFloat(kindW), alignment: .leading)
+            ColResizeHandle(width: $kindW)
             if !tab.gitStatus.isEmpty {
-                ColResizeHandle(width: $gitW)
                 Text("Git").frame(width: CGFloat(gitW), alignment: .center)
+                ColResizeHandle(width: $gitW)
             }
             ForEach(app.registry.pluginColumns) { col in
-                ColResizeHandle(width: $pluginW)
                 Text(col.title).lineLimit(1).frame(width: CGFloat(pluginW), alignment: .leading)
+                ColResizeHandle(width: $pluginW)
             }
         }
         .font(Theme.Font.header)
@@ -422,23 +423,27 @@ struct FileTableView: View {
             Text(entry.isDirectory ? "--" : (entry.size.map(byteString) ?? "--"))
                 .font(.caption.monospaced()).foregroundStyle(.secondary)
                 .frame(width: CGFloat(sizeW), alignment: .trailing)
+            Color.clear.frame(width: 8)   // under ColResizeHandle (right of Size)
             Text(entry.modified.map(Self.dateText) ?? "--")
                 .font(.caption.monospaced()).foregroundStyle(.secondary)
                 .frame(width: CGFloat(modW), alignment: .trailing)
+            Color.clear.frame(width: 8)   // under ColResizeHandle (right of Modified)
             Text(kindText(entry))
                 .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 .frame(width: CGFloat(kindW), alignment: .leading)
+            Color.clear.frame(width: 8)   // under ColResizeHandle (right of Kind)
             if !tab.gitStatus.isEmpty {
                 Text(tab.gitStatus[entry.url] ?? "")
                     .font(.caption.monospaced().bold())
                     .foregroundStyle(gitColor(tab.gitStatus[entry.url]))
                     .frame(width: CGFloat(gitW), alignment: .center)
+                Color.clear.frame(width: 8)
             }
             ForEach(app.registry.pluginColumns) { col in
-                Color.clear.frame(width: 8)   // aligns with ColResizeHandle in header
                 Text(pluginText(col, entry))
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     .frame(width: CGFloat(pluginW), alignment: .leading)
+                Color.clear.frame(width: 8)   // under ColResizeHandle (right of plugin col)
             }
         }
         .padding(.vertical, density.rowPadding)
@@ -791,9 +796,9 @@ struct QueueView: View {
 
 private struct ColResizeHandle: View {
     @Binding var width: Double
+    @State private var hovering = false
     @State private var dragStart: Double = 0
     @State private var dragging = false
-    @State private var hovering = false
 
     var body: some View {
         ZStack {
@@ -809,14 +814,19 @@ private struct ColResizeHandle: View {
             if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
         }
         .gesture(
-            DragGesture(minimumDistance: 2)
+            // .global avoids the feedback loop: as the column resizes the handle
+            // moves in window space, which would corrupt local-space translation.
+            DragGesture(minimumDistance: 2, coordinateSpace: .global)
                 .onChanged { v in
                     if !dragging { dragStart = width; dragging = true }
-                    // Handle is the LEFT edge of the column it controls: drag left
-                    // = column wider (left boundary moves left into the Name column).
-                    width = max(40, dragStart - v.translation.width)
+                    // Handle sits on the RIGHT edge of its column, so drag right
+                    // = column wider (natural direction, no inversion needed).
+                    width = max(40, dragStart + v.translation.width)
                 }
-                .onEnded { _ in dragging = false }
+                .onEnded { v in
+                    width = max(40, dragStart + v.translation.width)
+                    dragging = false
+                }
         )
     }
 }
