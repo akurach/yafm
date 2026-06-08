@@ -50,6 +50,9 @@ final class TabModel: Identifiable {
     /// asynchronously after a directory finishes loading; empty outside a repo.
     private(set) var gitStatus: [URL: String] = [:]
 
+    /// Called whenever the tab navigates to a new real directory (not virtual/refresh).
+    var onNavigate: ((URL) -> Void)?
+
     private var task: Task<Void, Never>?
     private var gitTask: Task<Void, Never>?
 
@@ -117,6 +120,7 @@ final class TabModel: Identifiable {
         cursor = nil
         gitStatus = [:]
         clearFilter()
+        onNavigate?(url)
         load()
     }
 
@@ -282,6 +286,8 @@ final class PaneModel: Identifiable {
 
     var tabs: [TabModel]
     var activeIndex = 0
+    /// Called when any tab in this pane navigates to a new directory.
+    var onTabNavigate: ((URL) -> Void)?
     /// New tabs inherit this (from `AppSettings.showHiddenByDefault`).
     private let defaultShowHidden: Bool
 
@@ -291,14 +297,18 @@ final class PaneModel: Identifiable {
         self.tags = tags
         self.git = git
         self.defaultShowHidden = showHidden
-        self.tabs = [TabModel(fs: fs, tags: tags, directory: directory, showHidden: showHidden, git: git)]
+        let initial = TabModel(fs: fs, tags: tags, directory: directory, showHidden: showHidden, git: git)
+        self.tabs = [initial]
+        initial.onNavigate = { [weak self] url in self?.onTabNavigate?(url) }
     }
 
     var active: TabModel { tabs[min(activeIndex, tabs.count - 1)] }
 
     func newTab(at directory: URL? = nil) {
         let dir = directory ?? active.directory
-        tabs.append(TabModel(fs: fs, tags: tags, directory: dir, showHidden: defaultShowHidden, git: git))
+        let tab = TabModel(fs: fs, tags: tags, directory: dir, showHidden: defaultShowHidden, git: git)
+        tab.onNavigate = { [weak self] url in self?.onTabNavigate?(url) }
+        tabs.append(tab)
         activeIndex = tabs.count - 1
         active.load()
     }
@@ -467,6 +477,9 @@ final class AppState {
         } else {
             bookmarks = []
         }
+        // Set after full init so [weak self] closure captures a complete object.
+        left.onTabNavigate  = { [weak self] url in self?.onAnyTabNavigate(url) }
+        right.onTabNavigate = { [weak self] url in self?.onAnyTabNavigate(url) }
     }
 
     var activePane: PaneModel { activePaneIsLeft ? left : right }
@@ -477,6 +490,13 @@ final class AppState {
 
     /// Open a URL in a fresh tab of the active pane (sidebar "Open in New Tab").
     func openInNewTab(_ url: URL) { activePane.newTab(at: url) }
+
+    /// Called by either pane on any directory navigation.
+    /// Clears the readText call budget (S-H3) and saves lastFolder for crash recovery (A-10).
+    private func onAnyTabNavigate(_ url: URL) {
+        pluginHost.clearHandles()
+        settings.rememberLastFolder(url)
+    }
 
     // MARK: Favorites (sidebar)
 

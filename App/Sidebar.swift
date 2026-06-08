@@ -10,15 +10,22 @@ struct BookmarksSidebar: View {
     private var devices: [Volume] { app.volumes.filter { !$0.isNetwork } }
     private var networkVolumes: [Volume] { app.volumes.filter { $0.isNetwork } }
 
-    // Cached once at load — these paths are stable for the app lifetime.
-    private static let desktopURL     = FileManager.default.urls(for: .desktopDirectory,   in: .userDomainMask).first
-    private static let documentsURL   = FileManager.default.urls(for: .documentDirectory,  in: .userDomainMask).first
-    private static let downloadsURL   = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
-    private static let moviesURL      = FileManager.default.urls(for: .moviesDirectory,    in: .userDomainMask).first
-    private static let musicURL       = FileManager.default.urls(for: .musicDirectory,     in: .userDomainMask).first
-    private static let picturesURL    = FileManager.default.urls(for: .picturesDirectory,  in: .userDomainMask).first
+    // Cached once at load — these paths are stable for the app lifetime (S-8).
+    private static let favURLs: [SystemFavorite: URL?] = {
+        let fm = FileManager.default
+        func dir(_ d: FileManager.SearchPathDirectory) -> URL? { fm.urls(for: d, in: .userDomainMask).first }
+        return [
+            .desktop:      dir(.desktopDirectory),
+            .documents:    dir(.documentDirectory),
+            .downloads:    dir(.downloadsDirectory),
+            .movies:       dir(.moviesDirectory),
+            .music:        dir(.musicDirectory),
+            .pictures:     dir(.picturesDirectory),
+            .applications: URL(fileURLWithPath: "/Applications"),
+        ]
+    }()
 
-    // Computed dynamically so iCloud enable/disable after launch is reflected.
+    // Computed dynamically so iCloud enable/disable after launch is reflected (S-5).
     private var iCloudDriveURL: URL? {
         let url = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs")
@@ -34,14 +41,10 @@ struct BookmarksSidebar: View {
         List {
             if app.settings.sidebarShowFavorites {
                 Section("Favorites") {
-                    if app.settings.favDesktop      { sysFav("Desktop",      "menubar.dock.rectangle", Self.desktopURL) }
-                    if app.settings.favDocuments    { sysFav("Documents",    "doc.text",               Self.documentsURL) }
-                    if app.settings.favDownloads    { sysFav("Downloads",    "arrow.down.circle",      Self.downloadsURL) }
-                    if app.settings.favMovies       { sysFav("Movies",       "film",                   Self.moviesURL) }
-                    if app.settings.favMusic        { sysFav("Music",        "music.note",             Self.musicURL) }
-                    if app.settings.favPictures     { sysFav("Pictures",     "photo",                  Self.picturesURL) }
-                    if app.settings.favApplications {
-                        locationRow("Applications", "square.grid.2x2", URL(fileURLWithPath: "/Applications"))
+                    ForEach(SystemFavorite.allCases) { fav in
+                        if app.settings.enabledFavorites.contains(fav) {
+                            sysFav(fav.label, fav.systemImage, Self.favURLs[fav] ?? nil)
+                        }
                     }
                     ForEach(app.bookmarks) { bm in
                         Label(bm.name, systemImage: "folder")

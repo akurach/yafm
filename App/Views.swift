@@ -211,6 +211,8 @@ struct FileTableView: View {
 
     // Column widths persisted via @AppStorage so they survive relaunches.
     // Shared between both panes (Total Commander convention — one set of widths).
+    /// Captured from the column header geometry — drives effectiveNameW.
+    @State private var paneWidth: Double = 600
     @AppStorage("yafm.col.nameW") private var nameW: Double = 200
     @AppStorage("yafm.col.sizeW") private var sizeW: Double = 78
     @AppStorage("yafm.col.modW")  private var modW:  Double = 124
@@ -359,9 +361,32 @@ struct FileTableView: View {
         }
     }
 
-    // Custom bindings: each handle changes only its column and compensates via
-    // nameW so the total row width stays constant. Clamped in the setter so
-    // H2-H4 can't push past nameW's minimum (80) or their own minimum (40).
+    // Width budget (A-6): sum of everything except nameW.
+    // effectiveNameW = max(80, min(user preference, remaining space).
+    private var fixedColumnsWidth: Double {
+        let iconW = Double(app.settings.density.iconSize)
+        var w = iconW + Double(Theme.Space.row)  // icon placeholder + gap
+        w += 8          // H1 handle (right of name)
+        w += sizeW + 8  // size + H2
+        w += modW  + 8  // modified + H3
+        w += kindW      // kind (handle conditional below)
+        let hasGit = !tab.gitStatus.isEmpty
+        let hasPlugins = !visiblePluginCols.isEmpty
+        if hasGit {
+            w += 8 + gitW                        // H4 + git column
+            if hasPlugins { w += 8 }             // H5 before plugins
+        } else if hasPlugins {
+            w += 8                               // H4 before plugins
+        }
+        for col in visiblePluginCols {
+            w += (pluginWidths[col.id] ?? 104) + 8
+        }
+        w += 2 * Double(Theme.Space.rowLeading)  // horizontal padding
+        return w
+    }
+    private var effectiveNameW: Double { max(80, min(nameW, paneWidth - fixedColumnsWidth)) }
+
+    // Custom bindings: each handle changes only its column.
     private var nameBind: Binding<Double> {
         Binding(get: { nameW }, set: { nameW = max(80, $0) })
     }
@@ -396,7 +421,7 @@ struct FileTableView: View {
             Color.clear.frame(width: app.settings.density.iconSize)
             Color.clear.frame(width: Theme.Space.row)
             headerButton("Name", .name)
-                .frame(width: max(0, CGFloat(nameW)), alignment: .leading)
+                .frame(width: max(0, CGFloat(effectiveNameW)), alignment: .leading)
             ColResizeHandle(width: nameBind)
             headerButton("Size", .size).frame(width: CGFloat(sizeW), alignment: .trailing)
             ColResizeHandle(width: sizeBind)
@@ -421,6 +446,13 @@ struct FileTableView: View {
         .foregroundStyle(.secondary)
         .padding(.horizontal, Theme.Space.rowLeading).padding(.vertical, Theme.Space.tight)
         .background(.bar)
+        .background {
+            GeometryReader { geo in
+                Color.clear
+                    .onAppear { paneWidth = geo.size.width }
+                    .onChange(of: geo.size.width) { _, w in paneWidth = w }
+            }
+        }
     }
 
     private func headerButton(_ title: String, _ key: SortKey) -> some View {
@@ -487,7 +519,7 @@ struct FileTableView: View {
                         .frame(width: Theme.Col.tagDot, height: Theme.Col.tagDot)
                 }
             }
-            .frame(width: max(0, CGFloat(nameW)), alignment: .leading)
+            .frame(width: max(0, CGFloat(effectiveNameW)), alignment: .leading)
             .clipped()
             Text(entry.isDirectory ? "--" : (entry.size.map(byteString) ?? "--"))
                 .font(.caption.monospaced()).foregroundStyle(.secondary)

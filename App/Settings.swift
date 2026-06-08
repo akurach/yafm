@@ -86,6 +86,31 @@ enum StartMode: String, CaseIterable, Identifiable {
     }
 }
 
+/// Standard system folders that appear in the Sidebar Favorites section.
+/// Order here is the display order.
+enum SystemFavorite: String, CaseIterable, Identifiable, Hashable {
+    case desktop, documents, downloads, movies, music, pictures, applications
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .applications: "Applications"
+        default: rawValue.capitalized
+        }
+    }
+    var systemImage: String {
+        switch self {
+        case .desktop:      "menubar.dock.rectangle"
+        case .documents:    "doc.text"
+        case .downloads:    "arrow.down.circle"
+        case .movies:       "film"
+        case .music:        "music.note"
+        case .pictures:     "photo"
+        case .applications: "square.grid.2x2"
+        }
+    }
+    static let defaults: Set<SystemFavorite> = [.desktop, .documents, .downloads, .applications]
+}
+
 /// User settings, backed by `UserDefaults` (same store as the `didOnboard` flag).
 /// `@Observable` so the UI and `AppState` both react; each `didSet` persists.
 /// Settings must change real behaviour — no decorative toggles.
@@ -135,14 +160,12 @@ final class AppSettings {
     var sidebarShowNetwork:     Bool { didSet { store.set(sidebarShowNetwork,     forKey: Keys.sidebarShowNetwork) } }
     var sidebarShowTags:        Bool { didSet { store.set(sidebarShowTags,        forKey: Keys.sidebarShowTags) } }
 
-    // Standard favorites — which system folders appear in Favorites
-    var favDesktop:      Bool { didSet { store.set(favDesktop,      forKey: Keys.favDesktop) } }
-    var favDocuments:    Bool { didSet { store.set(favDocuments,    forKey: Keys.favDocuments) } }
-    var favDownloads:    Bool { didSet { store.set(favDownloads,    forKey: Keys.favDownloads) } }
-    var favMovies:       Bool { didSet { store.set(favMovies,       forKey: Keys.favMovies) } }
-    var favMusic:        Bool { didSet { store.set(favMusic,        forKey: Keys.favMusic) } }
-    var favPictures:     Bool { didSet { store.set(favPictures,     forKey: Keys.favPictures) } }
-    var favApplications: Bool { didSet { store.set(favApplications, forKey: Keys.favApplications) } }
+    /// Which standard system folders appear in the Sidebar Favorites section.
+    var enabledFavorites: Set<SystemFavorite> {
+        didSet {
+            store.set(enabledFavorites.map(\.rawValue), forKey: Keys.enabledFavorites)
+        }
+    }
 
     // Locations items visibility
     var locShowComputer: Bool { didSet { store.set(locShowComputer, forKey: Keys.locShowComputer) } }
@@ -171,13 +194,7 @@ final class AppSettings {
         static let sidebarShowDevices   = "sidebarShowDevices"
         static let sidebarShowNetwork   = "sidebarShowNetwork"
         static let sidebarShowTags      = "sidebarShowTags"
-        static let favDesktop      = "favDesktop"
-        static let favDocuments    = "favDocuments"
-        static let favDownloads    = "favDownloads"
-        static let favMovies       = "favMovies"
-        static let favMusic        = "favMusic"
-        static let favPictures     = "favPictures"
-        static let favApplications = "favApplications"
+        static let enabledFavorites = "enabledFavorites"
         static let locShowComputer = "locShowComputer"
         static let locShowHome     = "locShowHome"
         static let recentServers   = "recentServers"
@@ -202,13 +219,11 @@ final class AppSettings {
         sidebarShowDevices   = d.object(forKey: Keys.sidebarShowDevices)   as? Bool ?? true
         sidebarShowNetwork   = d.object(forKey: Keys.sidebarShowNetwork)   as? Bool ?? true
         sidebarShowTags      = d.object(forKey: Keys.sidebarShowTags)      as? Bool ?? true
-        favDesktop      = d.object(forKey: Keys.favDesktop)      as? Bool ?? true
-        favDocuments    = d.object(forKey: Keys.favDocuments)    as? Bool ?? true
-        favDownloads    = d.object(forKey: Keys.favDownloads)    as? Bool ?? true
-        favMovies       = d.object(forKey: Keys.favMovies)       as? Bool ?? false
-        favMusic        = d.object(forKey: Keys.favMusic)        as? Bool ?? false
-        favPictures     = d.object(forKey: Keys.favPictures)     as? Bool ?? false
-        favApplications = d.object(forKey: Keys.favApplications) as? Bool ?? true
+        if let rawValues = d.array(forKey: Keys.enabledFavorites) as? [String] {
+            enabledFavorites = Set(rawValues.compactMap(SystemFavorite.init(rawValue:)))
+        } else {
+            enabledFavorites = SystemFavorite.defaults
+        }
         locShowComputer = d.object(forKey: Keys.locShowComputer) as? Bool ?? true
         locShowHome     = d.object(forKey: Keys.locShowHome)     as? Bool ?? true
         recentServers   = d.array(forKey: Keys.recentServers)    as? [String] ?? []
@@ -386,13 +401,11 @@ struct SettingsView: View {
     private var sidebarTab: some View {
         Form {
             Section("Favorites — Standard") {
-                Toggle(isOn: bindable.favDesktop)      { Label("Desktop",      systemImage: "menubar.dock.rectangle") }
-                Toggle(isOn: bindable.favDocuments)    { Label("Documents",    systemImage: "doc.text") }
-                Toggle(isOn: bindable.favDownloads)    { Label("Downloads",    systemImage: "arrow.down.circle") }
-                Toggle(isOn: bindable.favMovies)       { Label("Movies",       systemImage: "film") }
-                Toggle(isOn: bindable.favMusic)        { Label("Music",        systemImage: "music.note") }
-                Toggle(isOn: bindable.favPictures)     { Label("Pictures",     systemImage: "photo") }
-                Toggle(isOn: bindable.favApplications) { Label("Applications", systemImage: "square.grid.2x2") }
+                ForEach(SystemFavorite.allCases) { fav in
+                    Toggle(isOn: favBinding(fav)) {
+                        Label(fav.label, systemImage: fav.systemImage)
+                    }
+                }
             }
             .disabled(!settings.sidebarShowFavorites)
 
@@ -433,6 +446,17 @@ struct SettingsView: View {
             }
         }
         .formStyle(.grouped)
+    }
+
+    private func favBinding(_ fav: SystemFavorite) -> Binding<Bool> {
+        Binding(
+            get: { settings.enabledFavorites.contains(fav) },
+            set: { on in
+                var s = settings.enabledFavorites
+                if on { s.insert(fav) } else { s.remove(fav) }
+                settings.enabledFavorites = s
+            }
+        )
     }
 
     @MainActor private func chooseFavorite() {
