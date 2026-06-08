@@ -328,7 +328,7 @@ struct SettingsView: View {
     private var plugins: some View {
         Form {
             Section("JavaScript plugins") {
-                Text("Drop a .js file in the plugins folder to add table columns. Plugins run in a sandbox: no filesystem, network, or process access — only the host API.")
+                Text("Drop a .js file in the plugins folder to add columns, commands, and right-click actions. Plugins run in a JS sandbox: no network or process access — only the host API you approve below.")
                     .font(.caption).foregroundStyle(.secondary)
                 HStack {
                     Button("Open Plugins Folder") { app.revealPluginsFolder() }
@@ -439,11 +439,11 @@ private struct PluginRow: View {
                 trustBadge
             }
             if let caps = manifest?.capabilities, !caps.isEmpty {
-                Text(caps.map(\.rawValue).joined(separator: " · "))
+                Text(caps.map(\.capabilityLabel).joined(separator: " · "))
                     .font(.caption2).foregroundStyle(.secondary)
             }
         }
-        .alert("Enable “\(name)”?", isPresented: $confirming) {
+        .alert("Enable \"\(name)\"?", isPresented: $confirming) {
             Button("Cancel", role: .cancel) {}
             Button("Enable") { app.setPlugin(id, enabled: true) }
         } message: {
@@ -456,14 +456,21 @@ private struct PluginRow: View {
     }
     private var consentMessage: String {
         let caps = manifest?.capabilities.filter(\.requiresConsent) ?? []
-        return "This plugin requests:\n" + caps.map { "• " + $0.consentSummary }.joined(separator: "\n")
+        let lines = caps.map { "• " + $0.consentSummary }.joined(separator: "\n")
+        return "Plugin id: \(id)\n\nThis plugin requests:\n\(lines)"
     }
 
     @ViewBuilder private var trustBadge: some View {
+        let isBuiltIn = manifest?.author == "yafm"
         switch manifest?.trust ?? .unsigned {
-        case .signed: Label("Signed", systemImage: "checkmark.seal.fill").foregroundStyle(.green)
-        case .declaredAuthor: Label(manifest?.author ?? "Author", systemImage: "person").foregroundStyle(.secondary)
-        case .unsigned: Label("Unsigned", systemImage: "exclamationmark.shield").foregroundStyle(.orange)
+        case .declaredAuthor:
+            if isBuiltIn {
+                Label("Built-in", systemImage: "checkmark.circle.fill").foregroundStyle(.blue)
+            } else {
+                Label(manifest?.author ?? "Author", systemImage: "person").foregroundStyle(.secondary)
+            }
+        case .unsigned:
+            Label("Unsigned", systemImage: "exclamationmark.shield").foregroundStyle(.orange)
         }
     }
 }

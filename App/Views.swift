@@ -30,7 +30,11 @@ struct PaneView: View {
     var body: some View {
         VStack(spacing: 0) {
             TabBarView(pane: pane)
-            Divider()
+            // Active pane: 2 pt accent bar between tabs and path bar.
+            // Placed here (not above the tab strip) so it doesn't cut across tabs.
+            Rectangle()
+                .fill(isActive ? Color.accentColor : Color(nsColor: .separatorColor).opacity(0.5))
+                .frame(height: 2)
             PathBarView(tab: pane.active)
             // Inline find bar (⌘F) on the active pane only — replaces the modal.
             if isActive && app.searchActive {
@@ -40,9 +44,6 @@ struct PaneView: View {
             Divider()
             FileTableView(tab: pane.active, app: app)
         }
-        // One active-pane signal: a subtle full-pane tint. The old extra 2pt top
-        // accent bar sat above the tab strip and cut across it (design audit) —
-        // removed; the per-row cursor bar marks focus within the active pane.
         .background(isActive ? Theme.Palette.activePaneTint : Color.clear)
         .contentShape(Rectangle())
         .onTapGesture { app.activePaneIsLeft = (pane.id == app.left.id) }
@@ -90,6 +91,7 @@ struct PathBarView: View {
     @Bindable var tab: TabModel
     @State private var editing = false
     @State private var typed = ""
+    @FocusState private var focused: Bool
 
     var body: some View {
         HStack(spacing: 4) {
@@ -97,14 +99,15 @@ struct PathBarView: View {
                 TextField("Path", text: $typed)
                     .textFieldStyle(.roundedBorder)
                     .font(.caption.monospaced())
+                    .focused($focused)
                     .onSubmit {
                         let expanded = (typed as NSString).expandingTildeInPath
-                        // Reject null bytes and non-absolute input before listing.
                         if !expanded.isEmpty, !expanded.contains("\0"), expanded.hasPrefix("/") {
                             tab.open(URL(fileURLWithPath: expanded))
                         }
                         editing = false
                     }
+                    .onExitCommand { editing = false }
             } else {
                 breadcrumbs
                 Spacer()
@@ -114,17 +117,17 @@ struct PathBarView: View {
                     Image(systemName: tab.viewMode == .list ? "square.grid.2x2" : "list.bullet")
                 }.buttonStyle(.plain)
                 .accessibilityLabel("Toggle view mode")
-                Button { typed = tab.directory.path; editing = true } label: {
-                    Image(systemName: "pencil")
-                }.buttonStyle(.plain)
-                .accessibilityLabel("Edit path")
             }
         }
         .padding(.horizontal, 6).padding(.vertical, 4)
         .background(.bar)
         .onTapGesture {
             guard !editing else { return }
-            typed = tab.directory.path; editing = true
+            typed = tab.directory.path
+            editing = true
+        }
+        .onChange(of: editing) { _, on in
+            if on { focused = true }
         }
     }
 
@@ -206,12 +209,12 @@ struct FileTableView: View {
         }
     }
 
-    // Persistent column widths — user-draggable; default from Theme.Col tokens.
-    @AppStorage("colW_size") private var sizeW: Double = 78
-    @AppStorage("colW_mod") private var modW: Double = 124
-    @AppStorage("colW_kind") private var kindW: Double = 92
-    @AppStorage("colW_git") private var gitW: Double = 34
-    @AppStorage("colW_plugin") private var pluginW: Double = 104
+    // Per-pane column widths (State = independent per instance, not shared across panes).
+    @State private var sizeW: Double = 78
+    @State private var modW: Double = 124
+    @State private var kindW: Double = 92
+    @State private var gitW: Double = 34
+    @State private var pluginW: Double = 104
 
     // The List is the only child and fills the pane natively; the column header
     // rides along as a pinned Section header (a plain List inside a VStack would
@@ -329,25 +332,24 @@ struct FileTableView: View {
     }
 
     private var columnHeader: some View {
-        HStack(spacing: Theme.Space.row) {
-            // Spacer tracks the density-sized row icon so headers stay over their
-            // columns across density modes (design audit alignment fix).
+        // spacing:0 — gaps between columns are explicit ColResizeHandle views (8 pt each),
+        // matching the row HStack spacing so columns stay aligned.
+        HStack(spacing: 0) {
             Color.clear.frame(width: app.settings.density.iconSize)
+            Color.clear.frame(width: Theme.Space.row)   // leading gap after icon
             headerButton("Name", .name).frame(maxWidth: .infinity, alignment: .leading)
-            headerButton("Size", .size)
-                .frame(width: CGFloat(sizeW), alignment: .trailing)
-                .overlay(alignment: .trailing) { ColResizeHandle(width: $sizeW) }
-            headerButton("Modified", .modified)
-                .frame(width: CGFloat(modW), alignment: .trailing)
-                .overlay(alignment: .trailing) { ColResizeHandle(width: $modW) }
-            headerButton("Kind", .kind)
-                .frame(width: CGFloat(kindW), alignment: .leading)
-                .overlay(alignment: .trailing) { ColResizeHandle(width: $kindW) }
+            ColResizeHandle(width: $sizeW)
+            headerButton("Size", .size).frame(width: CGFloat(sizeW), alignment: .trailing)
+            ColResizeHandle(width: $modW)
+            headerButton("Modified", .modified).frame(width: CGFloat(modW), alignment: .trailing)
+            ColResizeHandle(width: $kindW)
+            headerButton("Kind", .kind).frame(width: CGFloat(kindW), alignment: .leading)
             if !tab.gitStatus.isEmpty {
+                ColResizeHandle(width: $gitW)
                 Text("Git").frame(width: CGFloat(gitW), alignment: .center)
-                    .overlay(alignment: .trailing) { ColResizeHandle(width: $gitW) }
             }
             ForEach(app.registry.pluginColumns) { col in
+                Color.clear.frame(width: Theme.Space.row)
                 Text(col.title).lineLimit(1).frame(width: CGFloat(pluginW), alignment: .leading)
             }
         }
@@ -379,6 +381,8 @@ struct FileTableView: View {
         app.left.tabs.contains { $0.id == tab.id }
     }
 
+    private var isPaneActive: Bool { tabBelongsToLeft() == app.activePaneIsLeft }
+
     // MARK: Drag & drop (§v0.5)
 
     /// Payload for dragging a row out — the row's file URL, droppable into the
@@ -406,6 +410,11 @@ struct FileTableView: View {
                 .foregroundStyle(nameColor(entry))
                 .lineLimit(1)
                 .frame(maxWidth: .infinity, alignment: .leading)
+            if let cloudIcon = iCloudIcon(entry) {
+                Image(systemName: cloudIcon)
+                    .font(.system(size: 10))
+                    .foregroundStyle(.tertiary)
+            }
             ForEach(entry.tags, id: \.name) { tag in
                 Circle().fill(Color.named(tag.colorName) ?? .secondary)
                     .frame(width: Theme.Col.tagDot, height: Theme.Col.tagDot)
@@ -496,6 +505,18 @@ struct FileTableView: View {
         let f = ByteCountFormatter(); f.countStyle = .file; return f
     }()
 
+    /// SF Symbol name for iCloud sync state, or nil when the file is fully local.
+    /// URLResourceValues for ubiquitous keys is a kernel-cached metadata call — fast.
+    private func iCloudIcon(_ entry: FSEntry) -> String? {
+        guard !entry.isDirectory else { return nil }
+        let keys: Set<URLResourceKey> = [.ubiquitousItemDownloadingStatusKey]
+        guard let vals = try? entry.url.resourceValues(forKeys: keys),
+              let status = vals.ubiquitousItemDownloadingStatus,
+              status == .notDownloaded
+        else { return nil }
+        return "icloud.and.arrow.down"
+    }
+
     /// Color-coding rule tints the name (the icon now shows the real file type).
     private func nameColor(_ entry: FSEntry) -> Color {
         if let c = Color.named(app.colorCoder.colorName(for: entry)) { return c }
@@ -509,13 +530,20 @@ struct FileTableView: View {
     private func rowBackground(_ entry: FSEntry) -> some View {
         let selected = tab.selection.contains(entry.url)
         let cursored = tab.cursor == entry.url
+        let active = isPaneActive
         HStack(spacing: 0) {
             Rectangle()
-                .fill(cursored ? Theme.Palette.cursorStroke : Color.clear)
+                .fill(cursored
+                      ? (active ? Theme.Palette.cursorStroke
+                                : Theme.Palette.cursorStroke.opacity(0.35))
+                      : Color.clear)
                 .frame(width: Theme.cursorBarWidth)
             Rectangle()
-                .fill(selected ? Theme.Palette.selectionFill
-                      : cursored ? Theme.Palette.cursorFill : Color.clear)
+                .fill(selected ? (active ? Theme.Palette.selectionFill
+                                         : Theme.Palette.selectionFill.opacity(0.4))
+                      : cursored ? (active ? Theme.Palette.cursorFill
+                                           : Theme.Palette.cursorFill.opacity(0.4))
+                      : Color.clear)
         }
     }
 
@@ -764,21 +792,28 @@ private struct ColResizeHandle: View {
     @Binding var width: Double
     @State private var dragStart: Double = 0
     @State private var dragging = false
+    @State private var hovering = false
 
     var body: some View {
-        Color.clear
-            .frame(width: 8)
-            .contentShape(Rectangle())
-            .onHover { inside in
-                if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
-            }
-            .gesture(
-                DragGesture(minimumDistance: 2)
-                    .onChanged { v in
-                        if !dragging { dragStart = width; dragging = true }
-                        width = max(40, dragStart + v.translation.width)
-                    }
-                    .onEnded { _ in dragging = false }
-            )
+        ZStack {
+            Color.clear.frame(width: 8)
+            Rectangle()
+                .fill(Color.primary.opacity(hovering || dragging ? 0.35 : 0.12))
+                .frame(width: 1)
+        }
+        .frame(width: 8)
+        .contentShape(Rectangle())
+        .onHover { inside in
+            hovering = inside
+            if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
+        }
+        .gesture(
+            DragGesture(minimumDistance: 2)
+                .onChanged { v in
+                    if !dragging { dragStart = width; dragging = true }
+                    width = max(40, dragStart + v.translation.width)
+                }
+                .onEnded { _ in dragging = false }
+        )
     }
 }

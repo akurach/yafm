@@ -1,6 +1,7 @@
 import Foundation
 import Observation
 import AppKit
+import ImageIO
 import Core
 
 // MARK: - Tab: one directory view with its own selection & cursor
@@ -499,12 +500,69 @@ final class AppState {
     func loadPlugins() {
         guard let dir = JSPluginHost.defaultPluginsDirectory() else { return }
         installBundledPluginsIfNeeded(into: dir)
+
+        // Wire app-layer handlers so JS plugins can trigger macOS system actions.
+        pluginHost.openInAppHandler = { url, bundleId in
+            // C-1: executable files require explicit user confirmation — same gate
+            // as openFile() — so a plugin can't silently run code via Terminal/osascript.
+            let dangerousExts: Set<String> = ["sh", "command", "scpt", "applescript",
+                                               "workflow", "tool", "action", "pkg", "mpkg"]
+            if dangerousExts.contains(url.pathExtension.lowercased()) {
+                let alert = NSAlert()
+                alert.messageText = "Open potentially unsafe file?"
+                alert.informativeText = "\"\(url.lastPathComponent)\" may run code on your Mac. A plugin requested this action."
+                alert.addButton(withTitle: "Cancel")
+                alert.addButton(withTitle: "Open Anyway")
+                alert.alertStyle = .warning
+                guard alert.runModal() == .alertSecondButtonReturn else { return }
+            }
+            guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) else { return }
+            NSWorkspace.shared.open([url], withApplicationAt: appURL,
+                                    configuration: .init(), completionHandler: nil)
+        }
+        pluginHost.copyToClipboardHandler = { text in
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(text, forType: .string)
+        }
+        pluginHost.copyPathHandler = { url in
+            NSPasteboard.general.clearContents()
+            NSPasteboard.general.setString(url.path, forType: .string)
+        }
+        pluginHost.readEXIFHandler = Self.readEXIF(from:)
+
         registry.removePluginColumns(idPrefix: JSPluginHost.columnIDPrefix)
         pluginValueCache.invalidate()   // stale async values must not survive a reload
         pluginHost.disabledIDs = disabledPluginIDs   // user toggles in Settings
         for column in pluginHost.loadPlugins(from: dir) {
             registry.register(pluginColumn: column)
         }
+    }
+
+    /// Reads EXIF/IPTC metadata from an image URL using ImageIO (no pixel decode).
+    private static func readEXIF(from url: URL) -> [String: Any]? {
+        guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),
+              let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [String: Any]
+        else { return nil }
+
+        var result: [String: Any] = [:]
+        if let w = props[kCGImagePropertyPixelWidth as String]  { result["width"]  = w }
+        if let h = props[kCGImagePropertyPixelHeight as String] { result["height"] = h }
+
+        if let exif = props[kCGImagePropertyExifDictionary as String] as? [String: Any] {
+            if let d   = exif[kCGImagePropertyExifDateTimeOriginal as String] { result["dateOriginal"] = d }
+            if let iso = (exif[kCGImagePropertyExifISOSpeedRatings as String] as? [Int])?.first { result["iso"] = iso }
+            if let f   = exif[kCGImagePropertyExifFocalLength as String]    { result["focalLength"] = f }
+            if let fn  = exif[kCGImagePropertyExifFNumber as String]        { result["fNumber"] = fn }
+            if let exp = exif[kCGImagePropertyExifExposureTime as String]   { result["exposureTime"] = exp }
+        }
+        if let tiff = props[kCGImagePropertyTIFFDictionary as String] as? [String: Any] {
+            if let make  = tiff[kCGImagePropertyTIFFMake as String]  as? String { result["make"]  = make }
+            if let model = tiff[kCGImagePropertyTIFFModel as String] as? String { result["model"] = model }
+        }
+        // GPS coordinates excluded: a plugin with read:exif + contribute:action
+        // could silently copy location data to the clipboard without explicit consent.
+        // A future read:exif:gps capability will gate this separately.
+        return result.isEmpty ? nil : result
     }
 
     /// Plugins present on disk (enabled or not) for Settings ▸ Plugins, each with
@@ -532,13 +590,22 @@ final class AppState {
         let hasJS = installed.contains { $0.hasSuffix(".js") }
         guard !hasJS, !FileManager.default.fileExists(atPath: example.path) else { return }
         try? JSPluginHost.exampleColumnPlugin.write(to: example, atomically: true, encoding: .utf8)
-        // Flagship capability plugin + its manifest (v0.8). Ships disabled until
-        // the user grants read:cwd in Settings — capability consent is opt-in.
+        // Capability plugins ship disabled — user grants in Settings (capability consent).
         let git = dir.appendingPathComponent("git-branch.js")
         try? JSPluginHost.gitBranchPlugin.write(to: git, atomically: true, encoding: .utf8)
         try? JSPluginHost.gitBranchManifest.write(
             to: dir.appendingPathComponent("git-branch.json"), atomically: true, encoding: .utf8)
+        let openWith = dir.appendingPathComponent("open-with.js")
+        try? JSPluginHost.openWithPlugin.write(to: openWith, atomically: true, encoding: .utf8)
+        try? JSPluginHost.openWithManifest.write(
+            to: dir.appendingPathComponent("open-with.json"), atomically: true, encoding: .utf8)
+        let exifInfo = dir.appendingPathComponent("exif-info.js")
+        try? JSPluginHost.exifInfoPlugin.write(to: exifInfo, atomically: true, encoding: .utf8)
+        try? JSPluginHost.exifInfoManifest.write(
+            to: dir.appendingPathComponent("exif-info.json"), atomically: true, encoding: .utf8)
         disabledPluginIDs.insert("com.yafm.git-branch")
+        disabledPluginIDs.insert("com.yafm.open-with")
+        disabledPluginIDs.insert("com.yafm.exif-info")
         UserDefaults.standard.set(Array(disabledPluginIDs), forKey: "disabledPlugins")
     }
 
@@ -776,7 +843,7 @@ final class AppState {
     func promptRenameTag(_ tag: Tag) {
         let alert = NSAlert()
         alert.messageText = "Rename Tag"
-        alert.informativeText = "Rename “\(tag.name)” on every file that carries it."
+        alert.informativeText = "Rename \"\(tag.name)\" on every file that carries it."
         let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
         field.stringValue = tag.name
         alert.accessoryView = field
@@ -792,7 +859,7 @@ final class AppState {
     func promptDeleteTag(_ tag: Tag) {
         let alert = NSAlert()
         alert.alertStyle = .warning
-        alert.messageText = "Delete tag “\(tag.name)”?"
+        alert.messageText = "Delete tag \"\(tag.name)\"?"
         alert.informativeText = "Removes it from every file that carries it (\(tagCounts[tag.name] ?? 0)). The files themselves are untouched."
         alert.addButton(withTitle: "Delete")
         alert.addButton(withTitle: "Cancel")
@@ -1004,7 +1071,7 @@ final class AppState {
             let alert = NSAlert()
             alert.alertStyle = .warning
             alert.messageText = sources.count == 1
-                ? "Delete “\(sources[0].lastPathComponent)”?"
+                ? "Delete \"\(sources[0].lastPathComponent)\"?"
                 : "Delete \(sources.count) items?"
             alert.informativeText = "This is permanent and can't be undone."
             alert.addButton(withTitle: "Delete")
@@ -1049,7 +1116,7 @@ final class AppState {
         let risky: Set<String> = ["sh", "command", "zsh", "bash", "scpt", "workflow", "app", "term", "tool"]
         if risky.contains(url.pathExtension.lowercased()) {
             let alert = NSAlert()
-            alert.messageText = "Open “\(url.lastPathComponent)”?"
+            alert.messageText = "Open \"\(url.lastPathComponent)\"?"
             alert.informativeText = "This may run code on your Mac."
             alert.addButton(withTitle: "Open")
             alert.addButton(withTitle: "Cancel")

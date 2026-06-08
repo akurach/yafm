@@ -80,12 +80,32 @@ public final class JSPluginHost {
     /// Contexts whose plugin was granted `read:cwd` — only these get a real
     /// snapshot handle + the `yafm.readText` bridge.
     private var readCwdContexts: Set<ObjectIdentifier> = []
-    /// Opaque handle → real URL map. JS receives the integer handle, never the
-    /// path, and `readText` resolves host-side (scoped, O_NOFOLLOW, size-capped).
-    private var handleURLs: [Int: URL] = [:]
+    /// Contexts granted `read:exif` — get handles + `yafm.readEXIF`.
+    private var readExifContexts: Set<ObjectIdentifier> = []
+    /// Contexts granted `contribute:action` — get `openInApp`, `copyToClipboard`, `copyPath`.
+    private var actionContexts: Set<ObjectIdentifier> = []
+    /// Per-context handle → URL maps. Keyed by JSContext identity so one plugin
+    /// can never forge or enumerate another plugin's handles (C-2 security fix).
+    private var handleURLs: [ObjectIdentifier: [Int: URL]] = [:]
+    private var handleByURL: [ObjectIdentifier: [URL: Int]] = [:]
     private var handleSeq = 0
+    /// `readText` call budget per directory session — reset in `clearHandles()`.
+    /// Prevents I/O amplification: 500 × 256 KB = 128 MB max per session.
+    private var readTextCallCount = 0
+    public static let readTextCallLimit = 500
     /// Cap a single capability read so a sync read of a 2 GB file can't freeze.
     public static let readTextCap = 256 * 1024   // 256 KB
+
+    // MARK: App-layer action handlers (set by AppState before loadPlugins)
+
+    /// Opens a file URL in the app identified by the given bundle ID.
+    public var openInAppHandler: ((URL, String) -> Void)?
+    /// Writes a plain-text string to the system clipboard.
+    public var copyToClipboardHandler: ((String) -> Void)?
+    /// Resolves the handle's URL and writes the full path to the clipboard.
+    public var copyPathHandler: ((URL) -> Void)?
+    /// Returns EXIF/IPTC metadata as a JSON-serializable dict, or nil for non-images.
+    public var readEXIFHandler: ((URL) -> [String: Any]?)?
 
     public init() {}
 
@@ -117,7 +137,11 @@ public final class JSPluginHost {
         }
         this.__menu.push(spec);
       },
-      log: function () {}
+      log: function () {},
+      openInApp: function () {},
+      copyToClipboard: function () {},
+      copyPath: function () {},
+      readEXIF: function () { return null; }
     };
     """
 
@@ -131,8 +155,9 @@ public final class JSPluginHost {
         commands.removeAll()
         menuItems.removeAll()
         readCwdContexts.removeAll()
-        handleURLs.removeAll()
-        handleByURL.removeAll()
+        readExifContexts.removeAll()
+        actionContexts.removeAll()
+        clearHandles()
 
         let fm = FileManager.default
         guard let names = try? fm.contentsOfDirectory(atPath: directory.path) else { return [] }
@@ -192,11 +217,18 @@ public final class JSPluginHost {
             thrown = value?.toString() ?? "unknown JS exception"
         }
         context.evaluateScript(Self.prelude)
-        // Capability gate: only a plugin whose manifest grants read:cwd gets the
-        // host-resolved readText bridge. Everyone else has no FS reach at all.
+        // Capability gates: inject bridges only for plugins whose manifest declares them.
         if manifest?.grants(.readCwd) == true {
             readCwdContexts.insert(ObjectIdentifier(context))
             injectReadText(into: context)
+        }
+        if manifest?.grants(.readExif) == true {
+            readExifContexts.insert(ObjectIdentifier(context))
+            injectReadEXIF(into: context)
+        }
+        if manifest?.grants(.action) == true {
+            actionContexts.insert(ObjectIdentifier(context))
+            injectActionBridges(into: context)
         }
         context.evaluateScript(source, withSourceURL: URL(fileURLWithPath: name))
         if let thrown {
@@ -275,17 +307,20 @@ public final class JSPluginHost {
         context.exceptionHandler = { _, _ in }
         defer { context.exceptionHandler = prior }
         _ = action.fn.call(withArguments: [Self.snapshot(of: entry, in: context,
-                                                          handle: registerHandle(entry.url))])
+                                                          handle: registerHandle(entry.url, in: context))])
     }
 
     /// Call a plugin column function with a read-only snapshot of the entry.
     /// Anything thrown by the plugin renders as an empty cell, never a crash.
     private func evaluate(_ fn: JSValue, for entry: FSEntry) -> ColumnValue {
         guard let context = fn.context else { return .none }
+        let prior = context.exceptionHandler
         var thrown = false
         context.exceptionHandler = { _, _ in thrown = true }
-        // Only readCwd-granted plugins get a usable handle (others get -1).
-        let handle = readCwdContexts.contains(ObjectIdentifier(context)) ? registerHandle(entry.url) : -1
+        defer { context.exceptionHandler = prior }
+        let oid = ObjectIdentifier(context)
+        let needsHandle = readCwdContexts.contains(oid) || readExifContexts.contains(oid)
+        let handle = needsHandle ? registerHandle(entry.url, in: context) : -1
         let snapshot = Self.snapshot(of: entry, in: context, handle: handle)
         guard let result = fn.call(withArguments: [snapshot]), !thrown else { return .none }
         if result.isNull || result.isUndefined { return .none }
@@ -293,21 +328,40 @@ public final class JSPluginHost {
         return .text(result.toString() ?? "")
     }
 
-    /// Map a URL to an opaque handle the JS side passes back to `readText`.
-    /// Deduped by URL so the map is bounded by unique files seen, not by render
-    /// count — the old per-evaluate insert grew without bound (perf/security).
-    private var handleByURL: [URL: Int] = [:]
-    private func registerHandle(_ url: URL) -> Int {
-        if let existing = handleByURL[url] { return existing }
+    /// Clear all handle maps and reset the readText call budget. Call on directory
+    /// change or plugin reload so stale handles don't accumulate across sessions.
+    public func clearHandles() {
+        handleURLs.removeAll()
+        handleByURL.removeAll()
+        readTextCallCount = 0
+    }
+
+    /// Register a URL → opaque handle scoped to the given JSContext. A plugin can
+    /// only resolve handles that were issued to *its own* context (C-2 fix).
+    /// Per-context tables are evicted when they exceed 2000 entries to bound memory.
+    private func registerHandle(_ url: URL, in context: JSContext) -> Int {
+        let oid = ObjectIdentifier(context)
+        if let existing = handleByURL[oid]?[url] { return existing }
+        if (handleURLs[oid]?.count ?? 0) >= 2000 {
+            handleURLs[oid] = nil
+            handleByURL[oid] = nil
+        }
         handleSeq += 1
-        handleURLs[handleSeq] = url
-        handleByURL[url] = handleSeq
+        handleURLs[oid, default: [:]][handleSeq] = url
+        handleByURL[oid, default: [:]][url] = handleSeq
         return handleSeq
     }
 
-    /// The vetted, path-free view of an entry a plugin receives. Excludes
-    /// `url`/absolute path; the optional `__h` is the opaque capability handle
-    /// (only non-negative for read:cwd plugins). Widen here, nowhere else.
+    /// Resolve a handle back to a URL, only within the calling context's scope.
+    private func resolveHandle(_ handle: Int, in context: JSContext) -> URL? {
+        handleURLs[ObjectIdentifier(context)]?[handle]
+    }
+
+    /// The vetted, path-free view of an entry a plugin receives.
+    /// `path` is intentionally absent — use `yafm.copyPath(entry)` to write
+    /// the full path to the clipboard (requires `contribute:action`).
+    /// The optional `__h` is an opaque capability handle (scoped to this context).
+    /// Widen the snapshot here, nowhere else.
     private static func snapshot(of entry: FSEntry, in context: JSContext, handle: Int = -1) -> JSValue {
         var dict: [String: Any] = [
             "name": entry.name,
@@ -322,6 +376,91 @@ public final class JSPluginHost {
         return JSValue(object: dict, in: context) ?? JSValue(undefinedIn: context)
     }
 
+    /// Install `yafm.openInApp`, `yafm.copyToClipboard`, `yafm.copyPath` into an action context.
+    /// The handlers are resolved app-side (no AppKit import in Core) — Core only wires the bridge.
+    private func injectActionBridges(into context: JSContext) {
+        let openBridge: @convention(block) (JSValue?, JSValue?) -> Void = { [weak self] entryVal, bundleIdVal in
+            MainActor.assumeIsolated {
+                guard let self,
+                      let callerCtx = entryVal?.context,
+                      let handle = entryVal?.objectForKeyedSubscript("__h")?.toNumber()?.intValue,
+                      handle >= 0,
+                      let url = self.resolveHandle(handle, in: callerCtx),
+                      let bundleId = bundleIdVal?.toString(), !bundleId.isEmpty,
+                      let handler = self.openInAppHandler
+                else { return }
+                handler(url, bundleId)
+            }
+        }
+        context.setObject(openBridge, forKeyedSubscript: "__yafm_openInApp" as NSString)
+
+        let copyTextBridge: @convention(block) (JSValue?) -> Void = { [weak self] textVal in
+            MainActor.assumeIsolated {
+                guard let self,
+                      let text = textVal?.toString(), !text.isEmpty,
+                      let handler = self.copyToClipboardHandler
+                else { return }
+                handler(text)
+            }
+        }
+        context.setObject(copyTextBridge, forKeyedSubscript: "__yafm_copyToClipboard" as NSString)
+
+        let copyPathBridge: @convention(block) (JSValue?) -> Void = { [weak self] entryVal in
+            MainActor.assumeIsolated {
+                guard let self,
+                      let callerCtx = entryVal?.context,
+                      let handle = entryVal?.objectForKeyedSubscript("__h")?.toNumber()?.intValue,
+                      handle >= 0,
+                      let url = self.resolveHandle(handle, in: callerCtx),
+                      let handler = self.copyPathHandler
+                else { return }
+                handler(url)
+            }
+        }
+        context.setObject(copyPathBridge, forKeyedSubscript: "__yafm_copyPath" as NSString)
+
+        // Wrap natives in an IIFE and delete globals so plugins can't call
+        // __yafm_* directly or access another plugin's bridge via global scope (P2-1).
+        context.evaluateScript("""
+        (function(_o, _c, _p) {
+          yafm.openInApp      = function(e, b) { _o(e, b || ""); };
+          yafm.copyToClipboard = function(t)   { _c(t || ""); };
+          yafm.copyPath       = function(e)    { _p(e); };
+        })(__yafm_openInApp, __yafm_copyToClipboard, __yafm_copyPath);
+        delete globalThis.__yafm_openInApp;
+        delete globalThis.__yafm_copyToClipboard;
+        delete globalThis.__yafm_copyPath;
+        """)
+    }
+
+    /// Install `yafm.readEXIF(entry)` into a `read:exif`-granted context.
+    /// Returns JSON string (parsed in JS) to avoid capturing JSContext in the block.
+    private func injectReadEXIF(into context: JSContext) {
+        let bridge: @convention(block) (JSValue?) -> String? = { [weak self] entryVal in
+            MainActor.assumeIsolated {
+                guard let self,
+                      let callerCtx = entryVal?.context,
+                      let handle = entryVal?.objectForKeyedSubscript("__h")?.toNumber()?.intValue,
+                      handle >= 0,
+                      let url = self.resolveHandle(handle, in: callerCtx),
+                      let handler = self.readEXIFHandler,
+                      let dict = handler(url),
+                      !dict.isEmpty,
+                      let data = try? JSONSerialization.data(withJSONObject: dict),
+                      let json = String(data: data, encoding: .utf8)
+                else { return nil }
+                return json
+            }
+        }
+        context.setObject(bridge, forKeyedSubscript: "__yafm_readEXIF" as NSString)
+        context.evaluateScript("""
+        (function(_fn) {
+          yafm.readEXIF = function(e) { var r = _fn(e); return r ? JSON.parse(r) : null; };
+        })(__yafm_readEXIF);
+        delete globalThis.__yafm_readEXIF;
+        """)
+    }
+
     /// Install `yafm.readText(entry, rel)` into a granted context. The bridge
     /// reads the entry's opaque handle, resolves `rel` host-side against the
     /// entry's directory (the `read:cwd` scope) via `PluginContext` — refusing
@@ -332,24 +471,29 @@ public final class JSPluginHost {
         let bridge: @convention(block) (JSValue?, JSValue?) -> String? = { [weak self] entryVal, relVal in
             MainActor.assumeIsolated {
                 guard let self,
+                      let callerCtx = entryVal?.context,
                       let handle = entryVal?.objectForKeyedSubscript("__h")?.toNumber()?.intValue,
-                      let base = self.handleURLs[handle] else { return nil }
+                      handle >= 0,
+                      let base = self.resolveHandle(handle, in: callerCtx),
+                      self.readTextCallCount < Self.readTextCallLimit
+                else { return nil }
+                self.readTextCallCount += 1
                 let rel = relVal?.toString() ?? ""
-                // The scope root is the entry itself when it's a directory, else
-                // its containing folder. Check the filesystem, not the URL's
-                // directory hint (entries aren't built with one).
                 var isDir: ObjCBool = false
                 FileManager.default.fileExists(atPath: base.path, isDirectory: &isDir)
                 let root = isDir.boolValue ? base : base.deletingLastPathComponent()
                 let ctx = PluginContext(roots: [root])
                 let candidatePath = rel.isEmpty ? root.path : root.appendingPathComponent(rel).path
                 guard let target = ctx.resolve(candidatePath) else { return nil }
-                return Self.readTextCapped(target)   // nil → JS null
+                return Self.readTextCapped(target)
             }
         }
         context.setObject(bridge, forKeyedSubscript: "__yafm_readText" as NSString)
         context.evaluateScript("""
-        yafm.readText = function (entry, rel) { return __yafm_readText(entry, rel || ""); };
+        (function(_fn) {
+          yafm.readText = function(entry, rel) { return _fn(entry, rel || ""); };
+        })(__yafm_readText);
+        delete globalThis.__yafm_readText;
         """)
     }
 
@@ -430,6 +574,95 @@ public final class JSPluginHost {
       "author": "yafm",
       "capabilities": ["read:cwd", "contribute:command"],
       "contributes": { "columns": ["Branch"], "commands": ["About the Git Branch plugin"] }
+    }
+    """
+
+    /// Reference plugin demonstrating `contribute:action`: context-menu items for
+    /// popular apps + clipboard shortcuts. Seeded disabled (requires user grant).
+    public static let openWithPlugin = """
+    // yafm "Open With" plugin — context-menu shortcuts for popular apps.
+    // Requires: contribute:menu + contribute:action  (see open-with.json)
+    yafm.registerMenuItem({
+      id: "open-vscode",
+      title: "Open in VS Code",
+      run: function(entry) { yafm.openInApp(entry, "com.microsoft.VSCode"); }
+    });
+    yafm.registerMenuItem({
+      id: "open-iterm",
+      title: "Open Folder in iTerm",
+      run: function(entry) {
+        if (entry.isDirectory) yafm.openInApp(entry, "com.googlecode.iterm2");
+      }
+    });
+    yafm.registerMenuItem({
+      id: "copy-path",
+      title: "Copy Full Path",
+      run: function(entry) { yafm.copyPath(entry); }
+    });
+    yafm.registerMenuItem({
+      id: "copy-name",
+      title: "Copy Name",
+      run: function(entry) { yafm.copyToClipboard(entry.name); }
+    });
+    """
+
+    public static let openWithManifest = """
+    {
+      "manifest": 1,
+      "id": "com.yafm.open-with",
+      "name": "Open With",
+      "version": "1.0.0",
+      "apiVersion": "1.0",
+      "author": "yafm",
+      "capabilities": ["contribute:menu", "contribute:action"],
+      "contributes": {
+        "menuItems": ["Open in VS Code", "Open Folder in iTerm", "Copy Full Path", "Copy Name"]
+      }
+    }
+    """
+
+    /// Reference plugin demonstrating `read:exif`: Camera and focal-length columns
+    /// for raw/JPEG images. Seeded disabled (requires user grant of read:exif).
+    public static let exifInfoPlugin = """
+    // yafm EXIF Info plugin — Camera and Focal/f columns for image files.
+    // Requires: read:exif  (see exif-info.json)
+    var _imgExts = ["jpg","jpeg","heic","heif","tiff","tif","dng","cr2","cr3",
+                    "nef","arw","raf","orf","rw2","pef","srw"];
+    yafm.registerColumn({
+      id: "camera",
+      title: "Camera",
+      value: function(entry) {
+        if (_imgExts.indexOf((entry.ext || "").toLowerCase()) < 0) return "";
+        var m = yafm.readEXIF(entry);
+        return m ? (m.model || m.make || "") : "";
+      }
+    });
+    yafm.registerColumn({
+      id: "focal",
+      title: "Focal/f",
+      value: function(entry) {
+        if (_imgExts.indexOf((entry.ext || "").toLowerCase()) < 0) return "";
+        var m = yafm.readEXIF(entry);
+        if (!m) return "";
+        var parts = [];
+        if (m.focalLength) parts.push(m.focalLength + "mm");
+        if (m.fNumber)     parts.push("f/" + m.fNumber);
+        if (m.iso)         parts.push("ISO " + m.iso);
+        return parts.join("  ");
+      }
+    });
+    """
+
+    public static let exifInfoManifest = """
+    {
+      "manifest": 1,
+      "id": "com.yafm.exif-info",
+      "name": "EXIF Info",
+      "version": "1.0.0",
+      "apiVersion": "1.0",
+      "author": "yafm",
+      "capabilities": ["read:exif"],
+      "contributes": { "columns": ["Camera", "Focal/f"] }
     }
     """
 

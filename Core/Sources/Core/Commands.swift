@@ -101,7 +101,7 @@ public enum DefaultCommands {
         Command(id: CommandID.paste, title: "Paste", defaultKey: KeyBinding(.char("v"), [.command])),
         Command(id: CommandID.newFolder, title: "New Folder", defaultKey: KeyBinding(.function(7))),
         Command(id: CommandID.reveal, title: "Reveal in Finder"),
-        Command(id: CommandID.copyPath, title: "Copy Path"),
+        Command(id: CommandID.copyPath, title: "Copy Path", defaultKey: KeyBinding(.char("c"), [.command, .shift])),
         Command(id: CommandID.getInfo, title: "Get Info", defaultKey: KeyBinding(.char("i"), [.command])),
         Command(id: CommandID.refresh, title: "Refresh", defaultKey: KeyBinding(.char("r"), [.command])),
         Command(id: CommandID.view, title: "View", defaultKey: KeyBinding(.function(3))),
@@ -213,6 +213,9 @@ public final class PluginValueCache {
     private struct Key: Hashable { let column: String; let url: URL }
     private var values: [Key: ColumnValue] = [:]
     private var inflight: Set<Key> = []
+    /// Monotonically increasing token. Incremented on `invalidate()` so in-flight
+    /// Tasks spawned before the reset silently discard their results (B1 race fix).
+    private var generation = 0
 
     public init() {}
 
@@ -232,8 +235,10 @@ public final class PluginValueCache {
         }
         if !inflight.contains(key) {
             inflight.insert(key)
+            let gen = generation   // capture before the task; guards against reload race
             Task { @MainActor in
                 let resolved = await async(entry)
+                guard gen == self.generation else { return }   // stale after invalidate — discard
                 self.values[key] = resolved
                 self.inflight.remove(key)
                 onResolve()
@@ -244,6 +249,7 @@ public final class PluginValueCache {
 
     /// Forget cached values for a column (plugin reload) or everything (nil).
     public func invalidate(columnID: String? = nil) {
+        generation &+= 1   // invalidate in-flight tasks from the previous generation
         if let id = columnID {
             values = values.filter { $0.key.column != id }
             inflight = inflight.filter { $0.column != id }

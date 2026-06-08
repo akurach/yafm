@@ -16,6 +16,11 @@ public enum PluginCapability: String, Codable, Sendable, CaseIterable {
     /// Read text files *relative to the listing root* (`yafm.readText`). The one
     /// capability that hands real bytes to JS — host-resolved, scoped, size-capped.
     case readCwd = "read:cwd"
+    /// Read EXIF/IPTC metadata from image files in the current listing (`yafm.readEXIF`).
+    case readExif = "read:exif"
+    /// Open files in external apps and write to the clipboard (`yafm.openInApp`,
+    /// `yafm.copyToClipboard`, `yafm.copyPath`).
+    case action = "contribute:action"
 
     /// User-facing one-liner for the enable-time consent UI.
     public var consentSummary: String {
@@ -24,6 +29,20 @@ public enum PluginCapability: String, Codable, Sendable, CaseIterable {
         case .command: return "Add commands you can run from the palette and menus."
         case .contextMenu: return "Add items to the right-click menu."
         case .readCwd: return "Read text files inside the folder you're viewing (e.g. .git/HEAD)."
+        case .readExif: return "Read EXIF metadata (camera, date, GPS) from image files you view."
+        case .action: return "Open files in other apps and copy text/paths to the clipboard."
+        }
+    }
+
+    /// Short human-readable label for the Settings UI capability chip.
+    public var capabilityLabel: String {
+        switch self {
+        case .computeColumn: return "columns"
+        case .command:       return "commands"
+        case .contextMenu:   return "menu items"
+        case .readCwd:       return "read files"
+        case .readExif:      return "read EXIF"
+        case .action:        return "open apps & clipboard"
         }
     }
 
@@ -109,11 +128,12 @@ public struct PluginManifest: Codable, Sendable, Equatable {
         signature = try c.decodeIfPresent(String.self, forKey: .signature)
     }
 
-    /// Trust tier shown honestly before install/enable. No remote PKI yet — a
-    /// `signature` field is advisory until signing lands.
-    public enum Trust: String, Sendable { case unsigned, declaredAuthor, signed }
+    /// Trust tier shown honestly before install/enable.
+    /// `signed` is reserved for when cryptographic verification lands (v0.9+).
+    /// Until then, `signature` field in the manifest is ignored — displaying "Signed"
+    /// without verification would be misleading.
+    public enum Trust: String, Sendable { case unsigned, declaredAuthor }
     public var trust: Trust {
-        if signature != nil { return .signed }
         if author != nil { return .declaredAuthor }
         return .unsigned
     }

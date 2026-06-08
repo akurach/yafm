@@ -10,11 +10,22 @@ struct InspectorView: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            Picker("", selection: $app.inspectorMode) {
-                Text("Info").tag(AppState.InspectorMode.info)
-                Text("Preview").tag(AppState.InspectorMode.preview)
+            HStack(spacing: 4) {
+                Picker("", selection: $app.inspectorMode) {
+                    Text("Info").tag(AppState.InspectorMode.info)
+                    Text("Preview").tag(AppState.InspectorMode.preview)
+                }
+                .pickerStyle(.segmented).labelsHidden()
+                Spacer()
+                Button { app.showPreview = false } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .foregroundStyle(.secondary)
+                        .imageScale(.medium)
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel("Close inspector")
             }
-            .pickerStyle(.segmented).labelsHidden().padding(6)
+            .padding(.horizontal, 8).padding(.vertical, 5)
             Divider()
             switch app.inspectorMode {
             case .info: InfoPanel(app: app, tab: app.activeTab)
@@ -23,6 +34,7 @@ struct InspectorView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background(.background)
+        .onExitCommand { app.showPreview = false }
     }
 }
 

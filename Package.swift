@@ -29,7 +29,10 @@ let package = Package(
             // module resources (that would need defaultLocalization + land them in
             // Bundle.module, where LocalizedStringKey wouldn't look).
             exclude: ["Resources/Info.plist", "Resources/AppIcon.icns",
-                      "Resources/en.lproj", "Resources/ru.lproj"]
+                      "Resources/en.lproj", "Resources/ru.lproj"],
+            linkerSettings: [
+                .linkedFramework("ImageIO"),
+            ]
         ),
     ]
 )

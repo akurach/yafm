@@ -6,10 +6,44 @@ the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-_On `main`, not yet tagged/released — ship as **v0.9.2** next session (bump
-Info.plist + tag + DMG + GitHub release)._
+_Nothing yet._
 
-### Fixed
+## [0.9.2] — Plugin API hardening + iCloud status + ⌘⇧C
+
+### Added
+- **Plugin API: `yafm.openInApp(entry, bundleId)`** — action-capable plugins can open
+  any entry in a specific app (e.g. VS Code, Preview). Requires the `contribute:action`
+  capability; dangerous extensions (`.sh`, `.command`, `.scpt`, `.workflow`, `.pkg`, …)
+  prompt the user before opening.
+- **Plugin API: `yafm.readEXIF(entry)`** — returns structured EXIF/TIFF metadata
+  (camera model, date, dimensions) from image files. Requires `read:exif`. GPS data
+  intentionally excluded (prevents silent geolocation via clipboard).
+- **iCloud status indicator** — a cloud-download icon appears inline next to file names
+  not yet downloaded from iCloud Drive (checked via `URLResourceValues`, kernel-cached).
+- **⌘⇧C → Copy Full Path** shortcut (previously palette/menu only).
+- Two example plugins seeded on first run (disabled by default): `open-with` and
+  `exif-info`.
+
+### Security
+- **C-1 (RCE guard)**: `openInApp` checks extension against an allowlist of executable
+  types and shows a warning alert before proceeding — consistent with `openFile()`.
+- **C-2 (handle isolation)**: plugin file handles are now scoped per `JSContext` — one
+  plugin cannot enumerate or steal another plugin's handles.
+- **P1-A (trust spoofing)**: removed `case signed` from `PluginManifest.Trust`; the
+  `signature` field in manifests is accepted but ignored until cryptographic verification
+  lands. No more fake "Signed" badge from `"signature": "anything"`.
+- **P1-B (race fix)**: `PluginValueCache` uses a monotonic generation token; in-flight
+  async Tasks discard results if the cache was invalidated while they were running.
+- **P2-1 (bridge hardening)**: native `__yafm_*` bridge functions are wrapped in an
+  IIFE and the globals deleted — plugins can't call raw bridges to bypass JS-layer
+  validation.
+- **P2-2 (rate limit)**: `yafm.readText` is now capped at 500 calls per directory view
+  (reset on `clearHandles`).
+
+### Changed
+- Capability chips in Settings ▸ Plugins show human-readable labels (`columns`,
+  `read EXIF`, `open apps & clipboard`, …) instead of raw capability IDs.
+- Enable-time consent dialog prefixes the plugin ID for auditability.
 - **Big-folder freeze on open / re-sort — root cause found & fixed.** It was the
   per-row **`.contextMenu`**: SwiftUI builds a row's context-menu content *eagerly
   for every row*, and the **Open With** + **Share** submenus enumerated apps /

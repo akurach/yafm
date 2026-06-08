@@ -93,8 +93,11 @@ struct KeyboardMonitor: NSViewRepresentable {
         // Active type-to-filter session: Esc clears, Backspace edits, a plain
         // printable key extends the filter. Arrows/Enter fall through so the
         // filtered list is still navigable.
+        if c.keyCode == 53 {                                           // Esc
+            if tab.filterActive { tab.clearFilter(); return true }
+            if app.showPreview  { app.showPreview = false; return true }
+        }
         if tab.filterActive {
-            if c.keyCode == 53 { tab.clearFilter(); return true }      // Esc
             if c.keyCode == 51 { tab.backspaceFilter(); return true }  // Backspace
             if Self.isPlainTyping(c, mods), let s = c.chars, Self.isFilterChar(s) {
                 tab.appendFilter(s); return true

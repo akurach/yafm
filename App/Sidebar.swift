@@ -15,6 +15,7 @@ struct BookmarksSidebar: View {
             Section("Favorites") {
                 ForEach(app.bookmarks) { bm in
                     Label(bm.name, systemImage: "folder")
+                        .frame(maxWidth: .infinity, alignment: .leading)
                         .contentShape(Rectangle())
                         .onTapGesture { app.activeTab.open(bm.url) }
                         .contextMenu {
@@ -65,6 +66,7 @@ struct BookmarksSidebar: View {
     /// A Locations entry with open / new-tab / add-favorite context menu.
     private func locationRow(_ title: String, _ icon: String, _ url: URL) -> some View {
         Label(title, systemImage: icon)
+            .frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
             .onTapGesture { app.activeTab.open(url) }
             .contextMenu {
