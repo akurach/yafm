@@ -40,16 +40,14 @@ struct BookmarksSidebar: View {
     var body: some View {
         List {
             if app.settings.sidebarShowFavorites {
-                Section("Favorites") {
+                Section(header: SidebarSectionHeader("Favorites")) {
                     ForEach(SystemFavorite.allCases) { fav in
                         if app.settings.enabledFavorites.contains(fav) {
                             sysFav(fav.label, fav.systemImage, Self.favURLs[fav] ?? nil)
                         }
                     }
                     ForEach(app.bookmarks) { bm in
-                        Label(bm.name, systemImage: "folder")
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .contentShape(Rectangle())
+                        SidebarRow(icon: "folder", label: bm.name, isActive: app.activeTab.directory == bm.url)
                             .onTapGesture { app.activeTab.open(bm.url) }
                             .contextMenu {
                                 Button("Open") { app.activeTab.open(bm.url) }
@@ -64,7 +62,7 @@ struct BookmarksSidebar: View {
             }
 
             if app.settings.sidebarShowLocations {
-                Section("Locations") {
+                Section(header: SidebarSectionHeader("Locations")) {
                     if app.settings.locShowComputer {
                         locationRow("Computer", "desktopcomputer", URL(fileURLWithPath: "/"))
                     }
@@ -78,7 +76,7 @@ struct BookmarksSidebar: View {
             }
 
             if app.settings.sidebarShowDevices, !devices.isEmpty {
-                Section("Devices") {
+                Section(header: SidebarSectionHeader("Devices")) {
                     ForEach(devices) { vol in
                         VolumeRow(app: app, volume: vol,
                                   classification: app.volumeClassifications[vol.url])
@@ -87,7 +85,7 @@ struct BookmarksSidebar: View {
             }
 
             if app.settings.sidebarShowNetwork, !networkVolumes.isEmpty {
-                Section("Network") {
+                Section(header: SidebarSectionHeader("Network")) {
                     ForEach(networkVolumes) { vol in
                         VolumeRow(app: app, volume: vol,
                                   classification: app.volumeClassifications[vol.url])
@@ -96,21 +94,22 @@ struct BookmarksSidebar: View {
             }
 
             if app.settings.sidebarShowTags, !app.knownTags.isEmpty {
-                Section("Tags") {
+                Section(header: SidebarSectionHeader("Tags")) {
                     ForEach(app.knownTags, id: \.name) { tag in
                         TagCloudRow(app: app, tag: tag, count: app.tagCounts[tag.name] ?? 0)
                     }
                 }
             }
         }
-        .frame(minWidth: 170, maxWidth: 220)
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        .background(PanelBackground(kind: .sidebar))
+        .frame(width: 198)
     }
 
     /// A Locations entry with open / new-tab / add-favorite context menu.
     private func locationRow(_ title: String, _ icon: String, _ url: URL) -> some View {
-        Label(title, systemImage: icon)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
+        SidebarRow(icon: icon, label: title, isActive: app.activeTab.directory == url)
             .onTapGesture { app.activeTab.open(url) }
             .contextMenu {
                 Button("Open") { app.activeTab.open(url) }
@@ -120,6 +119,54 @@ struct BookmarksSidebar: View {
                     Label("Add to Favorites", systemImage: "star")
                 }
             }
+    }
+}
+
+// MARK: - Sidebar building blocks
+
+struct SidebarSectionHeader: View {
+    let title: String
+    init(_ title: String) { self.title = title }
+
+    var body: some View {
+        Text(title.uppercased())
+            .font(.system(size: 10, weight: .semibold))
+            .foregroundStyle(.secondary)
+            .tracking(0.4)
+            .padding(.top, 8)
+            .padding(.bottom, 1)
+    }
+}
+
+/// Single sidebar item row: accent bar + fill when active, icon + label.
+struct SidebarRow: View {
+    let icon: String
+    let label: String
+    let isActive: Bool
+
+    var body: some View {
+        ZStack(alignment: .leading) {
+            if isActive {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(Color.accentColor.opacity(0.14))
+                    .padding(.vertical, 1)
+                Rectangle()
+                    .fill(Color.accentColor)
+                    .frame(width: 3)
+                    .clipShape(RoundedRectangle(cornerRadius: 1.5, style: .continuous))
+                    .padding(.vertical, 4)
+            }
+            Label(label, systemImage: icon)
+                .font(.system(size: 12.5))
+                .foregroundStyle(isActive ? Color.accentColor : .primary)
+                .padding(.leading, 8)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(height: 26)
+        }
+        .contentShape(Rectangle())
+        .listRowBackground(Color.clear)
+        .listRowSeparator(.hidden)
+        .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
     }
 }
 

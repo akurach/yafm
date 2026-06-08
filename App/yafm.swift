@@ -3,8 +3,21 @@ import AppKit
 import Quartz
 import Core
 
+// MARK: - App delegate — reliable window chrome configuration
+
+final class YafmAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationDidFinishLaunching(_ n: Notification) {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            NSApp.windows
+                .filter { !($0 is NSPanel) }
+                .forEach { $0.isMovableByWindowBackground = true }
+        }
+    }
+}
+
 @main
 struct YafmApp: App {
+    @NSApplicationDelegateAdaptor(YafmAppDelegate.self) var appDelegate
     @State private var app = AppState()
     @Environment(\.scenePhase) private var scenePhase
 
@@ -20,7 +33,7 @@ struct YafmApp: App {
             // Persist the last folder for the "Last used" start option.
             if phase != .active { app.settings.rememberLastFolder(app.activeTab.directory) }
         }
-        .windowStyle(.titleBar)
+        .windowStyle(.hiddenTitleBar)
         .commands {
             CommandMenus(app: app)
             CommandGroup(replacing: .appInfo) {
@@ -41,38 +54,56 @@ struct YafmApp: App {
     }
 }
 
-/// Window chrome: bookmarks sidebar · dual pane (+ optional preview) · queue · status.
+/// Window chrome: floating sidebar card · floating panes card · status + fkeys on chrome.
 struct RootView: View {
     @Bindable var app: AppState
 
     var body: some View {
-        NavigationSplitView {
-            BookmarksSidebar(app: app)
-        } detail: {
+        ZStack {
+            // Chrome fills the entire window including the title bar area
+            ChromeBackground().ignoresSafeArea()
+
             VStack(spacing: 0) {
-                if !app.hasFullDiskAccess && !app.bannerDismissed {
-                    AccessBanner(app: app)
-                    Divider()
-                }
-                HSplitView {
-                    PaneView(pane: app.left, isActive: app.activePaneIsLeft, app: app)
-                    PaneView(pane: app.right, isActive: !app.activePaneIsLeft, app: app)
-                    if app.showPreview {
-                        InspectorView(app: app).frame(minWidth: 240)
+                // Chrome body — 9 pt padding + gap between the two floating panels
+                HStack(alignment: .top, spacing: 9) {
+
+                    // ── Floating sidebar card ──────────────────────────────────
+                    BookmarksSidebar(app: app)
+                        .floatingPanel()
+
+                    // ── Floating panes card ────────────────────────────────────
+                    VStack(spacing: 0) {
+                        if !app.hasFullDiskAccess && !app.bannerDismissed {
+                            AccessBanner(app: app)
+                            Divider()
+                        }
+                        HSplitView {
+                            PaneView(pane: app.left,  isActive:  app.activePaneIsLeft, app: app)
+                            PaneView(pane: app.right, isActive: !app.activePaneIsLeft, app: app)
+                            if app.showPreview {
+                                InspectorView(app: app).frame(minWidth: 240)
+                            }
+                        }
+                        QueueView(app: app)
                     }
+                    .background(PanelBackground(kind: .panes))
+                    .floatingPanel()
                 }
-                QueueView(app: app)
+                .padding(9)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                // ── Bottom chrome — not inside any card ───────────────────────
                 Divider()
                 StatusBarView(tab: app.activeTab)
                 Divider()
                 FunctionBarView(app: app)
             }
         }
-        .sheet(isPresented: $app.renameSheet) { RenameSheet(app: app) }
+        .sheet(isPresented: $app.renameSheet)    { RenameSheet(app: app) }
         .sheet(isPresented: $app.showOnboarding) { OnboardingSheet(app: app) }
-        .sheet(isPresented: $app.connectSheet) { ConnectServerSheet(app: app) }
+        .sheet(isPresented: $app.connectSheet)   { ConnectServerSheet(app: app) }
         .sheet(isPresented: $app.commandPalette) { CommandPalette(app: app) }
-        .sheet(isPresented: $app.cheatSheet) { CheatSheet(app: app) }
+        .sheet(isPresented: $app.cheatSheet)     { CheatSheet(app: app) }
     }
 }
 
