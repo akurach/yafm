@@ -626,8 +626,8 @@ public final class JSPluginHost {
     public static let exifInfoPlugin = """
     // yafm EXIF Info plugin — Camera and Focal/f columns for image files.
     // Requires: read:exif  (see exif-info.json)
-    var _imgExts = ["jpg","jpeg","heic","heif","tiff","tif","dng","cr2","cr3",
-                    "nef","arw","raf","orf","rw2","pef","srw"];
+    var _imgExts = ["jpg","jpeg","heic","heif","hif","tiff","tif","dng","cr2","cr3",
+                    "nef","arw","raf","orf","rw2","pef","srw","avif"];
     yafm.registerColumn({
       id: "camera",
       title: "Camera",

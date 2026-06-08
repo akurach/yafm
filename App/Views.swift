@@ -349,7 +349,7 @@ struct FileTableView: View {
                 Text("Git").frame(width: CGFloat(gitW), alignment: .center)
             }
             ForEach(app.registry.pluginColumns) { col in
-                Color.clear.frame(width: Theme.Space.row)
+                ColResizeHandle(width: $pluginW)
                 Text(col.title).lineLimit(1).frame(width: CGFloat(pluginW), alignment: .leading)
             }
         }
@@ -435,6 +435,7 @@ struct FileTableView: View {
                     .frame(width: CGFloat(gitW), alignment: .center)
             }
             ForEach(app.registry.pluginColumns) { col in
+                Color.clear.frame(width: 8)   // aligns with ColResizeHandle in header
                 Text(pluginText(col, entry))
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     .frame(width: CGFloat(pluginW), alignment: .leading)

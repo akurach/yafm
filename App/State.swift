@@ -586,35 +586,45 @@ final class AppState {
     }
 
     /// Seed bundled plugins into the plugins folder. Each plugin is checked
-    /// individually so new plugins land on existing installations without
-    /// overwriting user-modified files.
+    /// individually — new plugins land on existing installs without clobbering
+    /// user files. Bundled JS is refreshed when content changes (e.g. adding
+    /// new file-type support) without touching the enabled/disabled state.
     private func installBundledPluginsIfNeeded(into dir: URL) {
-        func missing(_ name: String) -> Bool {
-            !FileManager.default.fileExists(atPath: dir.appendingPathComponent(name).path)
-        }
+        func path(_ name: String) -> URL { dir.appendingPathComponent(name) }
+        func missing(_ name: String) -> Bool { !FileManager.default.fileExists(atPath: path(name).path) }
         func write(_ content: String, to name: String) {
-            try? content.write(to: dir.appendingPathComponent(name), atomically: true, encoding: .utf8)
+            try? content.write(to: path(name), atomically: true, encoding: .utf8)
         }
-        // example-kind: seed only when the folder is empty (first run).
+        func stale(_ name: String, expected: String) -> Bool {
+            (try? String(contentsOf: path(name), encoding: .utf8)) != expected
+        }
+        // example-kind: seed only on first run (empty folder).
         let installed = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
         if !installed.contains(where: { $0.hasSuffix(".js") }) {
             write(JSPluginHost.exampleColumnPlugin, to: "example-kind.js")
         }
-        // Capability plugins: seed individually, ship disabled.
+        // Capability plugins: seed when missing (disabled); silently refresh JS
+        // when bundled content changed — manifest and enabled state are preserved.
         if missing("git-branch.js") {
-            write(JSPluginHost.gitBranchPlugin,    to: "git-branch.js")
-            write(JSPluginHost.gitBranchManifest,  to: "git-branch.json")
+            write(JSPluginHost.gitBranchPlugin,   to: "git-branch.js")
+            write(JSPluginHost.gitBranchManifest, to: "git-branch.json")
             disabledPluginIDs.insert("com.yafm.git-branch")
+        } else if stale("git-branch.js", expected: JSPluginHost.gitBranchPlugin) {
+            write(JSPluginHost.gitBranchPlugin,   to: "git-branch.js")
         }
         if missing("open-with.js") {
-            write(JSPluginHost.openWithPlugin,     to: "open-with.js")
-            write(JSPluginHost.openWithManifest,   to: "open-with.json")
+            write(JSPluginHost.openWithPlugin,    to: "open-with.js")
+            write(JSPluginHost.openWithManifest,  to: "open-with.json")
             disabledPluginIDs.insert("com.yafm.open-with")
+        } else if stale("open-with.js", expected: JSPluginHost.openWithPlugin) {
+            write(JSPluginHost.openWithPlugin,    to: "open-with.js")
         }
         if missing("exif-info.js") {
-            write(JSPluginHost.exifInfoPlugin,     to: "exif-info.js")
-            write(JSPluginHost.exifInfoManifest,   to: "exif-info.json")
+            write(JSPluginHost.exifInfoPlugin,    to: "exif-info.js")
+            write(JSPluginHost.exifInfoManifest,  to: "exif-info.json")
             disabledPluginIDs.insert("com.yafm.exif-info")
+        } else if stale("exif-info.js", expected: JSPluginHost.exifInfoPlugin) {
+            write(JSPluginHost.exifInfoPlugin,    to: "exif-info.js")
         }
         UserDefaults.standard.set(Array(disabledPluginIDs), forKey: "disabledPlugins")
     }
