@@ -178,11 +178,16 @@ public struct PluginColumn: Identifiable {
     /// `.zip`/SMB attribute) plugs in here without the table — or any existing
     /// sync plugin — changing. nil = purely synchronous (the v0.3/v0.4 contract).
     public let evaluateAsync: ((FSEntry) async -> ColumnValue)?
+    /// When set, the column is only shown in folders that contain at least one
+    /// file whose lowercase extension is in this set. nil = always visible.
+    public let relevantExtensions: Set<String>?
 
     /// Synchronous column (back-compatible default; `evaluateAsync` stays nil).
-    public init(id: String, title: String, evaluate: @escaping (FSEntry) -> ColumnValue) {
+    public init(id: String, title: String, relevantExtensions: Set<String>? = nil,
+                evaluate: @escaping (FSEntry) -> ColumnValue) {
         self.id = id
         self.title = title
+        self.relevantExtensions = relevantExtensions
         self.evaluate = evaluate
         self.evaluateAsync = nil
     }
@@ -190,11 +195,12 @@ public struct PluginColumn: Identifiable {
     /// Async column. `placeholder` (default `.none`) renders until the first
     /// async resolve lands — keeping the never-freeze pillar: a slow value never
     /// blocks the row.
-    public init(id: String, title: String,
+    public init(id: String, title: String, relevantExtensions: Set<String>? = nil,
                 placeholder: @escaping (FSEntry) -> ColumnValue = { _ in .none },
                 asyncEvaluate: @escaping (FSEntry) async -> ColumnValue) {
         self.id = id
         self.title = title
+        self.relevantExtensions = relevantExtensions
         self.evaluate = placeholder
         self.evaluateAsync = asyncEvaluate
     }

@@ -249,7 +249,21 @@ public final class JSPluginHost {
             let rawID = spec.objectForKeyedSubscript("id")?.toString() ?? "col\(columns.count)"
             let title = spec.objectForKeyedSubscript("title")?.toString() ?? rawID
             colTitles.append(title)
-            columns.append(PluginColumn(id: Self.columnIDPrefix + name + "." + rawID, title: title) {
+            // Read optional relevantExtensions array from the JS spec.
+            var relevantExts: Set<String>? = nil
+            if let jsArr = spec.objectForKeyedSubscript("relevantExtensions"),
+               jsArr.isArray,
+               let len = jsArr.objectForKeyedSubscript("length")?.toInt32(), len > 0 {
+                var exts = Set<String>()
+                for i in 0..<len {
+                    if let ext = jsArr.objectAtIndexedSubscript(Int(i))?.toString() {
+                        exts.insert(ext.lowercased())
+                    }
+                }
+                if !exts.isEmpty { relevantExts = exts }
+            }
+            columns.append(PluginColumn(id: Self.columnIDPrefix + name + "." + rawID,
+                                        title: title, relevantExtensions: relevantExts) {
                 [weak self] entry in self?.evaluate(fn, for: entry) ?? .none
             })
         }
@@ -673,6 +687,7 @@ public final class JSPluginHost {
     yafm.registerColumn({
       id: "camera",
       title: "Camera",
+      relevantExtensions: _imgExts,
       value: function(entry) {
         if (_imgExts.indexOf((entry.ext || "").toLowerCase()) < 0) return "";
         var m = yafm.readEXIF(entry);
@@ -682,6 +697,7 @@ public final class JSPluginHost {
     yafm.registerColumn({
       id: "focal",
       title: "Focal/f",
+      relevantExtensions: _imgExts,
       value: function(entry) {
         if (_imgExts.indexOf((entry.ext || "").toLowerCase()) < 0) return "";
         var m = yafm.readEXIF(entry);

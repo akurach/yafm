@@ -215,6 +215,8 @@ struct FileTableView: View {
     @State private var kindW: Double = 92
     @State private var gitW: Double = 34
     @State private var pluginW: Double = 104
+    // Plugin columns filtered to those relevant for the current folder's content.
+    @State private var visiblePluginCols: [PluginColumn] = []
 
     // The List is the only child and fills the pane natively; the column header
     // rides along as a pinned Section header (a plain List inside a VStack would
@@ -328,30 +330,43 @@ struct FileTableView: View {
                     QuickLook.updateIfVisible(urls: tab.actionable.map(\.url))
                 }
             }
+            .onChange(of: tab.displayed) { _, entries in refreshVisiblePluginCols(entries) }
+            .onAppear { refreshVisiblePluginCols(tab.displayed) }
+        }
+    }
+
+    // Show only plugin columns that are relevant for the current listing:
+    // a column with `relevantExtensions` set is hidden when no file in the
+    // folder has a matching extension (e.g. Camera/Focal/f in non-image folders).
+    private func refreshVisiblePluginCols(_ entries: [FSEntry]) {
+        visiblePluginCols = app.registry.pluginColumns.filter { col in
+            guard let exts = col.relevantExtensions else { return true }
+            return entries.contains { exts.contains($0.url.pathExtension.lowercased()) }
         }
     }
 
     private var columnHeader: some View {
-        // spacing:0 — each fixed column is followed by a ColResizeHandle (8 pt)
-        // that sits on its RIGHT edge, matching the standard table-column UX:
-        // grab the right border of a column and drag to resize it.
+        // spacing:0 — ColResizeHandle (8 pt) sits on the LEFT edge of each fixed
+        // column, matching the HStack(spacing: Theme.Space.row) auto-gap in rows.
+        // Drag left = column wider, drag right = narrower (dragStart − translation).
         HStack(spacing: 0) {
             Color.clear.frame(width: app.settings.density.iconSize)
-            Color.clear.frame(width: Theme.Space.row)   // leading gap after icon
+            Color.clear.frame(width: Theme.Space.row)   // mirrors HStack row leading gap
             headerButton("Name", .name).frame(maxWidth: .infinity, alignment: .leading)
-            headerButton("Size", .size).frame(width: CGFloat(sizeW), alignment: .trailing)
             ColResizeHandle(width: $sizeW)
-            headerButton("Modified", .modified).frame(width: CGFloat(modW), alignment: .trailing)
+            headerButton("Size", .size).frame(width: CGFloat(sizeW), alignment: .trailing)
             ColResizeHandle(width: $modW)
-            headerButton("Kind", .kind).frame(width: CGFloat(kindW), alignment: .leading)
+            headerButton("Modified", .modified).frame(width: CGFloat(modW), alignment: .trailing)
             ColResizeHandle(width: $kindW)
+            headerButton("Kind", .kind).frame(width: CGFloat(kindW), alignment: .leading)
             if !tab.gitStatus.isEmpty {
-                Text("Git").frame(width: CGFloat(gitW), alignment: .center)
                 ColResizeHandle(width: $gitW)
+                Text("Git").frame(width: CGFloat(gitW), alignment: .center)
             }
-            ForEach(app.registry.pluginColumns) { col in
+            ForEach(visiblePluginCols) { col in
+                // No resize handle for plugin columns — fixed width, gap from HStack spacing.
+                Color.clear.frame(width: Theme.Space.row)
                 Text(col.title).lineLimit(1).frame(width: CGFloat(pluginW), alignment: .leading)
-                ColResizeHandle(width: $pluginW)
             }
         }
         .font(Theme.Font.header)
@@ -423,27 +438,22 @@ struct FileTableView: View {
             Text(entry.isDirectory ? "--" : (entry.size.map(byteString) ?? "--"))
                 .font(.caption.monospaced()).foregroundStyle(.secondary)
                 .frame(width: CGFloat(sizeW), alignment: .trailing)
-            Color.clear.frame(width: 8)   // under ColResizeHandle (right of Size)
             Text(entry.modified.map(Self.dateText) ?? "--")
                 .font(.caption.monospaced()).foregroundStyle(.secondary)
                 .frame(width: CGFloat(modW), alignment: .trailing)
-            Color.clear.frame(width: 8)   // under ColResizeHandle (right of Modified)
             Text(kindText(entry))
                 .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 .frame(width: CGFloat(kindW), alignment: .leading)
-            Color.clear.frame(width: 8)   // under ColResizeHandle (right of Kind)
             if !tab.gitStatus.isEmpty {
                 Text(tab.gitStatus[entry.url] ?? "")
                     .font(.caption.monospaced().bold())
                     .foregroundStyle(gitColor(tab.gitStatus[entry.url]))
                     .frame(width: CGFloat(gitW), alignment: .center)
-                Color.clear.frame(width: 8)
             }
-            ForEach(app.registry.pluginColumns) { col in
+            ForEach(visiblePluginCols) { col in
                 Text(pluginText(col, entry))
                     .font(.caption).foregroundStyle(.secondary).lineLimit(1)
                     .frame(width: CGFloat(pluginW), alignment: .leading)
-                Color.clear.frame(width: 8)   // under ColResizeHandle (right of plugin col)
             }
         }
         .padding(.vertical, density.rowPadding)
@@ -819,12 +829,12 @@ private struct ColResizeHandle: View {
             DragGesture(minimumDistance: 2, coordinateSpace: .global)
                 .onChanged { v in
                     if !dragging { dragStart = width; dragging = true }
-                    // Handle sits on the RIGHT edge of its column, so drag right
-                    // = column wider (natural direction, no inversion needed).
-                    width = max(40, dragStart + v.translation.width)
+                    // Handle sits on the LEFT edge of its column (right boundary of
+                    // the preceding flex/Name area). Drag left = column wider.
+                    width = max(40, dragStart - v.translation.width)
                 }
                 .onEnded { v in
-                    width = max(40, dragStart + v.translation.width)
+                    width = max(40, dragStart - v.translation.width)
                     dragging = false
                 }
         )
