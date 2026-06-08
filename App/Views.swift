@@ -348,38 +348,55 @@ struct FileTableView: View {
         }
     }
 
+    // Custom bindings: each handle changes only its column and compensates via
+    // nameW so the total row width stays constant. Clamped in the setter so
+    // H2-H4 can't push past nameW's minimum (80) or their own minimum (40).
+    private var nameBind: Binding<Double> {
+        Binding(get: { nameW }, set: { nameW = max(80, $0) })
+    }
+    private var sizeBind: Binding<Double> {
+        Binding(get: { sizeW }, set: { newVal in
+            let prev = sizeW
+            sizeW = max(40, newVal)
+            nameW = max(80, nameW - (sizeW - prev))
+        })
+    }
+    private var modBind: Binding<Double> {
+        Binding(get: { modW }, set: { newVal in
+            let prev = modW
+            modW = max(40, newVal)
+            nameW = max(80, nameW - (modW - prev))
+        })
+    }
+    private var kindBind: Binding<Double> {
+        Binding(get: { kindW }, set: { newVal in
+            let prev = kindW
+            kindW = max(40, newVal)
+            nameW = max(80, nameW - (kindW - prev))
+        })
+    }
+
     private var columnHeader: some View {
         // spacing:0 — each column is followed by a ColResizeHandle (8 pt) on its
-        // RIGHT edge. The handle fires an incremental delta; each handle only changes
-        // its own column and compensates via nameW so the total stays constant:
-        //   H1 (right of Name)     → nameW only (right block shifts as a unit)
-        //   H2 (right of Size)     → sizeW grows, nameW shrinks (Modified/Kind stay put)
-        //   H3 (right of Modified) → modW grows, nameW shrinks (Kind stays put)
-        //   H4 (right of Kind)     → kindW grows, nameW shrinks
+        // RIGHT edge. Drag right = column grows; drag left = column shrinks.
+        // nameW compensates for every resize so the total row width stays constant:
+        //   H1 (right of Name)     → nameW only; right block slides as a unit
+        //   H2 (right of Size)     → sizeW ↑, nameW ↓; Modified/Kind don't move
+        //   H3 (right of Modified) → modW ↑, nameW ↓; Kind doesn't move
+        //   H4 (right of Kind)     → kindW ↑, nameW ↓
         HStack(spacing: 0) {
             Color.clear.frame(width: app.settings.density.iconSize)
             Color.clear.frame(width: Theme.Space.row)
             headerButton("Name", .name)
                 .frame(width: max(0, CGFloat(nameW)), alignment: .leading)
-            ColResizeHandle { delta in
-                nameW = max(80, nameW + delta)
-            }
+            ColResizeHandle(width: nameBind)
             headerButton("Size", .size).frame(width: CGFloat(sizeW), alignment: .trailing)
-            ColResizeHandle { delta in
-                let prev = sizeW; sizeW = max(40, sizeW + delta)
-                nameW = max(80, nameW - (sizeW - prev))
-            }
+            ColResizeHandle(width: sizeBind)
             headerButton("Modified", .modified).frame(width: CGFloat(modW), alignment: .trailing)
-            ColResizeHandle { delta in
-                let prev = modW; modW = max(40, modW + delta)
-                nameW = max(80, nameW - (modW - prev))
-            }
+            ColResizeHandle(width: modBind)
             headerButton("Kind", .kind).frame(width: CGFloat(kindW), alignment: .leading)
             if !tab.gitStatus.isEmpty {
-                ColResizeHandle { delta in
-                    let prev = kindW; kindW = max(40, kindW + delta)
-                    nameW = max(80, nameW - (kindW - prev))
-                }
+                ColResizeHandle(width: kindBind)
                 Text("Git").frame(width: CGFloat(gitW), alignment: .center)
             }
             ForEach(visiblePluginCols) { col in
@@ -391,43 +408,6 @@ struct FileTableView: View {
         .foregroundStyle(.secondary)
         .padding(.horizontal, Theme.Space.rowLeading).padding(.vertical, Theme.Space.tight)
         .background(.bar)
-        // Measure the header width to initialize and clamp nameW.
-        // initial: true fires immediately on appear so the Name column is correct
-        // from the first layout pass (avoids the zero-width flash).
-        .background(GeometryReader { geo in
-            Color.clear.onChange(of: geo.size.width, initial: true) { _, w in
-                let proper = initialNameW(totalW: w)
-                if nameW == 200 {
-                    nameW = proper          // first render: set from geometry
-                } else {
-                    nameW = max(80, min(nameW, w - minFixedW()))  // pane resize: clamp
-                }
-            }
-        })
-    }
-
-    // nameW that fills exactly the available width on first layout.
-    // totalW = column header total width (includes .padding(.horizontal, rowLeading)).
-    // Content layout: iconSize + gap(8) + nameW + H1(8) + sizeW + H2(8) + modW + H3(8) + kindW
-    private func initialNameW(totalW: CGFloat) -> CGFloat {
-        let density = app.settings.density
-        let fixed = density.iconSize + Theme.Space.row   // icon spacer + gap spacer
-                  + 3 * Theme.Space.row                  // three handles (H1/H2/H3)
-                  + CGFloat(sizeW + modW + kindW)
-                  + 2 * Theme.Space.rowLeading           // horizontal padding
-        return max(80, totalW - fixed)
-    }
-
-    // Minimum total fixed width — used to clamp nameW when the pane shrinks.
-    private func minFixedW() -> CGFloat {
-        let density = app.settings.density
-        let git: CGFloat = tab.gitStatus.isEmpty ? 0 : CGFloat(gitW) + Theme.Space.row
-        let plugins = CGFloat(visiblePluginCols.count) * (CGFloat(pluginW) + Theme.Space.row)
-        return density.iconSize + Theme.Space.row
-             + 3 * Theme.Space.row
-             + CGFloat(sizeW + modW + kindW)
-             + 2 * Theme.Space.rowLeading
-             + git + plugins + 80   // 80 = minimum nameW
     }
 
     private func headerButton(_ title: String, _ key: SortKey) -> some View {
@@ -875,14 +855,15 @@ struct QueueView: View {
 
 // MARK: - Column resize handle
 
-// Incremental-delta model: the handle fires a per-frame delta (pixels dragged
-// since the last event) rather than a cumulative offset. Each callsite owns
-// the clamping logic and can update multiple variables atomically (e.g. grow
-// sizeW while shrinking nameW so the total row width stays constant).
-// coordinateSpace: .global prevents the feedback loop where the handle's own
-// position shift (due to the column resize) corrupts the local-space delta.
+// @Binding + incremental-delta (per-frame, not cumulative from drag start):
+//   - @Binding keeps gesture @State stable across parent re-renders
+//   - incremental delta means no "reversal jump" after hitting a clamp —
+//     releasing and re-gripping the column starts fresh at the clamped value
+//   - coordinateSpace: .global → cursor position is window-space, unaffected
+//     by the column shifting under the handle as it resizes
+// Clamping lives in the Binding.set at the callsite, not here.
 private struct ColResizeHandle: View {
-    let onDelta: (CGFloat) -> Void
+    @Binding var width: Double
     @State private var hovering = false
     @State private var dragging = false
     @State private var lastX: CGFloat = 0
@@ -906,7 +887,7 @@ private struct ColResizeHandle: View {
                     if !dragging { dragging = true; lastX = v.location.x }
                     let delta = v.location.x - lastX
                     lastX = v.location.x
-                    onDelta(delta)
+                    width += delta   // binding setter does clamping + compensation
                 }
                 .onEnded { _ in dragging = false }
         )
