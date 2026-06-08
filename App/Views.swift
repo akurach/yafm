@@ -210,8 +210,9 @@ struct FileTableView: View {
     }
 
     // Per-pane column widths (State = independent per instance, not shared across panes).
-    // nameW = 0 means "not yet initialized from geometry" — the header GeometryReader sets it.
-    @State private var nameW: Double = 0
+    // Reasonable default so the Name column is visible on the very first render.
+    // The GeometryReader in columnHeader refines this to exactly fill the pane.
+    @State private var nameW: Double = 200
     @State private var sizeW: Double = 78
     @State private var modW: Double = 124
     @State private var kindW: Double = 92
@@ -391,12 +392,16 @@ struct FileTableView: View {
         .padding(.horizontal, Theme.Space.rowLeading).padding(.vertical, Theme.Space.tight)
         .background(.bar)
         // Measure the header width to initialize and clamp nameW.
+        // initial: true fires immediately on appear so the Name column is correct
+        // from the first layout pass (avoids the zero-width flash).
         .background(GeometryReader { geo in
-            Color.clear.onAppear {
-                if nameW == 0 { nameW = initialNameW(totalW: geo.size.width) }
-            }
-            .onChange(of: geo.size.width) { _, w in
-                nameW = max(80, min(nameW, w - minFixedW()))
+            Color.clear.onChange(of: geo.size.width, initial: true) { _, w in
+                let proper = initialNameW(totalW: w)
+                if nameW == 200 {
+                    nameW = proper          // first render: set from geometry
+                } else {
+                    nameW = max(80, min(nameW, w - minFixedW()))  // pane resize: clamp
+                }
             }
         })
     }
