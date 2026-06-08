@@ -87,6 +87,8 @@ public struct PluginManifest: Codable, Sendable, Equatable {
     public let apiVersion: String
     public let capabilities: [PluginCapability]
     public let contributes: PluginContributions
+    /// Short human-readable description shown in Settings ▸ Plugins.
+    public let description: String?
     /// Optional provenance for the trust tier (v0.8 honest labeling; full
     /// cryptographic signing is a later, infra-gated step).
     public let author: String?
@@ -95,6 +97,7 @@ public struct PluginManifest: Codable, Sendable, Equatable {
     public init(manifest: Int = 1, id: String, name: String, version: String,
                 apiVersion: String, capabilities: [PluginCapability] = [],
                 contributes: PluginContributions = .init(),
+                description: String? = nil,
                 author: String? = nil, signature: String? = nil) {
         self.manifest = manifest
         self.id = id
@@ -103,12 +106,13 @@ public struct PluginManifest: Codable, Sendable, Equatable {
         self.apiVersion = apiVersion
         self.capabilities = capabilities
         self.contributes = contributes
+        self.description = description
         self.author = author
         self.signature = signature
     }
 
     private enum CodingKeys: String, CodingKey {
-        case manifest, id, name, version, apiVersion, capabilities, contributes, author, signature
+        case manifest, id, name, version, apiVersion, capabilities, contributes, description, author, signature
     }
 
     /// Custom decode so optional sections (`capabilities`, `contributes`,
@@ -124,6 +128,7 @@ public struct PluginManifest: Codable, Sendable, Equatable {
         let rawCaps = try c.decodeIfPresent([String].self, forKey: .capabilities) ?? []
         capabilities = rawCaps.compactMap(PluginCapability.init(rawValue:))
         contributes = try c.decodeIfPresent(PluginContributions.self, forKey: .contributes) ?? .init()
+        description = try c.decodeIfPresent(String.self, forKey: .description)
         author = try c.decodeIfPresent(String.self, forKey: .author)
         signature = try c.decodeIfPresent(String.self, forKey: .signature)
     }

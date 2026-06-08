@@ -429,10 +429,13 @@ private struct PluginRow: View {
                         if on, needsConsent { confirming = true } else { app.setPlugin(id, enabled: on) }
                     }
                 )) {
-                    VStack(alignment: .leading, spacing: 1) {
+                    VStack(alignment: .leading, spacing: 2) {
                         Text(name)
+                        if let desc = manifest?.description {
+                            Text(desc).font(.caption2).foregroundStyle(.secondary)
+                        }
                         Text(manifest.map { "\($0.id) · \($0.version)" } ?? "compute-only (no manifest)")
-                            .font(.caption2).foregroundStyle(.secondary)
+                            .font(.caption2).foregroundStyle(.tertiary)
                     }
                 }
                 Spacer()

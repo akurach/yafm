@@ -624,10 +624,52 @@ public final class JSPluginHost {
     /// Reference plugin demonstrating `read:exif`: Camera and focal-length columns
     /// for raw/JPEG images. Seeded disabled (requires user grant of read:exif).
     public static let exifInfoPlugin = """
-    // yafm EXIF Info plugin — Camera and Focal/f columns for image files.
+    // yafm EXIF Info plugin v1.2 — Camera and Focal/f columns for image files.
     // Requires: read:exif  (see exif-info.json)
-    var _imgExts = ["jpg","jpeg","heic","heif","hif","tiff","tif","dng","cr2","cr3",
-                    "nef","arw","raf","orf","rw2","pef","srw","avif"];
+    var _imgExts = [
+      // JPEG
+      "jpg","jpeg",
+      // HEIF family (inc. Sony HIF, AVIF)
+      "heic","heif","hif","avif",
+      // TIFF
+      "tiff","tif",
+      // DNG (Adobe + many cameras)
+      "dng",
+      // Canon
+      "cr2","cr3","crw",
+      // Nikon
+      "nef","nrw",
+      // Sony
+      "arw","srf","sr2",
+      // Fuji
+      "raf",
+      // Olympus / OM System
+      "orf",
+      // Panasonic / Leica (shared format)
+      "rw2","raw",
+      // Pentax / Ricoh
+      "pef","ptx",
+      // Samsung
+      "srw",
+      // Hasselblad
+      "3fr","fff",
+      // Minolta / old Sony
+      "mrw",
+      // Sigma
+      "x3f",
+      // Epson
+      "erf",
+      // Kodak
+      "kdc","dcr","k25",
+      // Mamiya
+      "mef",
+      // Phase One
+      "iiq",
+      // Leica
+      "rwl",
+      // WebP
+      "webp"
+    ];
     yafm.registerColumn({
       id: "camera",
       title: "Camera",
@@ -658,9 +700,10 @@ public final class JSPluginHost {
       "manifest": 1,
       "id": "com.yafm.exif-info",
       "name": "EXIF Info",
-      "version": "1.0.0",
+      "version": "1.2.0",
       "apiVersion": "1.0",
       "author": "yafm",
+      "description": "Adds Camera and Focal/f columns read from EXIF. Works with JPEG, HEIF/HIF, AVIF, TIFF, WebP and all major RAW formats (DNG, CR2/CR3, ARW, NEF, RAF, ORF, RW2, PEF, SRW, 3FR, MRW, X3F…).",
       "capabilities": ["read:exif"],
       "contributes": { "columns": ["Camera", "Focal/f"] }
     }
