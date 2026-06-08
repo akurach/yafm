@@ -694,6 +694,9 @@ final class AppState {
               allowed.contains(url.scheme?.lowercased() ?? ""),
               url.host != nil else { return }
         connectSheet = false
+        var recent = settings.recentServers.filter { $0 != trimmed }
+        recent.insert(trimmed, at: 0)
+        settings.recentServers = Array(recent.prefix(5))
         activeTab.open(url)
     }
 

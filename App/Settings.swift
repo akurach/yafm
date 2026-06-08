@@ -148,6 +148,9 @@ final class AppSettings {
     var locShowComputer: Bool { didSet { store.set(locShowComputer, forKey: Keys.locShowComputer) } }
     var locShowHome:     Bool { didSet { store.set(locShowHome,     forKey: Keys.locShowHome) } }
 
+    /// Last 5 server addresses successfully attempted via Connect to Server (⌘⇧K).
+    var recentServers: [String] { didSet { store.set(recentServers, forKey: Keys.recentServers) } }
+
     @ObservationIgnored private let store = UserDefaults.standard
 
     private enum Keys {
@@ -177,6 +180,7 @@ final class AppSettings {
         static let favApplications = "favApplications"
         static let locShowComputer = "locShowComputer"
         static let locShowHome     = "locShowHome"
+        static let recentServers   = "recentServers"
     }
 
     init() {
@@ -207,6 +211,7 @@ final class AppSettings {
         favApplications = d.object(forKey: Keys.favApplications) as? Bool ?? true
         locShowComputer = d.object(forKey: Keys.locShowComputer) as? Bool ?? true
         locShowHome     = d.object(forKey: Keys.locShowHome)     as? Bool ?? true
+        recentServers   = d.array(forKey: Keys.recentServers)    as? [String] ?? []
     }
 
     /// Directory new windows open at, falling back to Home when a path is gone.

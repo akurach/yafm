@@ -334,7 +334,18 @@ struct FileTableView: View {
             }
             .onChange(of: tab.displayed) { _, entries in refreshVisiblePluginCols(entries) }
             .onChange(of: tab.directory) { Self.iCloudCache.removeAll() }
-            .onAppear { refreshVisiblePluginCols(tab.displayed) }
+            .onChange(of: pluginWidths) {
+                if let data = try? JSONEncoder().encode(pluginWidths) {
+                    UserDefaults.standard.set(data, forKey: "yafm.col.pluginWidths")
+                }
+            }
+            .onAppear {
+                refreshVisiblePluginCols(tab.displayed)
+                if let data = UserDefaults.standard.data(forKey: "yafm.col.pluginWidths"),
+                   let saved = try? JSONDecoder().decode([String: Double].self, from: data) {
+                    pluginWidths = saved
+                }
+            }
         }
     }
 

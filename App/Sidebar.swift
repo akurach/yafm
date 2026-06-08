@@ -10,29 +10,36 @@ struct BookmarksSidebar: View {
     private var devices: [Volume] { app.volumes.filter { !$0.isNetwork } }
     private var networkVolumes: [Volume] { app.volumes.filter { $0.isNetwork } }
 
-    private static let iCloudDriveURL: URL? = {
+    // Cached once at load — these paths are stable for the app lifetime.
+    private static let desktopURL     = FileManager.default.urls(for: .desktopDirectory,   in: .userDomainMask).first
+    private static let documentsURL   = FileManager.default.urls(for: .documentDirectory,  in: .userDomainMask).first
+    private static let downloadsURL   = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask).first
+    private static let moviesURL      = FileManager.default.urls(for: .moviesDirectory,    in: .userDomainMask).first
+    private static let musicURL       = FileManager.default.urls(for: .musicDirectory,     in: .userDomainMask).first
+    private static let picturesURL    = FileManager.default.urls(for: .picturesDirectory,  in: .userDomainMask).first
+
+    // Computed dynamically so iCloud enable/disable after launch is reflected.
+    private var iCloudDriveURL: URL? {
         let url = FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Mobile Documents/com~apple~CloudDocs")
         return FileManager.default.fileExists(atPath: url.path) ? url : nil
-    }()
+    }
 
     @ViewBuilder
-    private func sysFav(_ label: String, _ icon: String, _ dir: FileManager.SearchPathDirectory) -> some View {
-        if let url = FileManager.default.urls(for: dir, in: .userDomainMask).first {
-            locationRow(label, icon, url)
-        }
+    private func sysFav(_ label: String, _ icon: String, _ url: URL?) -> some View {
+        if let url { locationRow(label, icon, url) }
     }
 
     var body: some View {
         List {
             if app.settings.sidebarShowFavorites {
                 Section("Favorites") {
-                    if app.settings.favDesktop      { sysFav("Desktop",      "menubar.dock.rectangle", .desktopDirectory) }
-                    if app.settings.favDocuments    { sysFav("Documents",    "doc.text",               .documentDirectory) }
-                    if app.settings.favDownloads    { sysFav("Downloads",    "arrow.down.circle",      .downloadsDirectory) }
-                    if app.settings.favMovies       { sysFav("Movies",       "film",                   .moviesDirectory) }
-                    if app.settings.favMusic        { sysFav("Music",        "music.note",             .musicDirectory) }
-                    if app.settings.favPictures     { sysFav("Pictures",     "photo",                  .picturesDirectory) }
+                    if app.settings.favDesktop      { sysFav("Desktop",      "menubar.dock.rectangle", Self.desktopURL) }
+                    if app.settings.favDocuments    { sysFav("Documents",    "doc.text",               Self.documentsURL) }
+                    if app.settings.favDownloads    { sysFav("Downloads",    "arrow.down.circle",      Self.downloadsURL) }
+                    if app.settings.favMovies       { sysFav("Movies",       "film",                   Self.moviesURL) }
+                    if app.settings.favMusic        { sysFav("Music",        "music.note",             Self.musicURL) }
+                    if app.settings.favPictures     { sysFav("Pictures",     "photo",                  Self.picturesURL) }
                     if app.settings.favApplications {
                         locationRow("Applications", "square.grid.2x2", URL(fileURLWithPath: "/Applications"))
                     }
@@ -61,7 +68,7 @@ struct BookmarksSidebar: View {
                     if app.settings.locShowHome {
                         locationRow("Home", "house", FileManager.default.homeDirectoryForCurrentUser)
                     }
-                    if app.settings.sidebarShowICloud, let url = Self.iCloudDriveURL {
+                    if app.settings.sidebarShowICloud, let url = iCloudDriveURL {
                         locationRow("iCloud Drive", "cloud", url)
                     }
                 }
