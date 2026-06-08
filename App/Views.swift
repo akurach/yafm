@@ -811,7 +811,9 @@ private struct ColResizeHandle: View {
             DragGesture(minimumDistance: 2)
                 .onChanged { v in
                     if !dragging { dragStart = width; dragging = true }
-                    width = max(40, dragStart + v.translation.width)
+                    // Handle is the LEFT edge of the column it controls: drag left
+                    // = column wider (left boundary moves left into the Name column).
+                    width = max(40, dragStart - v.translation.width)
                 }
                 .onEnded { _ in dragging = false }
         )

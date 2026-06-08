@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import Core
 import UniformTypeIdentifiers
+import ImageIO
 
 // MARK: - Right inspector: Info / Preview modes (§4)
 
@@ -47,6 +48,7 @@ struct InfoPanel: View {
     @State private var created: Date?
     @State private var perms = "—"
     @State private var newTag = ""
+    @State private var imageMeta: [(label: String, value: String)] = []
 
     var body: some View {
         let sel = tab.actionable
@@ -74,6 +76,11 @@ struct InfoPanel: View {
             field("Modified", entry.modified.map(Self.dateStr) ?? "—")
             field("Permissions", perms)
             field("Where", entry.url.deletingLastPathComponent().path)
+            if !imageMeta.isEmpty {
+                Divider()
+                Text("Image").font(.caption.bold()).foregroundStyle(.secondary)
+                ForEach(imageMeta, id: \.label) { row in field(row.label, row.value) }
+            }
             Divider()
             Text("Tags").font(.caption.bold()).foregroundStyle(.secondary)
             tagEditor(entry)
@@ -151,10 +158,54 @@ struct InfoPanel: View {
         created = detail.created
         perms = detail.permissions
         folderSize = nil
+        imageMeta = []
         if entry.isDirectory {
             let bytes = await app.fs.directorySize(of: entry.url)
             folderSize = Self.byteStr(bytes)
+        } else {
+            imageMeta = await Task.detached(priority: .utility) {
+                Self.readImageMeta(from: entry.url)
+            }.value
         }
+    }
+
+    nonisolated private static func readImageMeta(from url: URL) -> [(label: String, value: String)] {
+        guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { return [] }
+
+        // Try per-image properties at primary index first; for multi-image HEIF
+        // containers (e.g. Sony .HIF) the primary image may not be at index 0 —
+        // fall back to container-level properties.
+        var props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [String: Any]
+        if props == nil {
+            props = CGImageSourceCopyProperties(src, nil) as? [String: Any]
+        }
+        guard let p = props else { return [] }
+
+        var rows: [(String, String)] = []
+
+        if let w = p[kCGImagePropertyPixelWidth as String] as? Int,
+           let h = p[kCGImagePropertyPixelHeight as String] as? Int {
+            rows.append(("Dimensions", "\(w) × \(h)"))
+        }
+
+        if let tiff = p[kCGImagePropertyTIFFDictionary as String] as? [String: Any] {
+            if let make  = tiff[kCGImagePropertyTIFFMake  as String] as? String { rows.append(("Make",  make))  }
+            if let model = tiff[kCGImagePropertyTIFFModel as String] as? String { rows.append(("Model", model)) }
+        }
+
+        if let exif = p[kCGImagePropertyExifDictionary as String] as? [String: Any] {
+            if let fn  = exif[kCGImagePropertyExifFNumber as String]        as? Double { rows.append(("F-number",  "f/\(fn)")) }
+            if let fl  = exif[kCGImagePropertyExifFocalLength as String]    as? Double { rows.append(("Focal length", "\(Int(fl)) mm")) }
+            if let exp = exif[kCGImagePropertyExifExposureTime as String]   as? Double {
+                // Format as fraction if < 1 s (e.g. 0.005 → 1/200)
+                let str = exp < 1 ? "1/\(Int((1 / exp).rounded()))" : String(format: "%.1f s", exp)
+                rows.append(("Exposure", str))
+            }
+            if let iso = (exif[kCGImagePropertyExifISOSpeedRatings as String] as? [Int])?.first { rows.append(("ISO", "\(iso)")) }
+            if let d   = exif[kCGImagePropertyExifDateTimeOriginal as String] as? String { rows.append(("Date taken", d)) }
+        }
+
+        return rows
     }
 
     // MARK: helpers

@@ -540,9 +540,12 @@ final class AppState {
 
     /// Reads EXIF/IPTC metadata from an image URL using ImageIO (no pixel decode).
     private static func readEXIF(from url: URL) -> [String: Any]? {
-        guard let src = CGImageSourceCreateWithURL(url as CFURL, nil),
-              let props = CGImageSourceCopyPropertiesAtIndex(src, 0, nil) as? [String: Any]
-        else { return nil }
+        guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+        // For multi-image HEIF containers (e.g. Sony .HIF) CGImageSourceCopyPropertiesAtIndex
+        // at index 0 may return nil — fall back to container-level properties.
+        let props = (CGImageSourceCopyPropertiesAtIndex(src, 0, nil)
+                  ?? CGImageSourceCopyProperties(src, nil)) as? [String: Any]
+        guard let props else { return nil }
 
         var result: [String: Any] = [:]
         if let w = props[kCGImagePropertyPixelWidth as String]  { result["width"]  = w }
