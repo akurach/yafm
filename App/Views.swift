@@ -210,6 +210,8 @@ struct FileTableView: View {
     }
 
     // Per-pane column widths (State = independent per instance, not shared across panes).
+    // nameW = 0 means "not yet initialized from geometry" — the header GeometryReader sets it.
+    @State private var nameW: Double = 0
     @State private var sizeW: Double = 78
     @State private var modW: Double = 124
     @State private var kindW: Double = 92
@@ -346,25 +348,40 @@ struct FileTableView: View {
     }
 
     private var columnHeader: some View {
-        // spacing:0 — ColResizeHandle (8 pt) sits on the LEFT edge of each fixed
-        // column, matching the HStack(spacing: Theme.Space.row) auto-gap in rows.
-        // Drag left = column wider, drag right = narrower (dragStart − translation).
+        // spacing:0 — each column is followed by a ColResizeHandle (8 pt) on its
+        // RIGHT edge. The handle fires an incremental delta; each handle only changes
+        // its own column and compensates via nameW so the total stays constant:
+        //   H1 (right of Name)     → nameW only (right block shifts as a unit)
+        //   H2 (right of Size)     → sizeW grows, nameW shrinks (Modified/Kind stay put)
+        //   H3 (right of Modified) → modW grows, nameW shrinks (Kind stays put)
+        //   H4 (right of Kind)     → kindW grows, nameW shrinks
         HStack(spacing: 0) {
             Color.clear.frame(width: app.settings.density.iconSize)
-            Color.clear.frame(width: Theme.Space.row)   // mirrors HStack row leading gap
-            headerButton("Name", .name).frame(maxWidth: .infinity, alignment: .leading)
-            ColResizeHandle(width: $sizeW)
+            Color.clear.frame(width: Theme.Space.row)
+            headerButton("Name", .name)
+                .frame(width: max(0, CGFloat(nameW)), alignment: .leading)
+            ColResizeHandle { delta in
+                nameW = max(80, nameW + delta)
+            }
             headerButton("Size", .size).frame(width: CGFloat(sizeW), alignment: .trailing)
-            ColResizeHandle(width: $modW)
+            ColResizeHandle { delta in
+                let prev = sizeW; sizeW = max(40, sizeW + delta)
+                nameW = max(80, nameW - (sizeW - prev))
+            }
             headerButton("Modified", .modified).frame(width: CGFloat(modW), alignment: .trailing)
-            ColResizeHandle(width: $kindW)
+            ColResizeHandle { delta in
+                let prev = modW; modW = max(40, modW + delta)
+                nameW = max(80, nameW - (modW - prev))
+            }
             headerButton("Kind", .kind).frame(width: CGFloat(kindW), alignment: .leading)
             if !tab.gitStatus.isEmpty {
-                ColResizeHandle(width: $gitW)
+                ColResizeHandle { delta in
+                    let prev = kindW; kindW = max(40, kindW + delta)
+                    nameW = max(80, nameW - (kindW - prev))
+                }
                 Text("Git").frame(width: CGFloat(gitW), alignment: .center)
             }
             ForEach(visiblePluginCols) { col in
-                // No resize handle for plugin columns — fixed width, gap from HStack spacing.
                 Color.clear.frame(width: Theme.Space.row)
                 Text(col.title).lineLimit(1).frame(width: CGFloat(pluginW), alignment: .leading)
             }
@@ -373,6 +390,39 @@ struct FileTableView: View {
         .foregroundStyle(.secondary)
         .padding(.horizontal, Theme.Space.rowLeading).padding(.vertical, Theme.Space.tight)
         .background(.bar)
+        // Measure the header width to initialize and clamp nameW.
+        .background(GeometryReader { geo in
+            Color.clear.onAppear {
+                if nameW == 0 { nameW = initialNameW(totalW: geo.size.width) }
+            }
+            .onChange(of: geo.size.width) { _, w in
+                nameW = max(80, min(nameW, w - minFixedW()))
+            }
+        })
+    }
+
+    // nameW that fills exactly the available width on first layout.
+    // totalW = column header total width (includes .padding(.horizontal, rowLeading)).
+    // Content layout: iconSize + gap(8) + nameW + H1(8) + sizeW + H2(8) + modW + H3(8) + kindW
+    private func initialNameW(totalW: CGFloat) -> CGFloat {
+        let density = app.settings.density
+        let fixed = density.iconSize + Theme.Space.row   // icon spacer + gap spacer
+                  + 3 * Theme.Space.row                  // three handles (H1/H2/H3)
+                  + CGFloat(sizeW + modW + kindW)
+                  + 2 * Theme.Space.rowLeading           // horizontal padding
+        return max(80, totalW - fixed)
+    }
+
+    // Minimum total fixed width — used to clamp nameW when the pane shrinks.
+    private func minFixedW() -> CGFloat {
+        let density = app.settings.density
+        let git: CGFloat = tab.gitStatus.isEmpty ? 0 : CGFloat(gitW) + Theme.Space.row
+        let plugins = CGFloat(visiblePluginCols.count) * (CGFloat(pluginW) + Theme.Space.row)
+        return density.iconSize + Theme.Space.row
+             + 3 * Theme.Space.row
+             + CGFloat(sizeW + modW + kindW)
+             + 2 * Theme.Space.rowLeading
+             + git + plugins + 80   // 80 = minimum nameW
     }
 
     private func headerButton(_ title: String, _ key: SortKey) -> some View {
@@ -421,24 +471,30 @@ struct FileTableView: View {
             // now tints the name instead of the icon so the true icon shows.
             FileIconView(entry: entry, size: density.iconSize)
                 .frame(width: density.iconSize)
-            Text(entry.name)
-                .font(density.rowFont)
-                .foregroundStyle(nameColor(entry))
-                .lineLimit(1)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            if let cloudIcon = iCloudIcon(entry) {
-                Image(systemName: cloudIcon)
-                    .font(.system(size: 10))
-                    .foregroundStyle(.tertiary)
+            // Name cell: filename + optional iCloud badge + color tags — packed into
+            // a single fixed-width frame so the Size column never shifts between rows.
+            HStack(spacing: 2) {
+                Text(entry.name)
+                    .font(density.rowFont)
+                    .foregroundStyle(nameColor(entry))
+                    .lineLimit(1)
+                    .layoutPriority(1)
+                if let cloudIcon = iCloudIcon(entry) {
+                    Image(systemName: cloudIcon)
+                        .font(.system(size: 10))
+                        .foregroundStyle(.tertiary)
+                }
+                ForEach(entry.tags, id: \.name) { tag in
+                    Circle().fill(Color.named(tag.colorName) ?? .secondary)
+                        .frame(width: Theme.Col.tagDot, height: Theme.Col.tagDot)
+                }
             }
-            ForEach(entry.tags, id: \.name) { tag in
-                Circle().fill(Color.named(tag.colorName) ?? .secondary)
-                    .frame(width: Theme.Col.tagDot, height: Theme.Col.tagDot)
-            }
+            .frame(width: max(0, CGFloat(nameW)), alignment: .leading)
+            .clipped()
             Text(entry.isDirectory ? "--" : (entry.size.map(byteString) ?? "--"))
                 .font(.caption.monospaced()).foregroundStyle(.secondary)
                 .frame(width: CGFloat(sizeW), alignment: .trailing)
-            Text(entry.modified.map(Self.dateText) ?? "--")
+            Text(entry.modified.map { modifiedText($0) } ?? "--")
                 .font(.caption.monospaced()).foregroundStyle(.secondary)
                 .frame(width: CGFloat(modW), alignment: .trailing)
             Text(kindText(entry))
@@ -510,11 +566,21 @@ struct FileTableView: View {
 
     static func dateText(_ d: Date) -> String { Self.df.string(from: d) }
     private static let df: DateFormatter = {
-        let f = DateFormatter()
-        f.dateStyle = .short
-        f.timeStyle = .short
-        return f
+        let f = DateFormatter(); f.dateStyle = .short; f.timeStyle = .short; return f
     }()
+
+    // Width-adaptive date for the Modified column — more detail when wider.
+    // Today's files show only the time (same as Finder).
+    private func modifiedText(_ d: Date) -> String {
+        if Calendar.current.isDateInToday(d) { return Self.dfTime.string(from: d) }
+        if modW < 72  { return Self.dfShort.string(from: d) }
+        if modW < 128 { return Self.dfMed.string(from: d) }
+        return Self.dfLong.string(from: d)
+    }
+    private static let dfTime:  DateFormatter = { let f = DateFormatter(); f.dateStyle = .none;   f.timeStyle = .short;  return f }()
+    private static let dfShort: DateFormatter = { let f = DateFormatter(); f.dateStyle = .short;  f.timeStyle = .none;   return f }()
+    private static let dfMed:   DateFormatter = { let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .none;   return f }()
+    private static let dfLong:  DateFormatter = { let f = DateFormatter(); f.dateStyle = .medium; f.timeStyle = .short;  return f }()
     // PERF: one shared formatter — the class method `ByteCountFormatter.string`
     // allocates a formatter per call (perf P2-E).
     private static let bcf: ByteCountFormatter = {
@@ -804,11 +870,17 @@ struct QueueView: View {
 
 // MARK: - Column resize handle
 
+// Incremental-delta model: the handle fires a per-frame delta (pixels dragged
+// since the last event) rather than a cumulative offset. Each callsite owns
+// the clamping logic and can update multiple variables atomically (e.g. grow
+// sizeW while shrinking nameW so the total row width stays constant).
+// coordinateSpace: .global prevents the feedback loop where the handle's own
+// position shift (due to the column resize) corrupts the local-space delta.
 private struct ColResizeHandle: View {
-    @Binding var width: Double
+    let onDelta: (CGFloat) -> Void
     @State private var hovering = false
-    @State private var dragStart: Double = 0
     @State private var dragging = false
+    @State private var lastX: CGFloat = 0
 
     var body: some View {
         ZStack {
@@ -824,19 +896,14 @@ private struct ColResizeHandle: View {
             if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
         }
         .gesture(
-            // .global avoids the feedback loop: as the column resizes the handle
-            // moves in window space, which would corrupt local-space translation.
             DragGesture(minimumDistance: 2, coordinateSpace: .global)
                 .onChanged { v in
-                    if !dragging { dragStart = width; dragging = true }
-                    // Handle sits on the LEFT edge of its column (right boundary of
-                    // the preceding flex/Name area). Drag left = column wider.
-                    width = max(40, dragStart - v.translation.width)
+                    if !dragging { dragging = true; lastX = v.location.x }
+                    let delta = v.location.x - lastX
+                    lastX = v.location.x
+                    onDelta(delta)
                 }
-                .onEnded { v in
-                    width = max(40, dragStart - v.translation.width)
-                    dragging = false
-                }
+                .onEnded { _ in dragging = false }
         )
     }
 }
