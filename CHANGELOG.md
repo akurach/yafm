@@ -8,6 +8,47 @@ the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 _Nothing yet._
 
+## [0.9.3] — Column resize · Sidebar config · Audit fixes
+
+### Added
+- **Finder-style column resize** — drag handles on the right edge of each column
+  header; name column gets the residual width (width-budget model). Widths persisted
+  to `AppSettings` and shared between both panes (fixes A-2/A-6).
+- **Sidebar configurability** — toggles in Settings ▸ General for Favorites, Locations
+  (Computer / Home / iCloud Drive), Devices, Network, Tags. Favorites list is a
+  `Set<SystemFavorite>` stored in `AppSettings` (fixes A-8 boolean explosion for the
+  sidebar section).
+- **Adaptive date format** — modification date shows relative ("Yesterday", "2d ago")
+  for recent files, absolute for older ones; switches to compact on narrow columns.
+- **Crash-safe last folder** (A-10) — `lastFolder` is saved on every navigation, not
+  only on scene-phase change. Crash no longer loses the restore point.
+- **Recent server history** — Connect to Server (⌘⇧K) shows the last 5 addresses.
+- **Plugin description field** in Settings ▸ Plugins (from manifest `description`).
+- **EXIF info plugin** expanded: HIF/HEIF multi-image containers, comprehensive field
+  list (focal length, f-number, exposure, ISO, camera make/model).
+
+### Fixed
+- **PluginValueCache per-context** (S-H3) — `readText` budget now isolated per plugin
+  context; one plugin cannot exhaust the budget of another.
+- **`iCloudDriveURL` dynamic** (S-5) — recomputed on each access instead of a stale
+  `static let`; sidebar updates correctly when iCloud is toggled.
+- **Column widths persist across restarts** — moved from `@State` in view to
+  `AppSettings`; also fixed left/right pane width drift.
+- **Cursor leak fix** — resize `NSCursor.pop()` called on `onDisappear` when hovering
+  (S-4); resize handle hidden while `isHovering == false`.
+- **`TaskCancel` on navigation** — in-flight listing tasks cancelled immediately on
+  `TabModel.open()` so stale results never overwrite the new directory.
+- **`BookmarksSidebar` FileManager calls** moved to `static let` / computed once
+  (A-4 / S-8).
+- **Network volume nav history** preserved — SMB/AFP listing no longer drops `onNavigate`.
+- Bundled plugins (`open-with`, `exif-info`) auto-refresh JS content on version bump
+  while preserving enabled/disabled state.
+
+### Refactored
+- **AppState God Object split** (A-3) — extracted `PluginCoordinator`, `TagCoordinator`,
+  `SearchCoordinator`; `AppState` shrinks 1 467 → 1 062 lines. All three are
+  `@Observable @MainActor`; forwarding wrappers keep view call-sites unchanged.
+
 ## [0.9.2] — Plugin API hardening + iCloud status + ⌘⇧C
 
 ### Added
