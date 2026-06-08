@@ -18,22 +18,36 @@ struct FunctionBarView: View {
     ]
 
     var body: some View {
-        // Falls back to numbers-only when the window is too narrow for labels.
         ViewThatFits(in: .horizontal) {
             bar(compact: false)
             bar(compact: true)
         }
-        .background(.bar)
+        // Slightly darker than chrome so the bottom strip reads as its own zone.
+        .background(FunctionBarBackground())
     }
 
     private func bar(compact: Bool) -> some View {
-        HStack(spacing: 4) {
-            ForEach(Array(keys.enumerated()), id: \.offset) { _, k in
+        HStack(spacing: 0) {
+            ForEach(Array(keys.enumerated()), id: \.offset) { idx, k in
                 FunctionKeyButton(number: k.0, label: k.1, compact: compact) { app.run(k.2) }
+                if idx < keys.count - 1 {
+                    Rectangle()
+                        .fill(Color.primary.opacity(0.10))
+                        .frame(width: 1)
+                }
             }
         }
-        .padding(.horizontal, 6).padding(.vertical, 4)
         .frame(maxWidth: .infinity)
+        .frame(height: 28)
+    }
+}
+
+struct FunctionBarBackground: View {
+    @Environment(\.colorScheme) private var scheme
+    var body: some View {
+        scheme == .dark
+            ? Color(red: 0.090, green: 0.090, blue: 0.098)   // slightly lighter than #111113
+            : Color(red: 0.820, green: 0.820, blue: 0.828)   // #d1d1d3 — darker than chrome
     }
 }
 
@@ -50,14 +64,11 @@ struct FunctionKeyButton: View {
                 Text("F\(number)").font(.caption2.bold()).foregroundStyle(.secondary)
                 if !compact { Text(label).font(.caption) }
             }
-            .padding(.horizontal, Theme.Space.row).padding(.vertical, Theme.Space.tight)
-            .frame(maxWidth: .infinity)
-            .background(
-                RoundedRectangle(cornerRadius: Theme.cornerRadius)
-                    .fill(hover ? Theme.Palette.controlHover : Theme.Palette.controlFill)
-            )
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .background(hover ? Color.primary.opacity(0.10) : Color.clear)
         }
         .buttonStyle(.plain)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onHover { hover = $0 }
     }
 }

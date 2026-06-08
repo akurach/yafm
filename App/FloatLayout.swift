@@ -10,9 +10,9 @@ struct FloatingPanelModifier: ViewModifier {
     func body(content: Content) -> some View {
         let isDark = scheme == .dark
         content
-            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .stroke(Color.primary.opacity(isDark ? 0.14 : 0.10), lineWidth: 1)
             }
             // Light shadow for depth — heavier in dark, lighter in light
@@ -36,7 +36,7 @@ struct ChromeBackground: View {
     var body: some View {
         scheme == .dark
             ? Color(red: 0.067, green: 0.067, blue: 0.075)   // #111113
-            : Color(red: 0.784, green: 0.784, blue: 0.792)   // #c8c8ca — clearly darker than white panels
+            : Color(red: 0.878, green: 0.878, blue: 0.886)   // #e0e0e2 — light chrome per design spec
     }
 }
 
@@ -51,7 +51,7 @@ struct PanelBackground: View {
         case .sidebar:
             scheme == .dark
                 ? Color(red: 0.129, green: 0.129, blue: 0.149)  // #212126
-                : Color(nsColor: .controlBackgroundColor)        // ~#f2f2f2 light
+                : Color(red: 0.918, green: 0.918, blue: 0.925)  // #eaeaec — dusty light gray
         case .panes:
             scheme == .dark
                 ? Color(red: 0.110, green: 0.110, blue: 0.118)  // #1c1c1e

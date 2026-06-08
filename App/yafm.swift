@@ -63,6 +63,18 @@ struct RootView: View {
             // Chrome fills the entire window including the title bar area
             ChromeBackground().ignoresSafeArea()
 
+            // "yafm" title centred in the hidden-titlebar zone (28 pt above safe area)
+            VStack {
+                Text("yafm")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Color.primary.opacity(0.55))
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 28)
+                Spacer()
+            }
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
+
             VStack(spacing: 0) {
                 // Chrome body — 9 pt padding + gap between the two floating panels
                 HStack(alignment: .top, spacing: 9) {

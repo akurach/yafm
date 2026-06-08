@@ -38,9 +38,11 @@ struct BookmarksSidebar: View {
     }
 
     var body: some View {
-        List {
-            if app.settings.sidebarShowFavorites {
-                Section(header: SidebarSectionHeader("Favorites")) {
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(alignment: .leading, spacing: 0) {
+
+                if app.settings.sidebarShowFavorites {
+                    SidebarSectionHeader("Favorites").padding(.horizontal, 10)
                     ForEach(SystemFavorite.allCases) { fav in
                         if app.settings.enabledFavorites.contains(fav) {
                             sysFav(fav.label, fav.systemImage, Self.favURLs[fav] ?? nil)
@@ -59,10 +61,9 @@ struct BookmarksSidebar: View {
                             }
                     }
                 }
-            }
 
-            if app.settings.sidebarShowLocations {
-                Section(header: SidebarSectionHeader("Locations")) {
+                if app.settings.sidebarShowLocations {
+                    SidebarSectionHeader("Locations").padding(.horizontal, 10)
                     if app.settings.locShowComputer {
                         locationRow("Computer", "desktopcomputer", URL(fileURLWithPath: "/"))
                     }
@@ -73,36 +74,36 @@ struct BookmarksSidebar: View {
                         locationRow("iCloud Drive", "cloud", url)
                     }
                 }
-            }
 
-            if app.settings.sidebarShowDevices, !devices.isEmpty {
-                Section(header: SidebarSectionHeader("Devices")) {
+                if app.settings.sidebarShowDevices, !devices.isEmpty {
+                    SidebarSectionHeader("Devices").padding(.horizontal, 10)
                     ForEach(devices) { vol in
                         VolumeRow(app: app, volume: vol,
                                   classification: app.volumeClassifications[vol.url])
+                            .padding(.horizontal, 6)
                     }
                 }
-            }
 
-            if app.settings.sidebarShowNetwork, !networkVolumes.isEmpty {
-                Section(header: SidebarSectionHeader("Network")) {
+                if app.settings.sidebarShowNetwork, !networkVolumes.isEmpty {
+                    SidebarSectionHeader("Network").padding(.horizontal, 10)
                     ForEach(networkVolumes) { vol in
                         VolumeRow(app: app, volume: vol,
                                   classification: app.volumeClassifications[vol.url])
+                            .padding(.horizontal, 6)
                     }
                 }
-            }
 
-            if app.settings.sidebarShowTags, !app.knownTags.isEmpty {
-                Section(header: SidebarSectionHeader("Tags")) {
+                if app.settings.sidebarShowTags, !app.knownTags.isEmpty {
+                    SidebarSectionHeader("Tags").padding(.horizontal, 10)
                     ForEach(app.knownTags, id: \.name) { tag in
                         TagCloudRow(app: app, tag: tag, count: app.tagCounts[tag.name] ?? 0)
+                            .padding(.horizontal, 6)
+                            .frame(height: 30)
                     }
                 }
             }
+            .padding(.vertical, 8)
         }
-        .listStyle(.plain)
-        .scrollContentBackground(.hidden)
         .background(PanelBackground(kind: .sidebar))
         .frame(width: 198)
     }
@@ -157,16 +158,14 @@ struct SidebarRow: View {
                     .padding(.vertical, 4)
             }
             Label(label, systemImage: icon)
-                .font(.system(size: 12.5))
+                .font(.system(size: 14))
                 .foregroundStyle(isActive ? Color.accentColor : .primary)
                 .padding(.leading, 8)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .frame(height: 26)
+                .frame(height: 30)
         }
         .contentShape(Rectangle())
-        .listRowBackground(Color.clear)
-        .listRowSeparator(.hidden)
-        .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
+        .padding(.horizontal, 6)
     }
 }
 

@@ -862,8 +862,8 @@ struct StatusBarView: View {
             Spacer()
         }
         .font(.caption).foregroundStyle(.secondary)
-        .padding(.horizontal, 8).padding(.vertical, 3)
-        .background(.bar)
+        .padding(.horizontal, 8).padding(.vertical, 4)
+        .background(Color.clear)
     }
 }
 
