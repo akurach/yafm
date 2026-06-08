@@ -209,14 +209,13 @@ struct FileTableView: View {
         }
     }
 
-    // Per-pane column widths (State = independent per instance, not shared across panes).
-    // Reasonable default so the Name column is visible on the very first render.
-    // The GeometryReader in columnHeader refines this to exactly fill the pane.
-    @State private var nameW: Double = 200
-    @State private var sizeW: Double = 78
-    @State private var modW: Double = 124
-    @State private var kindW: Double = 92
-    @State private var gitW: Double = 34
+    // Column widths persisted via @AppStorage so they survive relaunches.
+    // Shared between both panes (Total Commander convention — one set of widths).
+    @AppStorage("yafm.col.nameW") private var nameW: Double = 200
+    @AppStorage("yafm.col.sizeW") private var sizeW: Double = 78
+    @AppStorage("yafm.col.modW")  private var modW:  Double = 124
+    @AppStorage("yafm.col.kindW") private var kindW: Double = 92
+    @AppStorage("yafm.col.gitW")  private var gitW:  Double = 34
     @State private var pluginWidths: [String: Double] = [:]
     // Plugin columns filtered to those relevant for the current folder's content.
     @State private var visiblePluginCols: [PluginColumn] = []
@@ -334,6 +333,7 @@ struct FileTableView: View {
                 }
             }
             .onChange(of: tab.displayed) { _, entries in refreshVisiblePluginCols(entries) }
+            .onChange(of: tab.directory) { Self.iCloudCache.removeAll() }
             .onAppear { refreshVisiblePluginCols(tab.displayed) }
         }
     }
@@ -539,7 +539,7 @@ struct FileTableView: View {
 
     // PERF: a `UTType` lookup is a LaunchServices query — caching by extension
     // turns 10k per-render lookups into dictionary hits (perf P1-D).
-    private static var kindCache: [String: String] = [:]
+    @MainActor private static var kindCache: [String: String] = [:]
     private func kindText(_ entry: FSEntry) -> String {
         if entry.isDirectory { return "Folder" }
         let ext = entry.url.pathExtension
@@ -575,15 +575,23 @@ struct FileTableView: View {
     }()
 
     /// SF Symbol name for iCloud sync state, or nil when the file is fully local.
-    /// URLResourceValues for ubiquitous keys is a kernel-cached metadata call — fast.
+    /// Results cached per-URL (main actor only); cleared when directory changes.
+    @MainActor private static var iCloudCache: [URL: String?] = [:]
+
     private func iCloudIcon(_ entry: FSEntry) -> String? {
-        guard !entry.isDirectory else { return nil }
+        if let cached = Self.iCloudCache[entry.url] { return cached }
+        guard !entry.isDirectory else { Self.iCloudCache[entry.url] = nil; return nil }
         let keys: Set<URLResourceKey> = [.ubiquitousItemDownloadingStatusKey]
-        guard let vals = try? entry.url.resourceValues(forKeys: keys),
-              let status = vals.ubiquitousItemDownloadingStatus,
-              status == .notDownloaded
-        else { return nil }
-        return "icloud.and.arrow.down"
+        let result: String?
+        if let vals = try? entry.url.resourceValues(forKeys: keys),
+           let status = vals.ubiquitousItemDownloadingStatus,
+           status == .notDownloaded {
+            result = "icloud.and.arrow.down"
+        } else {
+            result = nil
+        }
+        Self.iCloudCache[entry.url] = result
+        return result
     }
 
     /// Color-coding rule tints the name (the icon now shows the real file type).
@@ -883,6 +891,7 @@ private struct ColResizeHandle: View {
             hovering = inside
             if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
         }
+        .onDisappear { if hovering { NSCursor.pop() } }
         .gesture(
             DragGesture(minimumDistance: 2, coordinateSpace: .global)
                 .onChanged { v in

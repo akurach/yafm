@@ -162,9 +162,7 @@ half-built.
 - [ ] **Sparkle seamless auto-update** — **deferred**: gated on a paid Apple Developer ID cert +
   a hosted, EdDSA-signed appcast (same blocker as DMG notarization). The GitHub-Releases checker
   (v0.2.3) already covers the honest "a newer version exists" notice until then.
-- [ ] **Device detection** (DiskArbitration + IOKit → device-type sidebar icons) — **deferred** to
-  keep v0.6 on the never-freeze pillar; peripheral here, primarily feeds photo-ingest (v0.9).
-  Spec: [`device-detection.md`](docs/feature-requests/device-detection.md).
+- [x] **Device detection** (DiskArbitration + IOKit → device-type sidebar icons) — done in commit 8a2c592: `VolumeDetection.swift` (VolumeInfoCollector + VolumeClassifier), async enrichment in AppState, classification-based icons in VolumeRow.
 
 ## v0.7 — "Remote disks, finally native" (reach + accessibility) ✅ shipped
 
@@ -235,10 +233,9 @@ precompiled `ColorRule` regex + ReDoS length caps; cached `TabModel.displayed`; 
 `TagService.reindex` + persistence + invalidation; FS-detail reads moved into the provider; delete
 progress recurses; +13 tests (cancel/move/rename/recursive/collision/regex/persistence).
 
-Deferred (tracked, not yet done):
-- [ ] **OPS-1** (audit 2026-06-05): `.replace` collision removes the destination *before* writing —
-  a failed/cancelled copy loses both files. Copy to a temp sibling + `replaceItemAt` (atomic swap).
-- [ ] TOCTOU: open copy output with `O_EXCL` instead of exists-check + truncate
+Deferred (tracked, not yet done): — все закрыты в v0.9:
+- [x] **OPS-1** (audit 2026-06-05): atomic replace via temp sibling + `replaceItemAt` — done in `Operations.swift:177–186` (commit 52c8000)
+- [x] TOCTOU: copy output opened with `O_CREAT|O_EXCL|O_NOFOLLOW` — done in `Operations.swift:217–221` (commit 52c8000)
 - [x] Plugin capability boundary enforced (v0.3): JS plugins get only a path-free entry
   snapshot — no `url`/path, FS, network, or process — and each runs in its own `JSContext`.
   `JSPluginHost.snapshot(of:in:)` is the single widening point. `PluginContext.resolve`

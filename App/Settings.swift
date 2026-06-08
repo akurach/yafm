@@ -248,9 +248,12 @@ final class UpdateChecker {
     private let repo = "akurach/yafm"
     private var current: String { Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0" }
 
+    private var checkTask: Task<Void, Never>?
+
     func check() {
+        checkTask?.cancel()
         status = .checking
-        Task {
+        checkTask = Task {
             do {
                 let url = URL(string: "https://api.github.com/repos/\(repo)/releases/latest")!
                 var req = URLRequest(url: url)
@@ -427,7 +430,7 @@ struct SettingsView: View {
         .formStyle(.grouped)
     }
 
-    private func chooseFavorite() {
+    @MainActor private func chooseFavorite() {
         let panel = NSOpenPanel()
         panel.canChooseFiles = false
         panel.canChooseDirectories = true
@@ -511,7 +514,7 @@ struct SettingsView: View {
 
     private var bindable: Bindable<AppSettings> { Bindable(settings) }
 
-    private func chooseStartFolder() {
+    @MainActor private func chooseStartFolder() {
         let panel = NSOpenPanel()
         panel.canChooseDirectories = true
         panel.canChooseFiles = false

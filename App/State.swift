@@ -606,7 +606,8 @@ final class AppState {
         func path(_ name: String) -> URL { dir.appendingPathComponent(name) }
         func missing(_ name: String) -> Bool { !FileManager.default.fileExists(atPath: path(name).path) }
         func write(_ content: String, to name: String) {
-            try? content.write(to: path(name), atomically: true, encoding: .utf8)
+            do { try content.write(to: path(name), atomically: true, encoding: .utf8) }
+            catch { print("[yafm] installBundledPlugins: failed to write \(name): \(error)") }
         }
         func stale(_ name: String, expected: String) -> Bool {
             (try? String(contentsOf: path(name), encoding: .utf8)) != expected
@@ -1061,7 +1062,7 @@ final class AppState {
         case CommandID.reveal: revealInFinder()
         case CommandID.copyPath: copyPath()
         case CommandID.getInfo: showPreview = true; inspectorMode = .info
-        case CommandID.refresh: activeTab.load()
+        case CommandID.refresh: pluginValueCache.invalidate(); activeTab.load()
         case CommandID.quickLook, CommandID.view: QuickLook.toggle(urls: activeTab.actionable.map(\.url))
         case CommandID.edit: editCursor()
         case CommandID.search:

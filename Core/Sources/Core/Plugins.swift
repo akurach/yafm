@@ -413,6 +413,7 @@ public final class JSPluginHost {
             MainActor.assumeIsolated {
                 guard let self,
                       let text = textVal?.toString(), !text.isEmpty,
+                      text.count <= 1_000_000,
                       let handler = self.copyToClipboardHandler
                 else { return }
                 handler(text)
