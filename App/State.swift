@@ -582,30 +582,37 @@ final class AppState {
         loadPlugins()
     }
 
-    /// Drop the example plugin into an empty plugins folder so the runtime has
-    /// something to show — the "drop a file, it works" model, seeded once.
+    /// Seed bundled plugins into the plugins folder. Each plugin is checked
+    /// individually so new plugins land on existing installations without
+    /// overwriting user-modified files.
     private func installBundledPluginsIfNeeded(into dir: URL) {
-        let example = dir.appendingPathComponent("example-kind.js")
+        func missing(_ name: String) -> Bool {
+            !FileManager.default.fileExists(atPath: dir.appendingPathComponent(name).path)
+        }
+        func write(_ content: String, to name: String) {
+            try? content.write(to: dir.appendingPathComponent(name), atomically: true, encoding: .utf8)
+        }
+        // example-kind: seed only when the folder is empty (first run).
         let installed = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
-        let hasJS = installed.contains { $0.hasSuffix(".js") }
-        guard !hasJS, !FileManager.default.fileExists(atPath: example.path) else { return }
-        try? JSPluginHost.exampleColumnPlugin.write(to: example, atomically: true, encoding: .utf8)
-        // Capability plugins ship disabled — user grants in Settings (capability consent).
-        let git = dir.appendingPathComponent("git-branch.js")
-        try? JSPluginHost.gitBranchPlugin.write(to: git, atomically: true, encoding: .utf8)
-        try? JSPluginHost.gitBranchManifest.write(
-            to: dir.appendingPathComponent("git-branch.json"), atomically: true, encoding: .utf8)
-        let openWith = dir.appendingPathComponent("open-with.js")
-        try? JSPluginHost.openWithPlugin.write(to: openWith, atomically: true, encoding: .utf8)
-        try? JSPluginHost.openWithManifest.write(
-            to: dir.appendingPathComponent("open-with.json"), atomically: true, encoding: .utf8)
-        let exifInfo = dir.appendingPathComponent("exif-info.js")
-        try? JSPluginHost.exifInfoPlugin.write(to: exifInfo, atomically: true, encoding: .utf8)
-        try? JSPluginHost.exifInfoManifest.write(
-            to: dir.appendingPathComponent("exif-info.json"), atomically: true, encoding: .utf8)
-        disabledPluginIDs.insert("com.yafm.git-branch")
-        disabledPluginIDs.insert("com.yafm.open-with")
-        disabledPluginIDs.insert("com.yafm.exif-info")
+        if !installed.contains(where: { $0.hasSuffix(".js") }) {
+            write(JSPluginHost.exampleColumnPlugin, to: "example-kind.js")
+        }
+        // Capability plugins: seed individually, ship disabled.
+        if missing("git-branch.js") {
+            write(JSPluginHost.gitBranchPlugin,    to: "git-branch.js")
+            write(JSPluginHost.gitBranchManifest,  to: "git-branch.json")
+            disabledPluginIDs.insert("com.yafm.git-branch")
+        }
+        if missing("open-with.js") {
+            write(JSPluginHost.openWithPlugin,     to: "open-with.js")
+            write(JSPluginHost.openWithManifest,   to: "open-with.json")
+            disabledPluginIDs.insert("com.yafm.open-with")
+        }
+        if missing("exif-info.js") {
+            write(JSPluginHost.exifInfoPlugin,     to: "exif-info.js")
+            write(JSPluginHost.exifInfoManifest,   to: "exif-info.json")
+            disabledPluginIDs.insert("com.yafm.exif-info")
+        }
         UserDefaults.standard.set(Array(disabledPluginIDs), forKey: "disabledPlugins")
     }
 
