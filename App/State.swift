@@ -1,7 +1,6 @@
 import Foundation
 import Observation
 import AppKit
-import ImageIO
 import Core
 
 // MARK: - Tab: one directory view with its own selection & cursor
@@ -365,49 +364,61 @@ final class OperationItem: Identifiable {
 @Observable
 final class AppState {
     // Routed through FileSystemRouter so virtual filesystems (SMB/FTP in v0.7,
-    // archives in v0.8) register by scheme without touching any call site. Today
-    // every URL is local and falls through to LocalFileSystem unchanged.
-    // SMB registered behind the router (v0.7): `smb://` URLs mount natively and
-    // stream like any folder; every other URL still falls through to local.
+    // archives in v0.8) register by scheme without touching any call site.
     let fs: FileSystemProvider = FileSystemRouter()
         .registering(SMBFileSystem(), for: "smb")
         .registering(ArchiveFileSystem(), for: "archive")   // read-only .zip browse (v0.8)
     let tags: TagServing = TagService()
     let engine = FileEngine()
-    let registry = ExtensionRegistry()
-    let volumeService = VolumeService()
     let settings = AppSettings()
     let gitService = GitStatusService()
-    let pluginHost = JSPluginHost()
-    let searchService = SearchService()
+    let volumeService = VolumeService()
 
-    /// Memo for async plugin column values (v0.5 seam). `pluginValuesVersion` is
-    /// observed by the file table and bumped whenever an async value resolves, so
-    /// the affected rows re-render without polling.
-    let pluginValueCache = PluginValueCache()
-    var pluginValuesVersion = 0
+    // MARK: Domain coordinators (A-3: God Object split)
 
-    /// Plugin ids the user disabled in Settings ▸ Plugins (v0.8). Persisted.
-    var disabledPluginIDs: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "disabledPlugins") ?? [])
+    let plugins: PluginCoordinator
+    let tagCloud: TagCoordinator
+    let search: SearchCoordinator
 
-    /// Command palette (⌘K) + shortcut cheat sheet (⌘/) overlay state.
-    var commandPalette = false
-    var cheatSheet = false
+    // MARK: Forwarding accessors — views use app.xxx without knowing the coordinator
 
-    /// Connect-to-Server (⌘⇧K): the smb:// address sheet (v0.7).
-    var connectSheet = false
-    var connectAddress = "smb://"
+    var registry: ExtensionRegistry { plugins.registry }
+    var pluginHost: JSPluginHost { plugins.pluginHost }
+    var pluginValueCache: PluginValueCache { plugins.pluginValueCache }
+    var pluginValuesVersion: Int {
+        get { plugins.pluginValuesVersion }
+        set { plugins.pluginValuesVersion = newValue }
+    }
+    var disabledPluginIDs: Set<String> {
+        get { plugins.disabledPluginIDs }
+        set { plugins.disabledPluginIDs = newValue }
+    }
 
-    /// Find-within-folder (⌘F). v0.6: an *inline* bar (no modal) on the active
-    /// pane. `searchActive` shows/hides it; `searchMode` toggles name vs content
-    /// (grep); `searchRunning` drives the visible "Searching…" state so a long
-    /// content scan never looks frozen.
-    var searchActive = false
-    var searchQuery = ""
-    var searchMode: SearchMode = .name
-    var searchRunning = false
-    var searchHitCount = 0
-    private var searchTask: Task<Void, Never>?
+    var knownTags: [Tag] { tagCloud.knownTags }
+    var tagCounts: [String: Int] { tagCloud.tagCounts }
+
+    var searchActive: Bool {
+        get { search.searchActive }
+        set { search.searchActive = newValue }
+    }
+    var searchQuery: String {
+        get { search.searchQuery }
+        set { search.searchQuery = newValue }
+    }
+    var searchMode: SearchMode {
+        get { search.searchMode }
+        set { search.searchMode = newValue }
+    }
+    var searchRunning: Bool {
+        get { search.searchRunning }
+        set { search.searchRunning = newValue }
+    }
+    var searchHitCount: Int {
+        get { search.searchHitCount }
+        set { search.searchHitCount = newValue }
+    }
+
+    // MARK: Panes
 
     let left: PaneModel
     let right: PaneModel
@@ -425,61 +436,72 @@ final class AppState {
     /// Mounted volumes for the sidebar, kept live via mount/unmount notifications.
     var volumes: [Volume] = []
     /// Async-enriched classification for each mounted volume (keyed by mount URL).
-    /// Nil while enrichment is in flight; sidebar shows basic info until filled.
     var volumeClassifications: [URL: VolumeClassification] = [:]
     @ObservationIgnored private var classificationTasks: [URL: Task<Void, Never>] = [:]
     @ObservationIgnored private let volumeCollector = VolumeInfoCollector()
 
     // Not observed by the UI; `nonisolated(unsafe)` lets the nonisolated deinit
     // remove the tokens. They're only mutated on the main actor during setup and
-    // read in deniit when no other reference survives (H-1).
+    // read in deinit when no other reference survives (H-1).
     @ObservationIgnored nonisolated(unsafe) private var volumeObservers: [NSObjectProtocol] = []
 
-    /// Handles for the fire-and-forget tag tasks so re-entry cancels the prior
-    /// run (H-2): without this, two quick tag-cloud clicks raced and the slower
-    /// one's results clobbered the newer listing.
-    private var openTagTask: Task<Void, Never>?
-    private var refreshTagsTask: Task<Void, Never>?
-    private var indexTask: Task<Void, Never>?
-
-    /// Tag cloud (§5): all known tags + per-tag file counts for the sidebar.
-    var knownTags: [Tag] = []
-    var tagCounts: [String: Int] = [:]
-
-    /// Access onboarding (§6): Full Disk Access state + first-run sheet.
+    /// Access onboarding (§6).
     var hasFullDiskAccess = true
     var showOnboarding = false
     var bannerDismissed = false
     private static let didOnboardKey = "didOnboard"
 
-    // Bulk-rename + tag sheets driven from the UI.
     var renameSheet: Bool = false
 
-    /// Target of the custom tag editor popover/sheet (§context menu "Tags…").
-    /// Wrapped so `.sheet(item:)` has an Identifiable; nil = closed.
     struct TagSheetItem: Identifiable { let url: URL; var id: URL { url } }
     var tagSheet: TagSheetItem?
 
-    /// Internal copy/cut buffer (distinct from NSPasteboard). Paste enqueues a
-    /// copy or move into the active pane's directory.
+    /// Internal copy/cut buffer. Paste enqueues a copy or move.
     var clipboard: (urls: [URL], cut: Bool)?
+
+    // MARK: Command palette / cheat sheet overlay
+
+    var commandPalette = false
+    var cheatSheet = false
+
+    /// Connect-to-Server (⌘⇧K): the smb:// address sheet (v0.7).
+    var connectSheet = false
+    var connectAddress = "smb://"
 
     private static let bookmarksKey = "yafm.customBookmarks"
 
     init() {
+        // Coordinators first — they only need the shared services as init params
+        // and those are set via their inline default initializers before this body runs.
+        let tagsService = tags as TagServing   // capture typed ref before self is available
+        let fsService   = fs  as FileSystemProvider
+        plugins  = PluginCoordinator()
+        tagCloud = TagCoordinator(tags: tagsService, fs: fsService)
+        search   = SearchCoordinator(
+            searchService: SearchService(),
+            fs: fsService,
+            tags: tagsService
+        )
+
         let start = settings.startDirectory()
         let hidden = settings.showHiddenByDefault
-        left = PaneModel(fs: fs, tags: tags, directory: start, showHidden: hidden, git: gitService)
-        right = PaneModel(fs: fs, tags: tags, directory: start, showHidden: hidden, git: gitService)
+        left  = PaneModel(fs: fsService, tags: tagsService, directory: start, showHidden: hidden, git: gitService)
+        right = PaneModel(fs: fsService, tags: tagsService, directory: start, showHidden: hidden, git: gitService)
+
         if let data = UserDefaults.standard.data(forKey: Self.bookmarksKey),
            let saved = try? JSONDecoder().decode([Bookmark].self, from: data) {
             bookmarks = saved
         } else {
             bookmarks = []
         }
-        // Set after full init so [weak self] closure captures a complete object.
+
+        // Post-init: wire closures that need a fully initialised self (Phase 2).
         left.onTabNavigate  = { [weak self] url in self?.onAnyTabNavigate(url) }
         right.onTabNavigate = { [weak self] url in self?.onAnyTabNavigate(url) }
+
+        tagCloud.onReloadActiveTab = { [weak self] in self?.activeTab.load() }
+        tagCloud.activeTabGetter   = { [weak self] in self!.activeTab }
+        search.activeTabGetter     = { [weak self] in self!.activeTab }
     }
 
     var activePane: PaneModel { activePaneIsLeft ? left : right }
@@ -494,8 +516,20 @@ final class AppState {
     /// Called by either pane on any directory navigation.
     /// Clears the readText call budget (S-H3) and saves lastFolder for crash recovery (A-10).
     private func onAnyTabNavigate(_ url: URL) {
-        pluginHost.clearHandles()
+        plugins.pluginHost.clearHandles()
         settings.rememberLastFolder(url)
+    }
+
+    // MARK: Start
+
+    func start() {
+        left.active.load()
+        right.active.load()
+        refreshVolumes()
+        observeVolumes()
+        tagCloud.indexTagsInBackground()
+        checkAccess()
+        plugins.loadPlugins()
     }
 
     // MARK: Favorites (sidebar)
@@ -518,195 +552,43 @@ final class AppState {
         saveBookmarks()
     }
 
-    func start() {
-        left.active.load()
-        right.active.load()
-        refreshVolumes()
-        observeVolumes()
-        indexTagsInBackground()
-        checkAccess()
-        loadPlugins()
-    }
+    // MARK: Plugin forwarding
 
-    // MARK: Plugins (v0.3 Platform)
-
-    /// Install the bundled example on first run, then load every `.js` in the
-    /// plugins folder and register their columns. Reloadable from Settings.
-    func loadPlugins() {
-        guard let dir = JSPluginHost.defaultPluginsDirectory() else { return }
-        installBundledPluginsIfNeeded(into: dir)
-
-        // Wire app-layer handlers so JS plugins can trigger macOS system actions.
-        pluginHost.openInAppHandler = { url, bundleId in
-            // C-1: executable files require explicit user confirmation — same gate
-            // as openFile() — so a plugin can't silently run code via Terminal/osascript.
-            if Self.riskyExtensions.contains(url.pathExtension.lowercased()) {
-                let alert = NSAlert()
-                alert.messageText = "Open potentially unsafe file?"
-                alert.informativeText = "\"\(url.lastPathComponent)\" may run code on your Mac. A plugin requested this action."
-                alert.addButton(withTitle: "Cancel")
-                alert.addButton(withTitle: "Open Anyway")
-                alert.alertStyle = .warning
-                guard alert.runModal() == .alertSecondButtonReturn else { return }
-            }
-            guard let appURL = NSWorkspace.shared.urlForApplication(withBundleIdentifier: bundleId) else { return }
-            NSWorkspace.shared.open([url], withApplicationAt: appURL,
-                                    configuration: .init(), completionHandler: nil)
-        }
-        pluginHost.copyToClipboardHandler = { text in
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(text, forType: .string)
-        }
-        pluginHost.copyPathHandler = { url in
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(url.path, forType: .string)
-        }
-        pluginHost.readEXIFHandler = Self.readEXIF(from:)
-
-        registry.removePluginColumns(idPrefix: JSPluginHost.columnIDPrefix)
-        pluginValueCache.invalidate()   // stale async values must not survive a reload
-        pluginHost.disabledIDs = disabledPluginIDs   // user toggles in Settings
-        for column in pluginHost.loadPlugins(from: dir) {
-            registry.register(pluginColumn: column)
-        }
-    }
-
-    /// Reads EXIF/IPTC metadata from an image URL using ImageIO (no pixel decode).
-    private static func readEXIF(from url: URL) -> [String: Any]? {
-        guard let src = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
-        // For multi-image HEIF containers (e.g. Sony .HIF) CGImageSourceCopyPropertiesAtIndex
-        // at index 0 may return nil — fall back to container-level properties.
-        let props = (CGImageSourceCopyPropertiesAtIndex(src, 0, nil)
-                  ?? CGImageSourceCopyProperties(src, nil)) as? [String: Any]
-        guard let props else { return nil }
-
-        var result: [String: Any] = [:]
-        if let w = props[kCGImagePropertyPixelWidth as String]  { result["width"]  = w }
-        if let h = props[kCGImagePropertyPixelHeight as String] { result["height"] = h }
-
-        if let exif = props[kCGImagePropertyExifDictionary as String] as? [String: Any] {
-            if let d   = exif[kCGImagePropertyExifDateTimeOriginal as String] { result["dateOriginal"] = d }
-            if let iso = (exif[kCGImagePropertyExifISOSpeedRatings as String] as? [Int])?.first { result["iso"] = iso }
-            if let f   = exif[kCGImagePropertyExifFocalLength as String]    { result["focalLength"] = f }
-            if let fn  = exif[kCGImagePropertyExifFNumber as String]        { result["fNumber"] = fn }
-            if let exp = exif[kCGImagePropertyExifExposureTime as String]   { result["exposureTime"] = exp }
-        }
-        if let tiff = props[kCGImagePropertyTIFFDictionary as String] as? [String: Any] {
-            if let make  = tiff[kCGImagePropertyTIFFMake as String]  as? String { result["make"]  = make }
-            if let model = tiff[kCGImagePropertyTIFFModel as String] as? String { result["model"] = model }
-        }
-        // GPS coordinates excluded: a plugin with read:exif + contribute:action
-        // could silently copy location data to the clipboard without explicit consent.
-        // A future read:exif:gps capability will gate this separately.
-        return result.isEmpty ? nil : result
-    }
-
-    /// Plugins present on disk (enabled or not) for Settings ▸ Plugins, each with
-    /// its manifest (nil = compute-only `.js`) and current enable state.
+    func loadPlugins()    { plugins.loadPlugins() }
+    func revealPluginsFolder() { plugins.revealPluginsFolder() }
     func availablePlugins() -> [(id: String, name: String, manifest: PluginManifest?, enabled: Bool)] {
-        guard let dir = JSPluginHost.defaultPluginsDirectory() else { return [] }
-        return pluginHost.discoverPlugins(in: dir).map {
-            ($0.id, $0.name, $0.manifest, !disabledPluginIDs.contains($0.id))
-        }
+        plugins.availablePlugins()
     }
+    func setPlugin(_ id: String, enabled: Bool) { plugins.setPlugin(id, enabled: enabled) }
+    func pluginCommands()  -> [(id: String, title: String)] { plugins.pluginCommands() }
+    func pluginMenuItems() -> [(id: String, title: String)] { plugins.pluginMenuItems() }
+    func runPluginMenuItem(_ id: String, on entry: FSEntry) { plugins.runPluginMenuItem(id, on: entry) }
 
-    /// Enable/disable a plugin by id; persists and reloads so columns/commands
-    /// appear or vanish immediately.
-    func setPlugin(_ id: String, enabled: Bool) {
-        if enabled { disabledPluginIDs.remove(id) } else { disabledPluginIDs.insert(id) }
-        UserDefaults.standard.set(Array(disabledPluginIDs), forKey: "disabledPlugins")
-        loadPlugins()
+    // MARK: Tag forwarding
+
+    func refreshTags()              { tagCloud.refreshTags() }
+    func rescanTags()               { tagCloud.rescanTags() }
+    func clearTags()                { tagCloud.clearTags() }
+    func renameTag(_ old: String, to new: String) { tagCloud.renameTag(old, to: new) }
+    func deleteTag(_ name: String)  { tagCloud.deleteTag(name) }
+    func recolorTag(_ name: String, colorIndex: Int?) { tagCloud.recolorTag(name, colorIndex: colorIndex) }
+    func promptRenameTag(_ tag: Tag) { tagCloud.promptRenameTag(tag) }
+    func promptDeleteTag(_ tag: Tag) { tagCloud.promptDeleteTag(tag) }
+    func openTag(_ tag: Tag)        { tagCloud.openTag(tag) }
+    func toggleColorTag(name: String, colorIndex: Int, on entry: FSEntry) {
+        tagCloud.toggleColorTag(name: name, colorIndex: colorIndex, on: entry)
     }
+    func addTag(_ name: String, on entry: FSEntry) { tagCloud.addTag(name, on: entry) }
+    func writeTags(_ newTags: [Tag], on url: URL)  { tagCloud.writeTags(newTags, on: url) }
+    func currentTags(of url: URL) async -> [Tag]   { await tagCloud.currentTags(of: url) }
+    func promptNewTag(on entry: FSEntry)            { tagCloud.promptNewTag(on: entry) }
 
-    /// Seed bundled plugins into the plugins folder. Each plugin is checked
-    /// individually — new plugins land on existing installs without clobbering
-    /// user files. Bundled JS is refreshed when content changes (e.g. adding
-    /// new file-type support) without touching the enabled/disabled state.
-    private func installBundledPluginsIfNeeded(into dir: URL) {
-        func path(_ name: String) -> URL { dir.appendingPathComponent(name) }
-        func missing(_ name: String) -> Bool { !FileManager.default.fileExists(atPath: path(name).path) }
-        func write(_ content: String, to name: String) {
-            do { try content.write(to: path(name), atomically: true, encoding: .utf8) }
-            catch { print("[yafm] installBundledPlugins: failed to write \(name): \(error)") }
-        }
-        func stale(_ name: String, expected: String) -> Bool {
-            (try? String(contentsOf: path(name), encoding: .utf8)) != expected
-        }
-        // example-kind: seed only on first run (empty folder).
-        let installed = (try? FileManager.default.contentsOfDirectory(atPath: dir.path)) ?? []
-        if !installed.contains(where: { $0.hasSuffix(".js") }) {
-            write(JSPluginHost.exampleColumnPlugin, to: "example-kind.js")
-        }
-        // Capability plugins: seed when missing (disabled); silently refresh JS
-        // when bundled content changed — manifest and enabled state are preserved.
-        if missing("git-branch.js") {
-            write(JSPluginHost.gitBranchPlugin,   to: "git-branch.js")
-            write(JSPluginHost.gitBranchManifest, to: "git-branch.json")
-            disabledPluginIDs.insert("com.yafm.git-branch")
-        } else if stale("git-branch.js", expected: JSPluginHost.gitBranchPlugin) {
-            write(JSPluginHost.gitBranchPlugin,   to: "git-branch.js")
-        }
-        if missing("open-with.js") {
-            write(JSPluginHost.openWithPlugin,    to: "open-with.js")
-            write(JSPluginHost.openWithManifest,  to: "open-with.json")
-            disabledPluginIDs.insert("com.yafm.open-with")
-        } else if stale("open-with.js", expected: JSPluginHost.openWithPlugin) {
-            write(JSPluginHost.openWithPlugin,    to: "open-with.js")
-        }
-        if missing("exif-info.js") {
-            write(JSPluginHost.exifInfoPlugin,    to: "exif-info.js")
-            write(JSPluginHost.exifInfoManifest,  to: "exif-info.json")
-            disabledPluginIDs.insert("com.yafm.exif-info")
-        } else if stale("exif-info.js", expected: JSPluginHost.exifInfoPlugin) {
-            write(JSPluginHost.exifInfoPlugin,    to: "exif-info.js")
-        }
-        UserDefaults.standard.set(Array(disabledPluginIDs), forKey: "disabledPlugins")
-    }
+    // MARK: Search forwarding
 
-    /// Open the plugins folder in Finder (Settings affordance).
-    func revealPluginsFolder() {
-        guard let dir = JSPluginHost.defaultPluginsDirectory() else { return }
-        NSWorkspace.shared.activateFileViewerSelecting([dir])
-    }
+    func runSearch(_ query: String) { search.runSearch(query) }
+    func cancelSearch()             { search.cancelSearch() }
 
-    // MARK: Search (v0.3 Platform)
-
-    /// Find-within-folder: search the active tab's directory and show the hits as
-    /// a virtual listing (like the tag cloud). Spotlight with our own fallback.
-    func runSearch(_ query: String) {
-        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !q.isEmpty else { return }
-        let dir = activeTab.directory
-        let tab = activeTab
-        let mode = searchMode
-        searchTask?.cancel()
-        searchRunning = true
-        searchHitCount = 0
-        let label = mode == .content ? "Contents: \(q)" : "Search: \(q)"
-        tab.beginVirtual(title: label, origin: dir)
-        searchTask = Task { [weak self] in
-            guard let self else { return }
-            var entries: [FSEntry] = []
-            // Consume the stream: each hit arrives as it's found, so results fill
-            // progressively and cancellation (a new search / Esc) stops the walk.
-            for await url in self.searchService.searchStream(q, in: dir, mode: mode) {
-                if Task.isCancelled { self.searchRunning = false; return }
-                guard var e = try? await self.fs.metadata(of: url) else { continue }
-                e.tags = await self.tags.tags(of: url)
-                entries.append(e)
-                self.searchHitCount = entries.count
-                if entries.count % 32 == 0 { tab.appendVirtual(entries) }
-            }
-            if Task.isCancelled { self.searchRunning = false; return }
-            tab.appendVirtual(entries)
-            self.searchRunning = false
-        }
-    }
-
-    /// Open an `smb://` (or any) address in the active pane. The router sends it
-    /// to the SMB provider, which mounts natively and streams like a folder; a
-    /// failed connect shows as a `.failed` listing (the unified state-view), not
-    /// a freeze. nil/garbage addresses are ignored.
+    /// Open an `smb://` (or any) network address in the active pane.
     func connectToServer(_ address: String) {
         let trimmed = address.trimmingCharacters(in: .whitespacesAndNewlines)
         let allowed: Set<String> = ["smb", "ftp", "sftp", "nfs", "afp", "dav", "davs"]
@@ -720,16 +602,8 @@ final class AppState {
         activeTab.open(url)
     }
 
-    /// Cancel an in-flight search and hide the inline bar.
-    func cancelSearch() {
-        searchTask?.cancel()
-        searchRunning = false
-        searchActive = false
-    }
+    // MARK: Share / AirDrop
 
-    // MARK: Share / AirDrop (v0.3 Platform)
-
-    /// Share services available for a selection (includes AirDrop when reachable).
     func sharingServices(for urls: [URL]) -> [NSSharingService] {
         NSSharingService.sharingServices(forItems: urls)
     }
@@ -739,8 +613,6 @@ final class AppState {
         service.perform(withItems: urls)
     }
 
-    /// Show the system share picker on demand (so the row menu doesn't enumerate
-    /// share services for every row up front — that was a big-folder freeze).
     func sharePicker(for urls: [URL]) {
         guard !urls.isEmpty, let window = NSApp.keyWindow, let content = window.contentView else { return }
         let picker = NSSharingServicePicker(items: urls)
@@ -756,17 +628,15 @@ final class AppState {
         volumes = volumeService.mountedVolumes()
         let curr = Set(volumes.map(\.url))
 
-        // Cancel and drop enrichment for unmounted volumes.
         for url in prev.subtracting(curr) {
             classificationTasks[url]?.cancel()
             classificationTasks.removeValue(forKey: url)
             volumeClassifications.removeValue(forKey: url)
         }
 
-        // Enrich new (or not-yet-classified) volumes off the main actor.
         for vol in volumes where volumeClassifications[vol.url] == nil
                               && classificationTasks[vol.url] == nil {
-            let collector = volumeCollector   // capture struct value, Sendable
+            let collector = volumeCollector
             let v = vol
             classificationTasks[vol.url] = Task.detached { [weak self] in
                 let c = collector.collect(volume: v)
@@ -776,8 +646,6 @@ final class AppState {
         }
     }
 
-    /// Live updates: NSWorkspace posts mount/unmount on the main thread, so the
-    /// closures touch main-actor state directly.
     private func observeVolumes() {
         guard volumeObservers.isEmpty else { return }
         let nc = NSWorkspace.shared.notificationCenter
@@ -788,8 +656,6 @@ final class AppState {
         ]
         for name in names {
             let token = nc.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in
-                // Hop to the main actor explicitly rather than asserting it —
-                // robust under Swift 6 even if the queue contract changes (H-3).
                 Task { @MainActor in self?.refreshVolumes() }
             }
             volumeObservers.append(token)
@@ -797,16 +663,12 @@ final class AppState {
     }
 
     deinit {
-        // Tokens were registered on NSWorkspace's notification center; removing
-        // them is thread-safe, so this is fine from a nonisolated deinit (H-1).
         let nc = NSWorkspace.shared.notificationCenter
         for token in volumeObservers { nc.removeObserver(token) }
         for task in classificationTasks.values { task.cancel() }
     }
 
     func eject(_ volume: Volume) {
-        // Navigate any tab whose directory is on this volume to Home first;
-        // otherwise yafm itself causes the -47 "busy" error.
         let home = FileManager.default.homeDirectoryForCurrentUser
         let volPath = volume.url.standardizedFileURL.path
         for pane in [left, right] {
@@ -819,7 +681,6 @@ final class AppState {
         } catch {
             let volName = volume.name
             let volURL  = volume.url
-            // Run lsof in background, then show alert with who's holding the volume.
             Task { @MainActor in
                 let procs = await Self.busyProcesses(on: volURL, timeout: 3)
                 let alert = NSAlert()
@@ -837,7 +698,6 @@ final class AppState {
         refreshVolumes()
     }
 
-    /// Run `lsof +D path` with a timeout and return unique "AppName (PID)" strings.
     private static func busyProcesses(on url: URL, timeout: Double) async -> [String] {
         await withCheckedContinuation { cont in
             DispatchQueue.global(qos: .userInitiated).async {
@@ -859,8 +719,6 @@ final class AppState {
 
                 let raw = String(data: out.fileHandleForReading.readDataToEndOfFile(),
                                  encoding: .utf8) ?? ""
-                // lsof columns: COMMAND PID USER FD ...
-                // Friendly display names for daemon noise.
                 let friendly: [String: String] = [
                     "mds": "Spotlight (mds)",
                     "mds_stores": "Spotlight indexer",
@@ -883,154 +741,13 @@ final class AppState {
         }
     }
 
-    // MARK: Tag cloud (§5)
-
-    /// Refresh the sidebar tag cloud: known tags + per-tag counts.
-    func refreshTags() {
-        refreshTagsTask?.cancel()
-        refreshTagsTask = Task { [weak self] in
-            guard let self else { return }
-            let all = await self.tags.allKnownTags()
-            if Task.isCancelled { return }
-            var counts: [String: Int] = [:]
-            for t in all { counts[t.name] = await self.tags.entries(taggedWith: t).count }
-            if Task.isCancelled { return }
-            self.knownTags = all
-            self.tagCounts = counts
-        }
-    }
-
-    /// Load the persisted index, populate from Home in the background so the
-    /// cloud isn't empty on a cold start, refresh the sidebar, then persist.
-    private func indexTagsInBackground() {
-        indexTask?.cancel()
-        indexTask = Task { [weak self] in
-            guard let self else { return }
-            await self.tags.loadPersisted()
-            self.refreshTags()   // show whatever persisted immediately
-            await self.tags.index(roots: [FileManager.default.homeDirectoryForCurrentUser])
-            if Task.isCancelled { return }
-            self.refreshTags()
-            await self.tags.persist()
-        }
-    }
-
-    /// Settings → Tags → Rescan: rebuild the index from Home, refresh, persist.
-    func rescanTags() {
-        indexTask?.cancel()
-        indexTask = Task { [weak self] in
-            guard let self else { return }
-            await self.tags.index(roots: [FileManager.default.homeDirectoryForCurrentUser])
-            if Task.isCancelled { return }
-            self.refreshTags()
-            await self.tags.persist()
-        }
-    }
-
-    /// Settings → Tags → Clear: drop the in-memory index (xattrs untouched).
-    func clearTags() {
-        Task { [weak self] in
-            guard let self else { return }
-            await self.tags.clear()
-            self.refreshTags()
-        }
-    }
-
-    /// Tag manager (Settings → Tags): rename / delete / recolor a tag across
-    /// every file that carries it, then persist, refresh the cloud, and reload
-    /// the visible listing so the change shows immediately.
-    func renameTag(_ old: String, to new: String) {
-        Task { [weak self] in
-            guard let self else { return }
-            _ = await self.tags.renameTag(old, to: new)
-            await self.tags.persist()
-            self.refreshTags()
-            self.activeTab.load()
-        }
-    }
-
-    func deleteTag(_ name: String) {
-        Task { [weak self] in
-            guard let self else { return }
-            _ = await self.tags.deleteTag(name)
-            await self.tags.persist()
-            self.refreshTags()
-            self.activeTab.load()
-        }
-    }
-
-    func recolorTag(_ name: String, colorIndex: Int?) {
-        Task { [weak self] in
-            guard let self else { return }
-            _ = await self.tags.recolorTag(name, colorIndex: colorIndex)
-            await self.tags.persist()
-            self.refreshTags()
-            self.activeTab.load()
-        }
-    }
-
-    /// NSAlert prompt to rename a tag (Settings affordance).
-    func promptRenameTag(_ tag: Tag) {
-        let alert = NSAlert()
-        alert.messageText = "Rename Tag"
-        alert.informativeText = "Rename \"\(tag.name)\" on every file that carries it."
-        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
-        field.stringValue = tag.name
-        alert.accessoryView = field
-        alert.addButton(withTitle: "Rename")
-        alert.addButton(withTitle: "Cancel")
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        let new = field.stringValue.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !new.isEmpty, new != tag.name else { return }
-        renameTag(tag.name, to: new)
-    }
-
-    /// Confirm + delete a tag from every file.
-    func promptDeleteTag(_ tag: Tag) {
-        let alert = NSAlert()
-        alert.alertStyle = .warning
-        alert.messageText = "Delete tag \"\(tag.name)\"?"
-        alert.informativeText = "Removes it from every file that carries it (\(tagCounts[tag.name] ?? 0)). The files themselves are untouched."
-        alert.addButton(withTitle: "Delete")
-        alert.addButton(withTitle: "Cancel")
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        deleteTag(tag.name)
-    }
-
-    /// Click a tag → stream every file carrying it into a virtual listing, so a
-    /// large tag doesn't block on building the whole array first (was: built
-    /// synchronously, no streaming). Re-entry cancels the prior open (H-2).
-    func openTag(_ tag: Tag) {
-        openTagTask?.cancel()
-        let targetTab = activeTab
-        openTagTask = Task { [weak self] in
-            guard let self else { return }
-            let urls = await self.tags.entries(taggedWith: tag)
-            targetTab.beginVirtual(title: "Tag: \(tag.name)")
-            var entries: [FSEntry] = []
-            for url in urls {
-                if Task.isCancelled { return }
-                guard var e = try? await self.fs.metadata(of: url) else { continue }
-                e.tags = await self.tags.tags(of: url)
-                entries.append(e)
-                // Flush in small batches so the list fills progressively.
-                if entries.count % 64 == 0 { targetTab.appendVirtual(entries) }
-            }
-            if Task.isCancelled { return }
-            targetTab.appendVirtual(entries)
-        }
-    }
-
     // MARK: Access onboarding (§6)
 
-    /// Detect Full Disk Access by probing a TCC-protected path. Shows the
-    /// first-run onboarding sheet once; the banner stays until access is granted.
     func checkAccess() {
         if !UserDefaults.standard.bool(forKey: Self.didOnboardKey) {
             showOnboarding = true
         }
-        // PERF: the TCC probe does a synchronous open() that can stall on a slow
-        // home dir — run it off the main actor and apply the result back (P2-10).
+        // PERF: the TCC probe does a synchronous open() — run off main actor (P2-10).
         Task { [weak self] in
             let granted = await Task.detached(priority: .userInitiated) { AppState.hasFullDiskAccess() }.value
             self?.hasFullDiskAccess = granted
@@ -1042,15 +759,12 @@ final class AppState {
         showOnboarding = false
     }
 
-    /// Open System Settings → Privacy & Security → Full Disk Access.
     func openFullDiskAccessSettings() {
         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_AllFilesAccess") {
             NSWorkspace.shared.open(url)
         }
     }
 
-    /// FDA can't be queried directly — probe a TCC-protected file. A readable
-    /// `TCC.db` means access is granted; EPERM means it isn't.
     nonisolated static func hasFullDiskAccess() -> Bool {
         let home = FileManager.default.homeDirectoryForCurrentUser
         let probe = home.appendingPathComponent("Library/Application Support/com.apple.TCC/TCC.db")
@@ -1085,41 +799,22 @@ final class AppState {
         case CommandID.reveal: revealInFinder()
         case CommandID.copyPath: copyPath()
         case CommandID.getInfo: showPreview = true; inspectorMode = .info
-        case CommandID.refresh: pluginValueCache.invalidate(); activeTab.load()
+        case CommandID.refresh: plugins.pluginValueCache.invalidate(); activeTab.load()
         case CommandID.quickLook, CommandID.view: QuickLook.toggle(urls: activeTab.actionable.map(\.url))
         case CommandID.edit: editCursor()
         case CommandID.search:
-            // Toggle the inline bar; opening it focuses the field (handled in the
-            // view). A second ⌘F while open closes it and any running search.
-            if searchActive { cancelSearch() } else { searchActive = true }
+            if search.searchActive { search.cancelSearch() } else { search.searchActive = true }
         case CommandID.commandPalette: commandPalette = true
         case CommandID.cheatSheet: cheatSheet = true
         case CommandID.connectServer: connectAddress = "smb://"; connectSheet = true
         case CommandID.nextTab: activePane.cycleTab(by: 1)
         case CommandID.prevTab: activePane.cycleTab(by: -1)
-        // JS-contributed commands (v0.8) dispatch to the host by id prefix.
         case let cmd where cmd.hasPrefix(JSPluginHost.commandIDPrefix):
-            pluginHost.runCommand(cmd)
+            plugins.pluginHost.runCommand(cmd)
         default: break
         }
     }
 
-    /// JS plugin commands for the palette / pane menu (v0.8).
-    func pluginCommands() -> [(id: String, title: String)] {
-        pluginHost.commands.map { ($0.id, $0.title) }
-    }
-
-    /// JS plugin context-menu items; running one targets the given entry.
-    func pluginMenuItems() -> [(id: String, title: String)] {
-        pluginHost.menuItems.map { ($0.id, $0.title) }
-    }
-
-    func runPluginMenuItem(_ id: String, on entry: FSEntry) {
-        pluginHost.runMenuItem(id, on: entry)
-    }
-
-    /// `allowFileOpen: false` makes the action enter folders only and ignore
-    /// files — that's the → (right arrow) default, gated by the setting.
     func openCursor(allowFileOpen: Bool = true) {
         guard let entry = activeTab.actionable.first ?? activeTab.displayed.first(where: { $0.url == activeTab.cursor }) else { return }
         if entry.isDirectory { activeTab.open(entry.url) }
@@ -1127,13 +822,11 @@ final class AppState {
         else if allowFileOpen { openFile(entry.url) }
     }
 
-    /// Open a `.zip` as a read-only browsable archive in the active tab (v0.8).
     func browseArchive(_ zip: URL) {
         guard let url = ArchiveLocation.url(zip: zip, inner: "") else { return }
         activeTab.open(url)
     }
 
-    /// → key: enter folders always; open files only if the setting allows it.
     func enterCursor() { openCursor(allowFileOpen: settings.rightArrowOpensFiles) }
 
     // MARK: File operations
@@ -1146,39 +839,31 @@ final class AppState {
         runTask(task) { [weak self] in
             self?.inactivePane.active.load()
             if case .move = kind {
-                self?.forgetTagged(sources)   // sources left their old paths
+                self?.tagCloud.forgetTagged(sources)
                 self?.activeTab.load()
             }
         }
     }
 
-    /// Drag-and-drop landing (v0.5): copy (or move, when ⌘ is held) explicit
-    /// source URLs into `destination`. Distinct from `enqueue`, which derives
-    /// sources from the active selection — a drop carries its own payload and a
-    /// target folder that may not be the active pane. No-ops a self-drop (source
-    /// already in destination) and a drop of a folder onto itself.
     func dropEntries(_ sources: [URL], onto destination: URL, move: Bool) {
         let dest = destination.standardizedFileURL
         let filtered = sources.map { $0.standardizedFileURL }.filter { src in
-            src != dest                                            // onto itself
-            && src.deletingLastPathComponent().standardizedFileURL != dest  // already here
+            src != dest
+            && src.deletingLastPathComponent().standardizedFileURL != dest
         }
         guard !filtered.isEmpty else { return }
         let task = OperationTask(kind: move ? .move : .copy, sources: filtered,
                                  destination: dest, collision: settings.collisionDefault)
         runTask(task) { [weak self] in
             guard let self else { return }
-            // Reload any visible tab showing the destination or a moved-from dir.
             let touched = Set([dest] + (move ? filtered.map { $0.deletingLastPathComponent().standardizedFileURL } : []))
             for pane in [self.left, self.right] {
                 if touched.contains(pane.active.directory.standardizedFileURL) { pane.active.load() }
             }
-            if move { self.forgetTagged(filtered) }
+            if move { self.tagCloud.forgetTagged(filtered) }
         }
     }
 
-    /// Move to Trash (recoverable) — the default destructive action (F8). No
-    /// confirm needed since it's undoable from Finder's Trash.
     func enqueueTrash() {
         let sources = activeTab.actionable.map(\.url)
         guard !sources.isEmpty else { return }
@@ -1189,7 +874,7 @@ final class AppState {
             }
         }
         if !trashed.isEmpty {
-            forgetTagged(trashed)
+            tagCloud.forgetTagged(trashed)
             activeTab.load()
         }
     }
@@ -1210,18 +895,8 @@ final class AppState {
         }
         let task = OperationTask(kind: .delete, sources: sources)
         runTask(task) { [weak self] in
-            self?.forgetTagged(sources)   // deleted paths must leave the index
+            self?.tagCloud.forgetTagged(sources)
             self?.activeTab.load()
-        }
-    }
-
-    /// Drop moved/renamed/deleted URLs from the tag index so the cloud counts and
-    /// "everything tagged X" listings don't point at paths that no longer exist.
-    private func forgetTagged(_ urls: [URL]) {
-        Task { [weak self] in
-            guard let self else { return }
-            for url in urls { await self.tags.forget(url) }
-            self.refreshTags()
         }
     }
 
@@ -1231,29 +906,17 @@ final class AppState {
     }
 
     func rename(entry: FSEntry, to newName: String) {
-        // Must be a plain leaf name — reject path traversal ("../etc/passwd").
         guard !newName.isEmpty, !newName.contains("/"), !newName.contains("\0"),
               newName != ".", newName != ".." else { return }
         let task = OperationTask(kind: .rename(to: newName), sources: [entry.url])
         runTask(task) { [weak self] in
-            self?.forgetTagged([entry.url])   // the old leaf name is gone
+            self?.tagCloud.forgetTagged([entry.url])
             self?.activeTab.load()
         }
     }
 
-    /// Extensions that may execute code — shared by openFile, editCursor, and the
-    /// plugin openInApp handler so the gate can never drift between call sites.
-    static let riskyExtensions: Set<String> = [
-        "sh", "command", "zsh", "bash",
-        "scpt", "applescript", "workflow",
-        "app", "term", "tool", "action",
-        "pkg", "mpkg",
-    ]
-
-    /// Open a file in its default app, confirming first for executable/script
-    /// types (this app is non-sandboxed with full disk access).
     func openFile(_ url: URL) {
-        if Self.riskyExtensions.contains(url.pathExtension.lowercased()) {
+        if PluginCoordinator.riskyExtensions.contains(url.pathExtension.lowercased()) {
             let alert = NSAlert()
             alert.messageText = "Open \"\(url.lastPathComponent)\"?"
             alert.informativeText = "This may run code on your Mac."
@@ -1264,8 +927,6 @@ final class AppState {
         NSWorkspace.shared.open(url)
     }
 
-    /// F4 Edit — open the cursor file in its default app for editing. (A
-    /// user-assignable editor comes later; for now this is the system handler.)
     func editCursor() {
         guard let entry = activeTab.actionable.first, !entry.isDirectory else { return }
         openFile(entry.url)
@@ -1273,8 +934,6 @@ final class AppState {
 
     // MARK: Context-menu commands (v0.2.1)
 
-    /// Right-clicking a row outside the current selection acts on that row only.
-    /// Mirror Finder: focus it (and its pane) before the menu's items run.
     func focusContextTarget(_ entry: FSEntry, in tab: TabModel) {
         if !tab.selection.contains(entry.url) {
             tab.selection = [entry.url]
@@ -1292,13 +951,11 @@ final class AppState {
     func paste() {
         guard let clip = clipboard, !clip.urls.isEmpty else { return }
         let dest = activeTab.directory
-        // Consume a cut immediately so a second ⌘V can't double-move it (H-6);
-        // the clipboard isn't needed once the task is enqueued.
         if clip.cut { clipboard = nil }
         let task = OperationTask(kind: clip.cut ? .move : .copy, sources: clip.urls, destination: dest,
                                  collision: settings.collisionDefault)
         runTask(task) { [weak self] in
-            if clip.cut { self?.forgetTagged(clip.urls) }   // moved out of source
+            if clip.cut { self?.tagCloud.forgetTagged(clip.urls) }
             self?.activeTab.load()
         }
     }
@@ -1314,13 +971,10 @@ final class AppState {
         alert.addButton(withTitle: "Cancel")
         guard alert.runModal() == .alertFirstButtonReturn else { return }
         let name = field.stringValue
-        // Reject empty + path traversal — must be a plain leaf name.
         guard !name.isEmpty, !name.contains("/"), !name.contains("\0"),
               name != ".", name != ".." else { return }
         let url = parent.appendingPathComponent(name, isDirectory: true)
         do {
-            // Route mkdir through the engine so all mutating FS work lives in
-            // one place rather than calling FileManager directly from the UI.
             try engine.makeDirectory(at: url)
             activeTab.load()
             activeTab.cursor = url
@@ -1347,13 +1001,11 @@ final class AppState {
 
     // MARK: Open With
 
-    /// Application handlers for a file, from LaunchServices (macOS 12+).
     func applications(for url: URL) -> [URL] {
         NSWorkspace.shared.urlsForApplications(toOpen: url)
     }
 
     func openFile(_ url: URL, withApplication appURL: URL) {
-        // Surface launch failures instead of swallowing them (H-5).
         NSWorkspace.shared.open([url], withApplicationAt: appURL,
                                 configuration: NSWorkspace.OpenConfiguration()) { _, error in
             guard let error else { return }
@@ -1361,7 +1013,6 @@ final class AppState {
         }
     }
 
-    /// "Other…" — pick an app from /Applications and open the file with it.
     func openWithOther(_ url: URL) {
         let panel = NSOpenPanel()
         panel.directoryURL = URL(fileURLWithPath: "/Applications")
@@ -1371,62 +1022,7 @@ final class AppState {
         openFile(url, withApplication: app)
     }
 
-    // MARK: Tags (color toggles + free tag; full editor in §5)
-
-    func toggleColorTag(name: String, colorIndex: Int, on entry: FSEntry) {
-        Task { [weak self] in
-            guard let self else { return }
-            var current = await self.tags.tags(of: entry.url)
-            if let i = current.firstIndex(where: { $0.name == name }) {
-                current.remove(at: i)
-            } else {
-                current.append(Tag(name: name, colorIndex: colorIndex))
-            }
-            try? await self.tags.setTags(current, on: entry.url)
-            self.activeTab.load()
-            self.refreshTags()
-        }
-    }
-
-    func addTag(_ name: String, on entry: FSEntry) {
-        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty, !trimmed.contains("\n") else { return }
-        Task { [weak self] in
-            guard let self else { return }
-            var current = await self.tags.tags(of: entry.url)
-            guard !current.contains(where: { $0.name == trimmed }) else { return }
-            current.append(Tag(name: trimmed))
-            try? await self.tags.setTags(current, on: entry.url)
-            self.activeTab.load()
-            self.refreshTags()
-        }
-    }
-
-    /// Persist a full tag set for one URL (the custom tag editor writes the whole
-    /// array on every change), then refresh the list + sidebar cloud.
-    func writeTags(_ newTags: [Tag], on url: URL) {
-        Task { [weak self] in
-            guard let self else { return }
-            try? await self.tags.setTags(newTags, on: url)
-            self.activeTab.load()
-            self.refreshTags()
-        }
-    }
-
-    func currentTags(of url: URL) async -> [Tag] { await tags.tags(of: url) }
-
-    func promptNewTag(on entry: FSEntry) {
-        let alert = NSAlert()
-        alert.messageText = "New Tag"
-        let field = NSTextField(frame: NSRect(x: 0, y: 0, width: 220, height: 24))
-        alert.accessoryView = field
-        alert.addButton(withTitle: "Add")
-        alert.addButton(withTitle: "Cancel")
-        guard alert.runModal() == .alertFirstButtonReturn else { return }
-        addTag(field.stringValue, on: entry)
-    }
-
-    // MARK: Sort (driven from background menu + column headers in §4)
+    // MARK: Sort
 
     func sortBy(_ key: SortKey) {
         var order = activeTab.sortOrder
@@ -1434,6 +1030,8 @@ final class AppState {
         else { order = SortOrder(key: key, ascending: true) }
         activeTab.sortOrder = order
     }
+
+    // MARK: Private helpers
 
     private func runTask(_ task: OperationTask, onFinish: @escaping () -> Void) {
         let item = OperationItem(task: task)
@@ -1443,15 +1041,12 @@ final class AppState {
                 item.progress = p
             }
             onFinish()
-            // Drop finished rows after a beat so the user sees completion.
             try? await Task.sleep(for: .seconds(2))
             operations.removeAll { $0.id == task.id && $0.isTerminal }
         }
     }
 
     func cancel(_ id: UUID) {
-        // `cancel` is nonisolated + lock-backed, so this is observed mid-copy
-        // instead of queueing behind the running operation (B-2).
         engine.cancel(id)
     }
 
