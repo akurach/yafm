@@ -29,14 +29,14 @@ public enum ExternalVolumeKind: String, Sendable {
         switch self {
         case .internalDisk:  return "internaldrive"
         case .externalSSD:   return "externaldrive"
-        case .externalHDD:   return "externaldrive"
-        case .usbFlashDrive: return "memorystick"
+        case .externalHDD:   return "externaldrive.fill"
+        case .usbFlashDrive: return "externaldrive"          // memorystick unreliable cross-version
         case .sdCard:        return "sdcard"
         case .cameraCard:    return "camera"
         case .networkVolume: return "network"
-        case .backupDisk:    return "externaldrive.badge.timemachine"
+        case .backupDisk:    return "clock.arrow.circlepath"
         case .virtualVolume: return "opticaldiscdrive"
-        case .unknown:       return "externaldrive.fill"
+        case .unknown:       return "externaldrive"
         }
     }
 

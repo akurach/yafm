@@ -1,6 +1,21 @@
 import SwiftUI
 import AppKit
 
+// MARK: - Typography
+
+enum IBMPlex {
+    static func sans(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        switch weight {
+        case .medium:   return .custom("IBMPlexSans-Medium",   size: size)
+        case .semibold: return .custom("IBMPlexSans-SemiBold", size: size)
+        default:        return .custom("IBMPlexSans-Regular",  size: size)
+        }
+    }
+    static func mono(_ size: CGFloat) -> Font {
+        .custom("IBMPlexMono-Regular", size: size)
+    }
+}
+
 
 // MARK: - Floating panel modifier (appearance-adaptive)
 

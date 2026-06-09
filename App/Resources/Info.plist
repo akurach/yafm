@@ -45,5 +45,7 @@
 	<string>yafm lists and copies files on removable drives you connect.</string>
 	<key>NSNetworkVolumesUsageDescription</key>
 	<string>yafm lists and copies files on network volumes you connect.</string>
+	<key>ATSApplicationFontsPath</key>
+	<string>Fonts</string>
 </dict>
 </plist>

@@ -66,7 +66,7 @@ struct RootView: View {
             // "yafm" title centred in the hidden-titlebar zone (28 pt above safe area)
             VStack {
                 Text("yafm")
-                    .font(.system(size: 13, weight: .semibold))
+                    .font(IBMPlex.sans(13, weight: .semibold))
                     .foregroundStyle(Color.primary.opacity(0.55))
                     .frame(maxWidth: .infinity)
                     .frame(height: 28)
@@ -116,6 +116,7 @@ struct RootView: View {
         .sheet(isPresented: $app.connectSheet)   { ConnectServerSheet(app: app) }
         .sheet(isPresented: $app.commandPalette) { CommandPalette(app: app) }
         .sheet(isPresented: $app.cheatSheet)     { CheatSheet(app: app) }
+        .environment(\.font, IBMPlex.sans(13))
     }
 }
 

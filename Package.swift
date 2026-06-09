@@ -4,6 +4,9 @@ import PackageDescription
 let package = Package(
     name: "yafm",
     platforms: [.macOS(.v14)],
+    dependencies: [
+        .package(url: "https://github.com/phosphor-icons/swift", branch: "main"),
+    ],
     targets: [
         .target(
             name: "Core",
@@ -22,7 +25,10 @@ let package = Package(
         ),
         .executableTarget(
             name: "yafm",
-            dependencies: ["Core"],
+            dependencies: [
+                "Core",
+                .product(name: "PhosphorSwift", package: "swift"),
+            ],
             path: "App",
             // .lproj are copied into the .app bundle by Scripts/make-app.sh so
             // Bundle.main (the app) resolves them; SwiftPM must not treat them as

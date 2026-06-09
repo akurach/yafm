@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 import Observation
 import Core
+import PhosphorSwift
 
 // MARK: - Persisted app settings (v0.2.3 app shell)
 
@@ -99,10 +100,10 @@ enum SystemFavorite: String, CaseIterable, Identifiable, Hashable {
     }
     var systemImage: String {
         switch self {
-        case .desktop:      "menubar.dock.rectangle"
-        case .documents:    "doc.text"
-        case .downloads:    "arrow.down.circle"
-        case .movies:       "film"
+        case .desktop:      "display"
+        case .documents:    "doc"
+        case .downloads:    "arrow.down.to.line.compact"
+        case .movies:       "play.circle"
         case .music:        "music.note"
         case .pictures:     "photo"
         case .applications: "square.grid.2x2"
@@ -310,142 +311,159 @@ struct SettingsView: View {
 
     var body: some View {
         TabView {
-            general.tabItem { Label("General", systemImage: "gearshape") }
-            appearance.tabItem { Label("Appearance", systemImage: "paintbrush") }
-            operations.tabItem { Label("Operations", systemImage: "arrow.left.arrow.right") }
-            sidebarTab.tabItem { Label("Sidebar", systemImage: "sidebar.left") }
-            tags.tabItem { Label("Tags", systemImage: "tag") }
-            plugins.tabItem { Label("Plugins", systemImage: "puzzlepiece.extension") }
-            updatesTab.tabItem { Label("Updates", systemImage: "arrow.down.circle") }
+            general.tabItem    { Ph.gearSix.regular;        Text("General") }
+            appearance.tabItem { Ph.paintBrush.regular;     Text("Appearance") }
+            operations.tabItem { Ph.arrowsLeftRight.regular; Text("Operations") }
+            sidebarTab.tabItem { Ph.sidebarSimple.regular;  Text("Sidebar") }
+            tags.tabItem       { Ph.tag.regular;            Text("Tags") }
+            plugins.tabItem    { Ph.puzzlePiece.regular;    Text("Plugins") }
+            updatesTab.tabItem { Ph.arrowCircleDown.regular; Text("Updates") }
         }
         .frame(width: 520, height: 360)
     }
 
     private var general: some View {
-        Form {
-            Section("Start folder") {
-                Picker("New windows open at", selection: bindable.startMode) {
-                    ForEach(StartMode.allCases) { Text($0.label).tag($0) }
+        sScroll {
+            SettingsGroup("START FOLDER") {
+                SettingsRow("New windows open at") {
+                    Picker("", selection: bindable.startMode) {
+                        ForEach(StartMode.allCases) { Text($0.label).tag($0) }
+                    }.labelsHidden().frame(width: 140)
                 }
                 if settings.startMode == .custom {
-                    HStack {
-                        Text(settings.customStartPath.isEmpty ? "No folder chosen" : settings.customStartPath)
-                            .lineLimit(1).truncationMode(.head).foregroundStyle(.secondary)
-                        Spacer()
-                        Button("Choose…") { chooseStartFolder() }
+                    SettingsDivider()
+                    SettingsRow("Folder") {
+                        HStack(spacing: 6) {
+                            Text(settings.customStartPath.isEmpty ? "None" : settings.customStartPath)
+                                .font(IBMPlex.mono(11)).lineLimit(1).truncationMode(.head).foregroundStyle(.secondary)
+                            Button("Choose…") { chooseStartFolder() }.controlSize(.small)
+                        }
                     }
                 }
             }
-            Section("Navigation") {
-                Toggle("Right arrow opens files", isOn: bindable.rightArrowOpensFiles)
-                Text("Off (default): → only enters folders. On: → also opens files. Enter always opens.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-            Section("Listing") {
-                Toggle("Show hidden files in new tabs", isOn: bindable.showHiddenByDefault)
-            }
-            Section("Language") {
-                Picker("Language", selection: bindable.language) {
-                    ForEach(AppLanguage.allCases) { Text($0.label).tag($0) }
+            SettingsGroup("NAVIGATION",
+                          footer: "Off: → only enters folders. On: → also opens files. Enter always opens.") {
+                SettingsRow("Right arrow opens files") {
+                    Toggle("", isOn: bindable.rightArrowOpensFiles).labelsHidden().toggleStyle(.switch)
                 }
-                Text("Takes effect after you quit and reopen yafm.")
-                    .font(.caption).foregroundStyle(.secondary)
+            }
+            SettingsGroup("LISTING") {
+                SettingsRow("Show hidden files in new tabs") {
+                    Toggle("", isOn: bindable.showHiddenByDefault).labelsHidden().toggleStyle(.switch)
+                }
+            }
+            SettingsGroup("LANGUAGE", footer: "Takes effect after you quit and reopen yafm.") {
+                SettingsRow("Language") {
+                    Picker("", selection: bindable.language) {
+                        ForEach(AppLanguage.allCases) { Text($0.label).tag($0) }
+                    }.labelsHidden().frame(width: 120)
+                }
             }
         }
-        .formStyle(.grouped)
     }
 
     private var appearance: some View {
-        Form {
-            Section("Theme") {
-                Picker("Appearance", selection: bindable.theme) {
-                    ForEach(AppTheme.allCases) { Text($0.label).tag($0) }
+        sScroll {
+            SettingsGroup("THEME") {
+                SettingsRow("Appearance") {
+                    Picker("", selection: bindable.theme) {
+                        ForEach(AppTheme.allCases) { Text($0.label).tag($0) }
+                    }.pickerStyle(.segmented).labelsHidden().frame(width: 200)
                 }
-                .pickerStyle(.segmented)
             }
-            Section("Density") {
-                Picker("Row density", selection: bindable.density) {
-                    ForEach(Density.allCases) { Text($0.label).tag($0) }
+            SettingsGroup("DENSITY",
+                          footer: "Compact packs more rows on screen; Comfortable gives each row room.") {
+                SettingsRow("Row density") {
+                    Picker("", selection: bindable.density) {
+                        ForEach(Density.allCases) { Text($0.label).tag($0) }
+                    }.pickerStyle(.segmented).labelsHidden().frame(width: 240)
                 }
-                .pickerStyle(.segmented)
-                Text("Compact packs more rows on screen; Comfortable gives each row room.")
-                    .font(.caption).foregroundStyle(.secondary)
             }
-            Section("Motion") {
-                Toggle("Animate selection & navigation", isOn: bindable.animations)
-                Text("Off: instant, no motion. Streaming row inserts never animate either way.")
-                    .font(.caption).foregroundStyle(.secondary)
+            SettingsGroup("MOTION",
+                          footer: "Off: instant, no motion. Streaming row inserts never animate either way.") {
+                SettingsRow("Animate selection & navigation") {
+                    Toggle("", isOn: bindable.animations).labelsHidden().toggleStyle(.switch)
+                }
             }
         }
-        .formStyle(.grouped)
     }
 
     private var operations: some View {
-        Form {
-            Section("Delete") {
-                Toggle("Confirm before deleting", isOn: bindable.confirmBeforeDelete)
-                Text("Delete is permanent (not Trash). Keep this on unless you're sure.")
-                    .font(.caption).foregroundStyle(.secondary)
+        sScroll {
+            SettingsGroup("DELETE",
+                          footer: "Delete is permanent (not Trash). Keep this on unless you're sure.") {
+                SettingsRow("Confirm before deleting") {
+                    Toggle("", isOn: bindable.confirmBeforeDelete).labelsHidden().toggleStyle(.switch)
+                }
             }
-            Section("Copy / Move collisions") {
-                Picker("When a file already exists", selection: bindable.collisionDefault) {
-                    Text("Keep both").tag(CollisionPolicy.keepBoth)
-                    Text("Skip").tag(CollisionPolicy.skip)
-                    Text("Replace").tag(CollisionPolicy.replace)
+            SettingsGroup("COPY / MOVE COLLISIONS") {
+                SettingsRow("When a file already exists") {
+                    Picker("", selection: bindable.collisionDefault) {
+                        Text("Keep both").tag(CollisionPolicy.keepBoth)
+                        Text("Skip").tag(CollisionPolicy.skip)
+                        Text("Replace").tag(CollisionPolicy.replace)
+                    }.labelsHidden().frame(width: 120)
                 }
             }
         }
-        .formStyle(.grouped)
     }
 
     private var sidebarTab: some View {
-        Form {
-            Section("Favorites — Standard") {
-                ForEach(SystemFavorite.allCases) { fav in
-                    Toggle(isOn: favBinding(fav)) {
-                        Label(fav.label, systemImage: fav.systemImage)
-                    }
-                }
+        sScroll {
+            SettingsGroup("SECTIONS") {
+                SettingsRow("Favorites")  { Toggle("", isOn: bindable.sidebarShowFavorites).labelsHidden().toggleStyle(.switch) }
+                SettingsDivider()
+                SettingsRow("Locations")  { Toggle("", isOn: bindable.sidebarShowLocations).labelsHidden().toggleStyle(.switch) }
+                SettingsDivider()
+                SettingsRow("Devices")    { Toggle("", isOn: bindable.sidebarShowDevices).labelsHidden().toggleStyle(.switch) }
+                SettingsDivider()
+                SettingsRow("Network")    { Toggle("", isOn: bindable.sidebarShowNetwork).labelsHidden().toggleStyle(.switch) }
+                SettingsDivider()
+                SettingsRow("Tags")       { Toggle("", isOn: bindable.sidebarShowTags).labelsHidden().toggleStyle(.switch) }
             }
-            .disabled(!settings.sidebarShowFavorites)
-
-            Section("Favorites — Custom") {
+            SettingsGroup("FAVORITES") {
+                ForEach(Array(SystemFavorite.allCases.enumerated()), id: \.1.id) { i, fav in
+                    if i > 0 { SettingsDivider() }
+                    SettingsRow(fav.label) { Toggle("", isOn: favBinding(fav)).labelsHidden().toggleStyle(.switch) }
+                }
+                SettingsDivider()
                 if app.bookmarks.isEmpty {
-                    Text("No custom folders yet.")
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                ForEach(app.bookmarks) { bm in
                     HStack {
-                        Label(bm.name, systemImage: "folder")
+                        Text("No custom folders yet.").font(IBMPlex.sans(12)).foregroundStyle(.secondary)
                         Spacer()
-                        Button { app.removeBookmark(bm) } label: {
-                            Image(systemName: "minus.circle.fill").foregroundStyle(.red)
+                    }
+                    .padding(.horizontal, 12).frame(minHeight: 34)
+                } else {
+                    ForEach(app.bookmarks) { bm in
+                        SettingsDivider()
+                        SettingsRow(bm.name) {
+                            Button { app.removeBookmark(bm) } label: {
+                                Image(systemName: "minus.circle.fill").foregroundStyle(.red)
+                            }.buttonStyle(.plain)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
+                SettingsDivider()
                 Button { chooseFavorite() } label: {
-                    Label("Add Folder…", systemImage: "plus.circle")
+                    HStack {
+                        Image(systemName: "plus.circle").foregroundStyle(Color.accentColor)
+                        Text("Add Folder…").font(IBMPlex.sans(13)).foregroundStyle(Color.accentColor)
+                        Spacer()
+                    }
+                    .padding(.horizontal, 12).frame(minHeight: 38)
                 }
+                .buttonStyle(.plain)
             }
             .disabled(!settings.sidebarShowFavorites)
-
-            Section("Locations") {
-                Toggle(isOn: bindable.locShowComputer) { Label("Computer",    systemImage: "desktopcomputer") }
-                Toggle(isOn: bindable.locShowHome)     { Label("Home",        systemImage: "house") }
-                Toggle(isOn: bindable.sidebarShowICloud) { Label("iCloud Drive", systemImage: "cloud") }
+            SettingsGroup("LOCATIONS") {
+                SettingsRow("Computer")    { Toggle("", isOn: bindable.locShowComputer).labelsHidden().toggleStyle(.switch) }
+                SettingsDivider()
+                SettingsRow("Home")        { Toggle("", isOn: bindable.locShowHome).labelsHidden().toggleStyle(.switch) }
+                SettingsDivider()
+                SettingsRow("iCloud Drive") { Toggle("", isOn: bindable.sidebarShowICloud).labelsHidden().toggleStyle(.switch) }
             }
             .disabled(!settings.sidebarShowLocations)
-
-            Section("Sections") {
-                Toggle(isOn: bindable.sidebarShowFavorites) { Label("Favorites", systemImage: "star") }
-                Toggle(isOn: bindable.sidebarShowLocations) { Label("Locations", systemImage: "house") }
-                Toggle(isOn: bindable.sidebarShowDevices)   { Label("Devices",   systemImage: "externaldrive") }
-                Toggle(isOn: bindable.sidebarShowNetwork)   { Label("Network",   systemImage: "network") }
-                Toggle(isOn: bindable.sidebarShowTags)      { Label("Tags",      systemImage: "tag") }
-            }
         }
-        .formStyle(.grouped)
     }
 
     private func favBinding(_ fav: SystemFavorite) -> Binding<Bool> {
@@ -474,60 +492,68 @@ struct SettingsView: View {
     private var tags: some View { TagManagerView(app: app) }
 
     private var plugins: some View {
-        Form {
-            Section("JavaScript plugins") {
-                Text("Drop a .js file in the plugins folder to add columns, commands, and right-click actions. Plugins run in a JS sandbox: no network or process access — only the host API you approve below.")
-                    .font(.caption).foregroundStyle(.secondary)
-                HStack {
-                    Button("Open Plugins Folder") { app.revealPluginsFolder() }
-                    Button("Reload Plugins") { app.loadPlugins() }
-                }
-            }
-            Section("Installed") {
-                let plugins = app.availablePlugins()
-                if plugins.isEmpty {
-                    Text("No plugins installed.").font(.caption).foregroundStyle(.secondary)
-                }
-                ForEach(plugins, id: \.id) { p in
-                    PluginRow(app: app, id: p.id, name: p.name, manifest: p.manifest, enabled: p.enabled)
-                }
-            }
-            Section("Loaded") {
-                if app.pluginHost.loaded.isEmpty {
-                    Text("No plugins loaded.").font(.caption).foregroundStyle(.secondary)
-                } else {
-                    ForEach(app.pluginHost.loaded, id: \.name) { p in
-                        HStack {
-                            Image(systemName: "puzzlepiece.extension.fill").foregroundStyle(.secondary)
-                            Text(p.name)
-                            Spacer()
-                            Text(p.columnTitles.joined(separator: ", "))
-                                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                        }
+        sScroll {
+            SettingsGroup("JAVASCRIPT PLUGINS",
+                          footer: "Drop a .js file in the plugins folder to add columns, commands, and right-click actions. Plugins run sandboxed: no network or process access.") {
+                SettingsRow("Plugins folder") {
+                    HStack(spacing: 6) {
+                        Button("Open") { app.revealPluginsFolder() }.controlSize(.small)
+                        Button("Reload") { app.loadPlugins() }.controlSize(.small)
                     }
                 }
-                ForEach(app.pluginHost.errors, id: \.name) { e in
-                    Label("\(e.name): \(e.message)", systemImage: "exclamationmark.triangle")
-                        .font(.caption).foregroundStyle(.red).lineLimit(2)
+            }
+            let available = app.availablePlugins()
+            SettingsGroup("INSTALLED") {
+                if available.isEmpty {
+                    HStack {
+                        Text("No plugins installed.").font(IBMPlex.sans(12)).foregroundStyle(.secondary)
+                        Spacer()
+                    }.padding(.horizontal, 12).frame(minHeight: 38)
+                } else {
+                    ForEach(Array(available.enumerated()), id: \.1.id) { i, p in
+                        if i > 0 { SettingsDivider() }
+                        PluginRow(app: app, id: p.id, name: p.name, manifest: p.manifest, enabled: p.enabled)
+                            .padding(.horizontal, 12).padding(.vertical, 6)
+                    }
+                }
+            }
+            if !app.pluginHost.loaded.isEmpty || !app.pluginHost.errors.isEmpty {
+                SettingsGroup("LOADED") {
+                    ForEach(Array(app.pluginHost.loaded.enumerated()), id: \.1.name) { i, p in
+                        if i > 0 { SettingsDivider() }
+                        HStack {
+                            Image(systemName: "puzzlepiece.extension.fill").foregroundStyle(.secondary)
+                            Text(p.name).font(IBMPlex.sans(13))
+                            Spacer()
+                            Text(p.columnTitles.joined(separator: ", "))
+                                .font(IBMPlex.sans(11)).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        .padding(.horizontal, 12).frame(minHeight: 38)
+                    }
+                    ForEach(app.pluginHost.errors, id: \.name) { e in
+                        SettingsDivider()
+                        HStack {
+                            Image(systemName: "exclamationmark.triangle").foregroundStyle(.red)
+                            Text("\(e.name): \(e.message)").font(IBMPlex.sans(12)).foregroundStyle(.red).lineLimit(2)
+                        }.padding(.horizontal, 12).frame(minHeight: 38)
+                    }
                 }
             }
         }
-        .formStyle(.grouped)
     }
 
     private var updatesTab: some View {
-        Form {
-            Section("Updates") {
-                HStack {
-                    Button("Check for Updates") { updates.check() }
-                    Spacer()
-                    statusView
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?"
+        return sScroll {
+            SettingsGroup("UPDATES", footer: "Current version: \(version).") {
+                SettingsRow("Check for updates") {
+                    HStack(spacing: 8) {
+                        statusView
+                        Button("Check") { updates.check() }.controlSize(.small)
+                    }
                 }
-                Text("Current version \(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "?").")
-                    .font(.caption).foregroundStyle(.secondary)
             }
         }
-        .formStyle(.grouped)
     }
 
     @ViewBuilder private var statusView: some View {
@@ -550,6 +576,82 @@ struct SettingsView: View {
         panel.allowsMultipleSelection = false
         if panel.runModal() == .OK, let url = panel.url { settings.customStartPath = url.path }
     }
+}
+
+// MARK: - Settings layout helpers
+
+private extension SettingsView {
+    func sScroll<C: View>(@ViewBuilder _ content: () -> C) -> some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                content()
+            }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+}
+
+struct SettingsGroup<Content: View>: View {
+    let header: String
+    var footer: String? = nil
+    let content: Content
+
+    init(_ header: String, footer: String? = nil, @ViewBuilder content: () -> Content) {
+        self.header = header
+        self.footer = footer
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            Text(header)
+                .font(IBMPlex.sans(10, weight: .semibold))
+                .foregroundStyle(.secondary)
+                .tracking(0.5)
+                .padding(.leading, 2)
+            VStack(spacing: 0) {
+                content
+            }
+            .background(Color.primary.opacity(0.04))
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(Color.primary.opacity(0.07), lineWidth: 0.5)
+            }
+            if let footer {
+                Text(footer)
+                    .font(IBMPlex.sans(11))
+                    .foregroundStyle(.secondary)
+                    .padding(.leading, 2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+}
+
+struct SettingsRow<C: View>: View {
+    let label: String
+    let control: C
+
+    init(_ label: String, @ViewBuilder control: () -> C) {
+        self.label = label
+        self.control = control()
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(label).font(IBMPlex.sans(13))
+            Spacer()
+            control
+        }
+        .padding(.horizontal, 12)
+        .frame(minHeight: 38)
+    }
+}
+
+struct SettingsDivider: View {
+    var body: some View { Divider().padding(.leading, 12) }
 }
 
 // MARK: - Plugin row (Settings → Plugins, v0.8)

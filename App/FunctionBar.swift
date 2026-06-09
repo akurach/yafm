@@ -61,8 +61,8 @@ struct FunctionKeyButton: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 3) {
-                Text("F\(number)").font(.caption2.bold()).foregroundStyle(.secondary)
-                if !compact { Text(label).font(.caption) }
+                Text("F\(number)").font(IBMPlex.sans(10, weight: .semibold)).foregroundStyle(.secondary)
+                if !compact { Text(label).font(IBMPlex.sans(12)) }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             .background(hover ? Color.primary.opacity(0.10) : Color.clear)
