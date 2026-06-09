@@ -27,15 +27,17 @@ struct PaneView: View {
     let isActive: Bool
     let app: AppState
 
+    private func activateSelf() { app.activePaneIsLeft = (pane.id == app.left.id) }
+
     var body: some View {
         VStack(spacing: 0) {
-            TabBarView(pane: pane)
+            TabBarView(pane: pane, activate: activateSelf)
             // Active pane: 2 pt accent bar between tabs and path bar.
             // Placed here (not above the tab strip) so it doesn't cut across tabs.
             Rectangle()
                 .fill(isActive ? Color.accentColor : Color(nsColor: .separatorColor).opacity(0.5))
                 .frame(height: 2)
-            PathBarView(tab: pane.active)
+            PathBarView(tab: pane.active, activate: activateSelf)
             // Inline find bar (⌘F) on the active pane only — replaces the modal.
             if isActive && app.searchActive {
                 Divider()
@@ -46,7 +48,7 @@ struct PaneView: View {
         }
         .background(isActive ? Theme.Palette.activePaneTint : Color.clear)
         .contentShape(Rectangle())
-        .onTapGesture { app.activePaneIsLeft = (pane.id == app.left.id) }
+        .simultaneousGesture(TapGesture().onEnded { activateSelf() })
     }
 }
 
@@ -54,6 +56,7 @@ struct PaneView: View {
 
 struct TabBarView: View {
     @Bindable var pane: PaneModel
+    var activate: () -> Void = {}
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -72,7 +75,7 @@ struct TabBarView: View {
                     .padding(.horizontal, Theme.Space.row).padding(.vertical, Theme.Space.tight)
                     .background(idx == pane.activeIndex ? Theme.Palette.tabActive : Color.clear)
                     .clipShape(RoundedRectangle(cornerRadius: Theme.cornerRadius))
-                    .onTapGesture { pane.select(tab.id) }
+                    .onTapGesture { activate(); pane.select(tab.id) }
                 }
                 Button { pane.newTab() } label: { Image(systemName: "plus") }
                     .buttonStyle(.plain).padding(.horizontal, 4)
@@ -89,6 +92,7 @@ struct TabBarView: View {
 
 struct PathBarView: View {
     @Bindable var tab: TabModel
+    var activate: () -> Void = {}
     @State private var editing = false
     @State private var typed = ""
     @FocusState private var focused: Bool
@@ -122,6 +126,7 @@ struct PathBarView: View {
         .padding(.horizontal, 6).padding(.vertical, 4)
         .background(.bar)
         .onTapGesture {
+            activate()
             guard !editing else { return }
             typed = tab.directory.path
             editing = true
@@ -309,6 +314,7 @@ struct FileTableView: View {
                 TagEditorSheet(app: app, url: item.url)
             }
             .contextMenu { backgroundMenu() }   // empty area below the rows
+            .background(PaneActivationOverlay { app.activePaneIsLeft = tabBelongsToLeft() })
             // Drop onto empty pane area → into the current directory. No
             // targeted-highlight @State here: mutating table-level state on every
             // hover re-rendered the whole list and made inter-pane drags crawl.
@@ -945,5 +951,38 @@ private struct ColResizeHandle: View {
                 }
                 .onEnded { _ in dragging = false }
         )
+    }
+}
+
+// MARK: - NSEvent-based pane activation for AppKit-hosted areas (List background)
+
+/// Invisible background NSView that fires `activate()` on any left-click within
+/// its bounds. Needed because NSScrollView+NSTableView eat SwiftUI gestures.
+struct PaneActivationOverlay: NSViewRepresentable {
+    let activate: () -> Void
+
+    func makeNSView(context: Context) -> _ActivationView { _ActivationView(activate: activate) }
+    func updateNSView(_ v: _ActivationView, context: Context) { v.activate = activate }
+
+    final class _ActivationView: NSView {
+        var activate: () -> Void
+        nonisolated(unsafe) private var monitor: Any?
+
+        init(activate: @escaping () -> Void) {
+            self.activate = activate
+            super.init(frame: .zero)
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+                self?.handle(event)
+                return event  // always forward — never consume
+            }
+        }
+        required init?(coder: NSCoder) { fatalError() }
+        deinit { if let m = monitor { NSEvent.removeMonitor(m) } }
+
+        private func handle(_ event: NSEvent) {
+            guard let w = event.window, w == window else { return }
+            let loc = convert(event.locationInWindow, from: nil)
+            if bounds.contains(loc) { activate() }
+        }
     }
 }

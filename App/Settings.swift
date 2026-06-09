@@ -6,6 +6,28 @@ import PhosphorSwift
 
 // MARK: - Persisted app settings (v0.2.3 app shell)
 
+/// Accent colour palette. `system` defers to macOS System Preferences.
+enum AppAccent: String, CaseIterable, Identifiable {
+    case system, blue, purple, pink, red, orange, yellow, green, teal, graphite
+    var id: String { rawValue }
+    var label: String { rawValue.capitalized }
+
+    var color: Color? {
+        switch self {
+        case .system:   return nil
+        case .blue:     return Color(red: 0.20, green: 0.47, blue: 0.95)
+        case .purple:   return Color(red: 0.59, green: 0.33, blue: 0.90)
+        case .pink:     return Color(red: 0.95, green: 0.28, blue: 0.56)
+        case .red:      return Color(red: 0.92, green: 0.24, blue: 0.24)
+        case .orange:   return Color(red: 0.98, green: 0.54, blue: 0.12)
+        case .yellow:   return Color(red: 0.85, green: 0.68, blue: 0.10)
+        case .green:    return Color(red: 0.18, green: 0.72, blue: 0.40)
+        case .teal:     return Color(red: 0.10, green: 0.65, blue: 0.75)
+        case .graphite: return Color(red: 0.50, green: 0.50, blue: 0.52)
+        }
+    }
+}
+
 /// Theme choice. `system` (default) follows the OS appearance.
 enum AppTheme: String, CaseIterable, Identifiable {
     case system, light, dark
@@ -16,6 +38,14 @@ enum AppTheme: String, CaseIterable, Identifiable {
         case .system: nil
         case .light: .light
         case .dark: .dark
+        }
+    }
+
+    var nsAppearance: NSAppearance? {
+        switch self {
+        case .system: nil
+        case .light:  NSAppearance(named: .aqua)
+        case .dark:   NSAppearance(named: .darkAqua)
         }
     }
 }
@@ -125,7 +155,12 @@ final class AppSettings {
     var showHiddenByDefault: Bool { didSet { store.set(showHiddenByDefault, forKey: Keys.showHiddenByDefault) } }
 
     /// Light / Dark / System.
-    var theme: AppTheme { didSet { store.set(theme.rawValue, forKey: Keys.theme) } }
+    var theme: AppTheme {
+        didSet {
+            store.set(theme.rawValue, forKey: Keys.theme)
+            NSApp.appearance = theme.nsAppearance
+        }
+    }
 
     /// Row density (Compact / Cozy / Comfortable).
     var density: Density { didSet { store.set(density.rawValue, forKey: Keys.density) } }
@@ -152,6 +187,9 @@ final class AppSettings {
 
     /// Default behaviour when copy/move hits an existing file.
     var collisionDefault: CollisionPolicy { didSet { store.set(collisionDefault.rawValue, forKey: Keys.collisionDefault) } }
+
+    /// App accent colour (nil = follow macOS System Preferences).
+    var accent: AppAccent { didSet { store.set(accent.rawValue, forKey: Keys.accent) } }
 
     // Sidebar section visibility
     var sidebarShowFavorites:   Bool { didSet { store.set(sidebarShowFavorites,   forKey: Keys.sidebarShowFavorites) } }
@@ -199,6 +237,7 @@ final class AppSettings {
         static let locShowComputer = "locShowComputer"
         static let locShowHome     = "locShowHome"
         static let recentServers   = "recentServers"
+        static let accent          = "accent"
     }
 
     init() {
@@ -214,6 +253,7 @@ final class AppSettings {
         // Permanent delete: confirm by default unless the user has explicitly set it.
         confirmBeforeDelete = d.object(forKey: Keys.confirmBeforeDelete) as? Bool ?? true
         collisionDefault = CollisionPolicy(rawValue: d.string(forKey: Keys.collisionDefault) ?? "") ?? .keepBoth
+        accent = AppAccent(rawValue: d.string(forKey: Keys.accent) ?? "") ?? .system
         sidebarShowFavorites = d.object(forKey: Keys.sidebarShowFavorites) as? Bool ?? true
         sidebarShowLocations = d.object(forKey: Keys.sidebarShowLocations) as? Bool ?? true
         sidebarShowICloud    = d.object(forKey: Keys.sidebarShowICloud)    as? Bool ?? true
@@ -383,6 +423,18 @@ struct SettingsView: View {
                           footer: "Off: instant, no motion. Streaming row inserts never animate either way.") {
                 SettingsRow("Animate selection & navigation") {
                     Toggle("", isOn: bindable.animations).labelsHidden().toggleStyle(.switch)
+                }
+            }
+            SettingsGroup("ACCENT COLOR",
+                          footer: "System follows macOS System Preferences → General → Accent color.") {
+                SettingsRow("Accent color") {
+                    HStack(spacing: 8) {
+                        ForEach(AppAccent.allCases) { a in
+                            AccentSwatch(accent: a, isSelected: settings.accent == a) {
+                                settings.accent = a
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -593,6 +645,7 @@ private extension SettingsView {
 }
 
 struct SettingsGroup<Content: View>: View {
+    @Environment(\.colorScheme) private var scheme
     let header: String
     var footer: String? = nil
     let content: Content
@@ -602,6 +655,9 @@ struct SettingsGroup<Content: View>: View {
         self.footer = footer
         self.content = content()
     }
+
+    private var fillColor: Color  { scheme == .dark ? Color.white.opacity(0.06) : Color.black.opacity(0.04) }
+    private var strokeColor: Color { scheme == .dark ? Color.white.opacity(0.10) : Color.black.opacity(0.07) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
@@ -613,11 +669,11 @@ struct SettingsGroup<Content: View>: View {
             VStack(spacing: 0) {
                 content
             }
-            .background(Color.primary.opacity(0.04))
+            .background(fillColor)
             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    .stroke(Color.primary.opacity(0.07), lineWidth: 0.5)
+                    .stroke(strokeColor, lineWidth: 0.5)
             }
             if let footer {
                 Text(footer)
@@ -652,6 +708,40 @@ struct SettingsRow<C: View>: View {
 
 struct SettingsDivider: View {
     var body: some View { Divider().padding(.leading, 12) }
+}
+
+// MARK: - Accent color swatch
+
+private struct AccentSwatch: View {
+    let accent: AppAccent
+    let isSelected: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                Circle()
+                    .fill(swatchColor)
+                    .frame(width: 20, height: 20)
+                if isSelected {
+                    Circle()
+                        .strokeBorder(Color.primary.opacity(0.6), lineWidth: 1.5)
+                        .frame(width: 22, height: 22)
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(.white)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+        .help(accent.label)
+    }
+
+    private var swatchColor: Color {
+        if let c = accent.color { return c }
+        // "System" swatch: macOS default blue
+        return Color(red: 0.20, green: 0.47, blue: 0.95)
+    }
 }
 
 // MARK: - Plugin row (Settings → Plugins, v0.8)

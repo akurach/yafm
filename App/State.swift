@@ -523,6 +523,7 @@ final class AppState {
     // MARK: Start
 
     func start() {
+        NSApp.appearance = settings.theme.nsAppearance
         left.active.load()
         right.active.load()
         refreshVolumes()

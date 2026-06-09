@@ -25,7 +25,7 @@ struct YafmApp: App {
         WindowGroup("yafm") {
             RootView(app: app)
                 .frame(minWidth: 900, minHeight: 520)
-                .preferredColorScheme(app.settings.theme.colorScheme)
+                .accentColor(app.settings.accent.color)
                 .onAppear { app.start() }
                 .background(KeyboardMonitor(app: app).frame(width: 0, height: 0))
         }
