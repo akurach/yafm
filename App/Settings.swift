@@ -90,8 +90,8 @@ enum Density: String, CaseIterable, Identifiable {
     /// Row font — compact shrinks a notch to pack more in.
     var rowFont: SwiftUI.Font {
         switch self {
-        case .compact: .callout
-        case .cozy, .comfortable: .body
+        case .compact:              IBMPlex.mono(12)
+        case .cozy, .comfortable:  IBMPlex.mono(13)
         }
     }
     /// Icon box size, scaled with density.
@@ -158,7 +158,8 @@ final class AppSettings {
     var theme: AppTheme {
         didSet {
             store.set(theme.rawValue, forKey: Keys.theme)
-            NSApp.appearance = theme.nsAppearance
+            let a = theme.nsAppearance
+            DispatchQueue.main.async { NSApp.appearance = a }
         }
     }
 

@@ -102,7 +102,7 @@ struct PathBarView: View {
             if editing {
                 TextField("Path", text: $typed)
                     .textFieldStyle(.roundedBorder)
-                    .font(.caption.monospaced())
+                    .font(IBMPlex.mono(12))
                     .focused($focused)
                     .onSubmit {
                         let expanded = (typed as NSString).expandingTildeInPath
@@ -146,7 +146,7 @@ struct PathBarView: View {
                         tab.open(i == 0 ? URL(fileURLWithPath: "/") : url)
                     }
                     .buttonStyle(.plain)
-                    .font(.caption)
+                    .font(IBMPlex.mono(11))
                     if i < comps.count - 1 { Image(systemName: "chevron.right").font(.system(size: 7)).foregroundStyle(.tertiary) }
                 }
             }
@@ -528,10 +528,10 @@ struct FileTableView: View {
             .frame(width: max(0, CGFloat(effectiveNameW)), alignment: .leading)
             .clipped()
             Text(entry.isDirectory ? "--" : (entry.size.map(byteString) ?? "--"))
-                .font(.caption.monospaced()).foregroundStyle(.secondary)
+                .font(Theme.Font.mono).foregroundStyle(.secondary)
                 .frame(width: CGFloat(sizeW), alignment: .trailing)
             Text(entry.modified.map { modifiedText($0) } ?? "--")
-                .font(.caption.monospaced()).foregroundStyle(.secondary)
+                .font(Theme.Font.mono).foregroundStyle(.secondary)
                 .frame(width: CGFloat(modW), alignment: .trailing)
             Text(kindText(entry))
                 .font(.caption).foregroundStyle(.secondary).lineLimit(1)
@@ -686,7 +686,7 @@ struct FileTableView: View {
                     VStack(spacing: 4) {
                         FileIconView(entry: entry, size: 48).frame(width: 48, height: 48)
                         Text(entry.name)
-                            .font(.caption)
+                            .font(IBMPlex.mono(11))
                             .lineLimit(2)
                             .multilineTextAlignment(.center)
                             .foregroundStyle(nameColor(entry))

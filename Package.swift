@@ -36,6 +36,7 @@ let package = Package(
             // Bundle.module, where LocalizedStringKey wouldn't look).
             exclude: ["Resources/Info.plist", "Resources/AppIcon.icns",
                       "Resources/en.lproj", "Resources/ru.lproj"],
+            resources: [.copy("Resources/Fonts")],
             linkerSettings: [
                 .linkedFramework("ImageIO"),
             ]

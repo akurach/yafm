@@ -39,13 +39,13 @@ enum Theme {
     // MARK: Type scale
 
     enum Font {
-        static let row = SwiftUI.Font.body
-        static let mono = SwiftUI.Font.caption.monospaced()
-        static let meta = SwiftUI.Font.caption
-        static let header = SwiftUI.Font.caption.bold()
-        static let badge = SwiftUI.Font.caption
+        static let row    = IBMPlex.mono(13)
+        static let mono   = IBMPlex.mono(11)
+        static let meta   = IBMPlex.mono(11)
+        static let header = IBMPlex.sans(11, weight: .semibold)
+        static let badge  = IBMPlex.mono(11)
         static let chevron = SwiftUI.Font.system(size: 7)
-        static let micro = SwiftUI.Font.system(size: 9)   // tiny one-offs (close glyph, capacity)
+        static let micro   = SwiftUI.Font.system(size: 9)
     }
 
     // MARK: Semantic colors
