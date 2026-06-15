@@ -215,6 +215,22 @@ half-built.
   (auto-prompt on camera plug-in), itself deferred since v0.6. Tracked in `docs/feature-requests/`.
 - [ ] **Notarized DMG** (paid Apple Developer ID) — **deferred**: still gated on the cert.
 
+## v0.9.1 – v0.9.4 — Point releases ✅ shipped
+
+Post-1.0-candidate hardening and the visual redesign (see `CHANGELOG.md` for full detail):
+
+- [x] **v0.9.1 — Audit pass.** Five-dimension review (perf · security · UX · design); the
+  big-folder freeze root cause fixed (per-row `.contextMenu` with nested Open-With/Share
+  submenus built eagerly per row → flattened to on-demand system pickers).
+- [x] **v0.9.2 — Plugin API extensions + security hardening.** `yafm.openInApp`,
+  `yafm.readEXIF` behind capabilities; dangerous-extension open confirmation.
+- [x] **v0.9.3 — Column resize + sidebar config.** Finder-style draggable column handles;
+  configurable sidebar sections (Favorites/Locations/Devices/Network/Tags); adaptive date
+  format; crash-safe last folder; AppState God-object split into Plugin/Tag/Search coordinators.
+- [x] **v0.9.4 — Float layout · Visual redesign.** Floating sidebar/panes cards, unified
+  chrome titlebar, Phosphor icons + IBM Plex fonts, accent-color picker; column-resize
+  cross-pane corruption fixed (single-writer geometry); chrome colors folded into `Theme.Palette`.
+
 ## Open questions to revisit
 
 - **SMB in v0.7 for a solo dev** — XPC + a network filesystem is the heaviest single item; may need its own point release or a narrower first cut (read-only browse before write).
@@ -243,11 +259,13 @@ Deferred (tracked, not yet done): — все закрыты в v0.9:
 
 ## Next up
 
-**v0.4 shipped** (command palette ⌘K, type-to-filter, real file-type icons, keyboard tab-switching,
-⌘/ cheat sheet, `FileSystemRouter` + UI tokens seams). The public plugin surface stays **frozen**
-until v0.8 per the re-sequenced plan. Next is **v0.5 — "Looks as good as it runs"**:
+**v0.9.4 shipped** (float-layout visual redesign + column-resize fix). The v0.1–0.9 arc is
+complete and the 1.0 candidate line holds; the public plugin API is frozen at `apiVersion 1.0`.
+What remains before tagging **1.0**:
 
-- Density modes (Compact / Cozy / Comfortable) + drag-and-drop (inter-pane + in/out of app).
-- Scoped animation (replace the global `disablesAnimations` kill-switch with per-mutation glide).
-- **Seam — async plugin-value path**: make `PluginColumn.evaluate` (`Commands.swift`) async-capable
-  before VFS (v0.7) forces it as a breaking change.
+- **Notarized DMG** — the recurring blocker; needs a paid Apple Developer ID cert
+  (`CODESIGN_IDENTITY` + `AC_NOTARY_PROFILE`). Also gates Sparkle-style auto-update.
+- **Polish pass** on the redesign — light/dark audit now that chrome surfaces live in
+  `Theme.Palette`; remaining design-system cleanup from the v0.9.0 `AUDIT.md` brief.
+- **Deferred first-party features** (post-1.0, tracked in `docs/feature-requests/`): Photo
+  Ingest + device detection; remote plugin marketplace + signing (hosted infra).

@@ -65,11 +65,14 @@ The arc in brief:
   plugins via `yafm.registerColumn`, an editable example seeded on first run; native git-status
   column in the same registry; find-within-folder search (mdfind/Spotlight + own fallback);
   AirDrop/Share. Plugin API: [`docs/plugins.md`](docs/plugins.md).
-- **v0.4 → v0.9 (planned, 2026-06-05 review).** Wedge = the keyboard-driven Mac power user who hates
-  Finder's silent freezes; win them with speed + polish + honest states + content search **first**,
-  and **freeze the public plugin surface until v0.8** (no users yet = no ecosystem to widen for). Arc:
-  v0.4 command palette (⌘K) + nav speed + seams (`FileSystemRouter`, UI tokens) · v0.5 visual polish +
-  drag-and-drop · v0.6 content search + honest empty/error states + Sparkle auto-update · v0.7 SMB
-  virtual filesystem (XPC) + accessibility + Russian i18n · v0.8 public plugins re-open (scoped-FS
-  capability, manifests, marketplace, archive mounting) · v0.9 API freeze + photo-ingest + 1.0 prep.
-  Full status-tracked breakdown with the dependency spine in [`ROADMAP.md`](ROADMAP.md).
+- **v0.4 → v0.9 — ✅ shipped** (arc set in the 2026-06-05 review). Wedge = the keyboard-driven Mac
+  power user who hates Finder's silent freezes; won with speed + polish + honest states + content
+  search **first**, public plugin surface kept **frozen until v0.8** (no users yet = no ecosystem to
+  widen for). Arc as delivered: v0.4 command palette (⌘K) + nav speed + seams (`FileSystemRouter`,
+  UI tokens) · v0.5 visual polish + drag-and-drop · v0.6 content search + honest empty/error states
+  + update check · v0.7 SMB virtual filesystem (XPC) + accessibility + **Russian i18n** · v0.8
+  public plugins re-open (scoped-FS capability, manifests, archive mounting) · v0.9 API freeze
+  (`apiVersion 1.0`) + 1.0 candidate, then point releases v0.9.1–0.9.4 (audit pass · plugin-API
+  extensions · column resize + sidebar config · **float-layout visual redesign**). Currently
+  **v0.9.4**; before 1.0: notarized DMG (paid cert) + polish. Photo-ingest + marketplace deferred
+  post-1.0. Full status-tracked breakdown in [`ROADMAP.md`](ROADMAP.md).
