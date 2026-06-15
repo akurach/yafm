@@ -77,6 +77,27 @@ enum Theme {
             default: return .secondary
             }
         }
+
+        // MARK: Chrome / surface backgrounds (float-layout redesign)
+        // Appearance-adaptive surfaces. The raw RGB literals live here — the one
+        // tokens place — instead of scattered across FloatLayout / FunctionBar, so a
+        // light/dark audit is a single-file edit (the reason Theme exists).
+        static func chrome(_ dark: Bool) -> Color {
+            dark ? Color(red: 0.067, green: 0.067, blue: 0.075)   // #111113
+                 : Color(red: 0.878, green: 0.878, blue: 0.886)   // #e0e0e2
+        }
+        static func sidebarSurface(_ dark: Bool) -> Color {
+            dark ? Color(red: 0.129, green: 0.129, blue: 0.149)   // #212126
+                 : Color(red: 0.918, green: 0.918, blue: 0.925)   // #eaeaec
+        }
+        static func panesSurface(_ dark: Bool) -> Color {
+            dark ? Color(red: 0.110, green: 0.110, blue: 0.118)   // #1c1c1e
+                 : Color(nsColor: .windowBackgroundColor)         // white
+        }
+        static func functionBar(_ dark: Bool) -> Color {
+            dark ? Color(red: 0.090, green: 0.090, blue: 0.098)   // slightly lighter than chrome
+                 : Color(red: 0.820, green: 0.820, blue: 0.828)   // #d1d1d3
+        }
     }
 
     // MARK: Motion

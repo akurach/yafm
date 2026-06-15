@@ -216,13 +216,14 @@ struct FileTableView: View {
 
     // Column widths persisted via @AppStorage so they survive relaunches.
     // Shared between both panes (Total Commander convention — one set of widths).
-    /// Captured from the column header geometry — drives effectiveNameW.
-    @State private var paneWidth: Double = 600
     @AppStorage("yafm.col.nameW") private var nameW: Double = 200
     @AppStorage("yafm.col.sizeW") private var sizeW: Double = 78
     @AppStorage("yafm.col.modW")  private var modW:  Double = 124
     @AppStorage("yafm.col.kindW") private var kindW: Double = 92
     @AppStorage("yafm.col.gitW")  private var gitW:  Double = 34
+    // One-time flag: snap Name to fill the pane on the very first run only, then
+    // respect the user's stored width forever after (don't re-fill every launch).
+    @AppStorage("yafm.col.didSnapName") private var didSnapName = false
     @State private var pluginWidths: [String: Double] = [:]
     // Plugin columns filtered to those relevant for the current folder's content.
     @State private var visiblePluginCols: [PluginColumn] = []
@@ -367,43 +368,56 @@ struct FileTableView: View {
         }
     }
 
-    // Width budget (A-6): sum of everything except nameW.
-    // effectiveNameW = max(80, min(user preference, remaining space).
+    // Sum of all fixed-width columns + handles + padding (excludes nameW).
+    // Drives the Name snap/clamp in the GeometryReader below (nameW = pane − this).
     private var fixedColumnsWidth: Double {
         let iconW = Double(app.settings.density.iconSize)
-        var w = iconW + Double(Theme.Space.row)  // icon placeholder + gap
-        w += 8          // H1 handle (right of name)
-        w += sizeW + 8  // size + H2
-        w += modW  + 8  // modified + H3
-        w += kindW      // kind (handle conditional below)
+        var w = iconW + Double(Theme.Space.row) + 8  // icon + gap + H1
+        w += sizeW + 8 + modW + 8 + kindW
         let hasGit = !tab.gitStatus.isEmpty
         let hasPlugins = !visiblePluginCols.isEmpty
-        if hasGit {
-            w += 8 + gitW                        // H4 + git column
-            if hasPlugins { w += 8 }             // H5 before plugins
-        } else if hasPlugins {
-            w += 8                               // H4 before plugins
-        }
-        for col in visiblePluginCols {
-            w += (pluginWidths[col.id] ?? 104) + 8
-        }
-        w += 2 * Double(Theme.Space.rowLeading)  // horizontal padding
+        if hasGit { w += 8 + gitW; if hasPlugins { w += 8 } }
+        else if hasPlugins { w += 8 }
+        for col in visiblePluginCols { w += (pluginWidths[col.id] ?? 104) + 8 }
+        w += 2 * Double(Theme.Space.rowLeading)
         return w
     }
-    private var effectiveNameW: Double { max(80, min(nameW, paneWidth - fixedColumnsWidth)) }
 
-    // Custom bindings: each handle changes only its column.
+    // Column resize: all handles compensate via Kind (rightmost). Dragging H1/H2/H3
+    // right makes the left column grow; Kind absorbs by shrinking. The columns between
+    // the dragged handle and Kind shift right as a unit without changing their widths.
+    // Result: "right block slides" — matches the behavior users expect from Finder.
+    //   H1 Name grows  → kindW shrinks, Size+Mod+Kind block shifts right
+    //   H2 Size grows  → kindW shrinks, Mod+Kind block shifts right
+    //   H3 Mod grows   → kindW shrinks, Kind shifts (same as pairwise)
+    //   H4 Kind grows  → nameW shrinks (only visible with git/plugin columns)
     private var nameBind: Binding<Double> {
-        Binding(get: { nameW }, set: { nameW = max(80, $0) })
+        Binding(get: { nameW }, set: { v in
+            let d = v - nameW
+            let give = d > 0 ? min(d, kindW - 40) : max(d, -(nameW - 80))
+            nameW += give; kindW -= give
+        })
     }
     private var sizeBind: Binding<Double> {
-        Binding(get: { sizeW }, set: { sizeW = max(40, $0) })
+        Binding(get: { sizeW }, set: { v in
+            let d = v - sizeW
+            let give = d > 0 ? min(d, kindW - 40) : max(d, -(sizeW - 40))
+            sizeW += give; kindW -= give
+        })
     }
     private var modBind: Binding<Double> {
-        Binding(get: { modW }, set: { modW = max(40, $0) })
+        Binding(get: { modW }, set: { v in
+            let d = v - modW
+            let give = d > 0 ? min(d, kindW - 40) : max(d, -(modW - 40))
+            modW += give; kindW -= give
+        })
     }
     private var kindBind: Binding<Double> {
-        Binding(get: { kindW }, set: { kindW = max(40, $0) })
+        Binding(get: { kindW }, set: { v in
+            let d = v - kindW
+            let give = d > 0 ? min(d, nameW - 80) : max(d, -(kindW - 40))
+            kindW += give; nameW -= give
+        })
     }
     private func pluginWidth(_ col: PluginColumn) -> CGFloat {
         CGFloat(pluginWidths[col.id] ?? 104)
@@ -416,18 +430,14 @@ struct FileTableView: View {
     }
 
     private var columnHeader: some View {
-        // spacing:0 — each column is followed by a ColResizeHandle (8 pt) on its
-        // RIGHT edge. Drag right = column grows; drag left = column shrinks.
-        // nameW compensates for every resize so the total row width stays constant:
-        //   H1 (right of Name)     → nameW only; right block slides as a unit
-        //   H2 (right of Size)     → sizeW ↑, nameW ↓; Modified/Kind don't move
-        //   H3 (right of Modified) → modW ↑, nameW ↓; Kind doesn't move
-        //   H4 (right of Kind)     → kindW ↑, nameW ↓
+        // spacing:0 — columns separated by 8-pt ColResizeHandle. Kind absorbs all
+        // resizes (all handles compensate via kindW) so the right block slides right
+        // as a unit when any column grows. H4 (after Kind) compensates via nameW.
         HStack(spacing: 0) {
             Color.clear.frame(width: app.settings.density.iconSize)
             Color.clear.frame(width: Theme.Space.row)
             headerButton("Name", .name)
-                .frame(width: max(0, CGFloat(effectiveNameW)), alignment: .leading)
+                .frame(width: max(0, CGFloat(nameW)), alignment: .leading)
             ColResizeHandle(width: nameBind)
             headerButton("Size", .size).frame(width: CGFloat(sizeW), alignment: .trailing)
             ColResizeHandle(width: sizeBind)
@@ -455,8 +465,33 @@ struct FileTableView: View {
         .background {
             GeometryReader { geo in
                 Color.clear
-                    .onAppear { paneWidth = geo.size.width }
-                    .onChange(of: geo.size.width) { _, w in paneWidth = w }
+                    // Column widths are shared @AppStorage (TC convention: one set for
+                    // both panes). Only the LEFT pane drives Name from geometry — else
+                    // both panes write the same key on every resize and double-apply the
+                    // delta / fight over the snap, which corrupted the layout.
+                    .onAppear {
+                        guard tabBelongsToLeft() else { return }
+                        let avail = max(80, geo.size.width - fixedColumnsWidth)
+                        if !didSnapName {
+                            nameW = avail            // first run ever: fill the pane
+                            didSnapName = true
+                        } else {
+                            nameW = min(nameW, avail) // later: keep user width, only shrink to fit
+                        }
+                    }
+                    .onChange(of: geo.size.width) { old, new in
+                        guard tabBelongsToLeft() else { return }
+                        // Absorb window resize into Name (the flex column). When Name
+                        // hits its 80-pt floor, spill the remainder into Kind so the row
+                        // never overflows the pane.
+                        let desired = nameW + (new - old)
+                        if desired >= 80 {
+                            nameW = desired
+                        } else {
+                            nameW = 80
+                            kindW = max(40, kindW + (80 - desired))
+                        }
+                    }
             }
         }
     }
@@ -525,7 +560,7 @@ struct FileTableView: View {
                         .frame(width: Theme.Col.tagDot, height: Theme.Col.tagDot)
                 }
             }
-            .frame(width: max(0, CGFloat(effectiveNameW)), alignment: .leading)
+            .frame(width: max(0, CGFloat(nameW)), alignment: .leading)
             .clipped()
             Text(entry.isDirectory ? "--" : (entry.size.map(byteString) ?? "--"))
                 .font(Theme.Font.mono).foregroundStyle(.secondary)

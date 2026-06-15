@@ -158,10 +158,17 @@ final class AppSettings {
     var theme: AppTheme {
         didSet {
             store.set(theme.rawValue, forKey: Keys.theme)
-            let a = theme.nsAppearance
-            DispatchQueue.main.async { NSApp.appearance = a }
+            // Defer to the next runloop tick — mutating NSApp.appearance inside an
+            // @Observable didSet during a SwiftUI update can re-enter the layout pass.
+            let appearance = theme.nsAppearance
+            DispatchQueue.main.async { NSApp.appearance = appearance }
         }
     }
+
+    /// Single mechanism for applying the window appearance (`NSApp.appearance`).
+    /// Called at launch (`AppState.start`); the `theme` didSet mirrors it for live
+    /// changes (must hop to main async from the observation callback).
+    @MainActor func applyTheme() { NSApp.appearance = theme.nsAppearance }
 
     /// Row density (Compact / Cozy / Comfortable).
     var density: Density { didSet { store.set(density.rawValue, forKey: Keys.density) } }

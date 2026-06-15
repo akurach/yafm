@@ -301,7 +301,13 @@ final class PaneModel: Identifiable {
         initial.onNavigate = { [weak self] url in self?.onTabNavigate?(url) }
     }
 
-    var active: TabModel { tabs[min(activeIndex, tabs.count - 1)] }
+    // Invariant: `tabs` is never empty — seeded with one in init, and closeTab
+    // refuses to remove the last. `active` relies on it; assert so a future edit
+    // that breaks the invariant fails loudly in debug instead of crashing on index.
+    var active: TabModel {
+        assert(!tabs.isEmpty, "PaneModel.tabs must never be empty")
+        return tabs[min(activeIndex, tabs.count - 1)]
+    }
 
     func newTab(at directory: URL? = nil) {
         let dir = directory ?? active.directory
@@ -523,7 +529,7 @@ final class AppState {
     // MARK: Start
 
     func start() {
-        NSApp.appearance = settings.theme.nsAppearance
+        settings.applyTheme()
         left.active.load()
         right.active.load()
         refreshVolumes()

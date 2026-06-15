@@ -48,11 +48,7 @@ extension View {
 /// Uses @Environment so the colour is guaranteed to update on appearance change.
 struct ChromeBackground: View {
     @Environment(\.colorScheme) private var scheme
-    var body: some View {
-        scheme == .dark
-            ? Color(red: 0.067, green: 0.067, blue: 0.075)   // #111113
-            : Color(red: 0.878, green: 0.878, blue: 0.886)   // #e0e0e2 — light chrome per design spec
-    }
+    var body: some View { Theme.Palette.chrome(scheme == .dark) }
 }
 
 /// Panel backgrounds — same pattern.
@@ -63,14 +59,8 @@ struct PanelBackground: View {
 
     var body: some View {
         switch kind {
-        case .sidebar:
-            scheme == .dark
-                ? Color(red: 0.129, green: 0.129, blue: 0.149)  // #212126
-                : Color(red: 0.918, green: 0.918, blue: 0.925)  // #eaeaec — dusty light gray
-        case .panes:
-            scheme == .dark
-                ? Color(red: 0.110, green: 0.110, blue: 0.118)  // #1c1c1e
-                : Color(nsColor: .windowBackgroundColor)         // white
+        case .sidebar: Theme.Palette.sidebarSurface(scheme == .dark)
+        case .panes:   Theme.Palette.panesSurface(scheme == .dark)
         }
     }
 }

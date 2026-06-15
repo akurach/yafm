@@ -43,6 +43,19 @@ _Nothing yet._
 - **Network volume nav history** preserved — SMB/AFP listing no longer drops `onNavigate`.
 - Bundled plugins (`open-with`, `exif-info`) auto-refresh JS content on version bump
   while preserving enabled/disabled state.
+- **Column resize cross-pane corruption** — both panes wrote the same shared
+  `@AppStorage` width from their own geometry, double-applying the resize delta and
+  resetting columns to default. Now only the left pane drives Name from geometry;
+  first launch fills the pane (`didSnapName`), later launches clamp to fit instead of
+  stomping the stored width; a window-shrink past Name's floor spills into Kind so the
+  row never overflows.
+- **Theme appearance single-owner** — `NSApp.appearance` now applied through one
+  `AppSettings.applyTheme()` (launch + live change) instead of split sync/async sites.
+- **Chrome color tokens** — chrome / sidebar / panes / function-bar RGB literals folded
+  into `Theme.Palette`; the light/dark surfaces live in the tokens layer, not scattered
+  across `FloatLayout` / `FunctionBar`.
+- **`PaneModel.active` invariant** — asserts `tabs` is never empty so a future edit
+  fails loudly in debug instead of crashing on the index.
 
 ### Refactored
 - **AppState God Object split** (A-3) — extracted `PluginCoordinator`, `TagCoordinator`,

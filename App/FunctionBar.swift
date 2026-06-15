@@ -44,11 +44,7 @@ struct FunctionBarView: View {
 
 struct FunctionBarBackground: View {
     @Environment(\.colorScheme) private var scheme
-    var body: some View {
-        scheme == .dark
-            ? Color(red: 0.090, green: 0.090, blue: 0.098)   // slightly lighter than #111113
-            : Color(red: 0.820, green: 0.820, blue: 0.828)   // #d1d1d3 — darker than chrome
-    }
+    var body: some View { Theme.Palette.functionBar(scheme == .dark) }
 }
 
 struct FunctionKeyButton: View {
