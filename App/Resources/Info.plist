@@ -2,8 +2,20 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
+	<key>ATSApplicationFontsPath</key>
+	<string>Fonts</string>
 	<key>CFBundleDevelopmentRegion</key>
 	<string>en</string>
+	<key>CFBundleDisplayName</key>
+	<string>yafm</string>
+	<key>CFBundleExecutable</key>
+	<string>yafm</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleIconName</key>
+	<string>AppIcon</string>
+	<key>CFBundleIdentifier</key>
+	<string>com.yafm.app</string>
 	<key>CFBundleLocalizations</key>
 	<array>
 		<string>en</string>
@@ -11,41 +23,29 @@
 	</array>
 	<key>CFBundleName</key>
 	<string>yafm</string>
-	<key>CFBundleDisplayName</key>
-	<string>yafm</string>
-	<key>CFBundleIdentifier</key>
-	<string>com.yafm.app</string>
-	<key>CFBundleExecutable</key>
-	<string>yafm</string>
-	<key>CFBundleIconFile</key>
-	<string>AppIcon</string>
-	<key>CFBundleIconName</key>
-	<string>AppIcon</string>
-	<key>CFBundleVersion</key>
-	<string>0.9.3</string>
-	<key>CFBundleShortVersionString</key>
-	<string>0.9.3</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
-	<key>LSMinimumSystemVersion</key>
-	<string>14.0</string>
-	<key>NSHighResolutionCapable</key>
-	<true/>
-	<key>NSPrincipalClass</key>
-	<string>NSApplication</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.9.4</string>
+	<key>CFBundleVersion</key>
+	<string>0.9.4</string>
 	<key>LSApplicationCategoryType</key>
 	<string>public.app-category.utilities</string>
+	<key>LSMinimumSystemVersion</key>
+	<string>14.0</string>
 	<key>NSDesktopFolderUsageDescription</key>
 	<string>yafm reads the files you open so it can show and copy them.</string>
 	<key>NSDocumentsFolderUsageDescription</key>
 	<string>yafm reads the files you open so it can show and copy them.</string>
 	<key>NSDownloadsFolderUsageDescription</key>
 	<string>yafm reads the files you open so it can show and copy them.</string>
-	<key>NSRemovableVolumesUsageDescription</key>
-	<string>yafm lists and copies files on removable drives you connect.</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
 	<key>NSNetworkVolumesUsageDescription</key>
 	<string>yafm lists and copies files on network volumes you connect.</string>
-	<key>ATSApplicationFontsPath</key>
-	<string>Fonts</string>
+	<key>NSPrincipalClass</key>
+	<string>NSApplication</string>
+	<key>NSRemovableVolumesUsageDescription</key>
+	<string>yafm lists and copies files on removable drives you connect.</string>
 </dict>
 </plist>

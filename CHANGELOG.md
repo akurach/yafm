@@ -8,6 +8,33 @@ the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 _Nothing yet._
 
+## [0.9.4] — Float layout · Visual redesign
+
+### Added
+- **Float layout** — unified chrome titlebar; sidebar and panes are floating cards
+  with adaptive light/dark surfaces (`Theme.Palette.chrome / sidebarSurface /
+  panesSurface / functionBar`).
+- **Phosphor icons + IBM Plex fonts** — sidebar/chrome iconography and typography
+  refresh; IBM Plex Mono for file data, IBM Plex Sans for chrome; settings screen
+  redesigned.
+- **Accent color picker** (Settings ▸ Appearance) and click-to-activate panes.
+
+### Fixed
+- **Column resize cross-pane corruption** — both panes wrote the same shared
+  `@AppStorage` width from their own geometry, double-applying the resize delta and
+  resetting columns to default. Now only the left pane drives Name from geometry;
+  first launch fills the pane (`didSnapName`), later launches clamp to fit instead of
+  stomping the stored width; a window-shrink past Name's floor spills into Kind so the
+  row never overflows.
+- **Theme appearance single-owner** — `NSApp.appearance` now applied through one
+  `AppSettings.applyTheme()` (launch + live change) instead of split sync/async sites.
+- **Chrome color tokens** — chrome / sidebar / panes / function-bar RGB literals folded
+  into `Theme.Palette` so the light/dark surfaces live in the tokens layer, not
+  scattered across `FloatLayout` / `FunctionBar`.
+- **`PaneModel.active` invariant** — asserts `tabs` is never empty so a future edit
+  fails loudly in debug instead of crashing on the index.
+- Suppressed font / `NSApp` startup warnings.
+
 ## [0.9.3] — Column resize · Sidebar config · Audit fixes
 
 ### Added
@@ -43,19 +70,6 @@ _Nothing yet._
 - **Network volume nav history** preserved — SMB/AFP listing no longer drops `onNavigate`.
 - Bundled plugins (`open-with`, `exif-info`) auto-refresh JS content on version bump
   while preserving enabled/disabled state.
-- **Column resize cross-pane corruption** — both panes wrote the same shared
-  `@AppStorage` width from their own geometry, double-applying the resize delta and
-  resetting columns to default. Now only the left pane drives Name from geometry;
-  first launch fills the pane (`didSnapName`), later launches clamp to fit instead of
-  stomping the stored width; a window-shrink past Name's floor spills into Kind so the
-  row never overflows.
-- **Theme appearance single-owner** — `NSApp.appearance` now applied through one
-  `AppSettings.applyTheme()` (launch + live change) instead of split sync/async sites.
-- **Chrome color tokens** — chrome / sidebar / panes / function-bar RGB literals folded
-  into `Theme.Palette`; the light/dark surfaces live in the tokens layer, not scattered
-  across `FloatLayout` / `FunctionBar`.
-- **`PaneModel.active` invariant** — asserts `tabs` is never empty so a future edit
-  fails loudly in debug instead of crashing on the index.
 
 ### Refactored
 - **AppState God Object split** (A-3) — extracted `PluginCoordinator`, `TagCoordinator`,
