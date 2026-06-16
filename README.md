@@ -4,7 +4,7 @@
 [![License: GPL-3.0 + plugin exception](https://img.shields.io/badge/license-GPL--3.0%20%2B%20plugin%20exception-blue.svg)](LICENSE)
 ![Platform: macOS 14+](https://img.shields.io/badge/platform-macOS%2014%2B-lightgrey.svg)
 ![Swift 6](https://img.shields.io/badge/swift-6-orange.svg)
-[![Latest release](https://img.shields.io/github/v/release/akurach/yafm?include_prereleases&sort=semver)](https://github.com/akurach/yafm/releases)
+[![Latest release](https://img.shields.io/github/v/release/akurach/yafm?include_prereleases)](https://github.com/akurach/yafm/releases)
 
 **Yet Another File Manager for macOS.** A fast, keyboard-driven, modern alternative to Finder — that never freezes silently.
 
