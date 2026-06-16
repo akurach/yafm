@@ -141,13 +141,12 @@ public struct ColorCoder: Sendable {
         rules.first { $0.matches(entry) }?.colorName
     }
 
-    public static let defaults: [ColorRule] = [
-        ColorRule(match: .ext(["jpg", "jpeg", "png", "gif", "heic", "webp", "svg"]), colorName: "Purple"),
-        ColorRule(match: .ext(["mov", "mp4", "m4v", "avi", "mkv"]), colorName: "Blue"),
-        ColorRule(match: .ext(["zip", "tar", "gz", "dmg", "7z"]), colorName: "Orange"),
-        ColorRule(match: .ext(["swift", "js", "ts", "py", "rs", "go", "c", "h"]), colorName: "Green"),
-        ColorRule(match: .ext(["md", "txt", "pdf", "rtf", "doc", "docx", "pages"]), colorName: "Gray"),
-    ]
+    /// No extension-based defaults: file *type* color now lives in the file-type
+    /// tile + the opt-in "tint name by type" setting (a single category palette),
+    /// so auto-coloring names by extension here would double up and conflict (the
+    /// old defaults disagreed with the tiles — e.g. mp4 was Blue here, pink there).
+    /// Tag / directory / regex rules can still be added by the user.
+    public static let defaults: [ColorRule] = []
 }
 
 // MARK: - Bookmarks / favorites (v0.2)

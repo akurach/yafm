@@ -7,11 +7,11 @@ import Core
 
 final class YafmAppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ n: Notification) {
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            NSApp.windows
-                .filter { !($0 is NSPanel) }
-                .forEach { $0.isMovableByWindowBackground = true }
-        }
+        // Intentionally NOT setting isMovableByWindowBackground: it made the whole
+        // window drag from any non-button view, so pressing-and-dragging a sidebar
+        // row (which uses onTapGesture, not a Button — a tap fires, a drag doesn't,
+        // so the window grabbed the drag) moved the window instead. The window is
+        // still draggable from the top title-bar zone (hidden title bar).
     }
 }
 

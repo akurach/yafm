@@ -395,6 +395,7 @@ final class AppState {
         get { plugins.pluginValuesVersion }
         set { plugins.pluginValuesVersion = newValue }
     }
+    func scheduleValuesBump() { plugins.scheduleValuesBump() }
     var disabledPluginIDs: Set<String> {
         get { plugins.disabledPluginIDs }
         set { plugins.disabledPluginIDs = newValue }
@@ -477,6 +478,7 @@ final class AppState {
     private static let bookmarksKey = "yafm.customBookmarks"
 
     init() {
+        Self.sanitizeColumnWidths()   // heal corrupt persisted widths before any view reads them
         // Coordinators first — they only need the shared services as init params
         // and those are set via their inline default initializers before this body runs.
         let tagsService = tags as TagServing   // capture typed ref before self is available
@@ -527,6 +529,28 @@ final class AppState {
     }
 
     // MARK: Start
+
+    /// Heal pathological persisted column widths *before* the table renders. An
+    /// earlier resize bug let `yafm.col.nameW` grow unbounded (~2.7M pt) and that
+    /// value, applied as a column frame, sent AppKit's layout engine into an
+    /// infinite `_layoutSubtree` recursion that froze the app on the first folder
+    /// it drew. Clamp the stored defaults at startup so a corrupt value can't reach
+    /// the view layer. (The runaway source is fixed; this self-heals existing installs.)
+    static func sanitizeColumnWidths() {
+        let d = UserDefaults.standard
+        let bounds: [(String, ClosedRange<Double>, Double)] = [
+            ("yafm.col.nameW", 80...4000, 280),
+            ("yafm.col.sizeW", 40...2000, 78),
+            ("yafm.col.modW",  40...2000, 124),
+            ("yafm.col.kindW", 40...2000, 92),
+            ("yafm.col.gitW",  28...500,  34),
+        ]
+        for (key, range, fallback) in bounds {
+            guard d.object(forKey: key) != nil else { continue }   // unset → use the @AppStorage default
+            let v = d.double(forKey: key)
+            if !v.isFinite || !range.contains(v) { d.set(fallback, forKey: key) }
+        }
+    }
 
     func start() {
         settings.applyTheme()
@@ -822,9 +846,12 @@ final class AppState {
         }
     }
 
-    func openCursor(allowFileOpen: Bool = true) {
+    func openCursor(allowFileOpen: Bool = true, enterPackages: Bool = false) {
         guard let entry = activeTab.actionable.first ?? activeTab.displayed.first(where: { $0.url == activeTab.cursor }) else { return }
-        if entry.isDirectory { activeTab.open(entry.url) }
+        // A package (.app, .bundle…) is a directory the system treats as a file:
+        // Open/Enter launches it, but → (enterPackages) browses inside as a folder.
+        let isPackage = entry.isDirectory && NSWorkspace.shared.isFilePackage(atPath: entry.url.path)
+        if entry.isDirectory && (!isPackage || enterPackages) { activeTab.open(entry.url) }
         else if entry.url.isFileURL, entry.url.pathExtension.lowercased() == "zip" { browseArchive(entry.url) }
         else if allowFileOpen { openFile(entry.url) }
     }
@@ -834,7 +861,7 @@ final class AppState {
         activeTab.open(url)
     }
 
-    func enterCursor() { openCursor(allowFileOpen: settings.rightArrowOpensFiles) }
+    func enterCursor() { openCursor(allowFileOpen: settings.rightArrowOpensFiles, enterPackages: settings.rightArrowEntersPackages) }
 
     // MARK: File operations
 
@@ -923,7 +950,11 @@ final class AppState {
     }
 
     func openFile(_ url: URL) {
-        if PluginCoordinator.riskyExtensions.contains(url.pathExtension.lowercased()) {
+        let ext = url.pathExtension.lowercased()
+        // Launching an app is a normal, deliberate action (and macOS Gatekeeper still
+        // gates untrusted/quarantined apps), so don't second-guess it — only warn for
+        // loose scripts/executables that the user may not realize run code.
+        if ext != "app", PluginCoordinator.riskyExtensions.contains(ext) {
             let alert = NSAlert()
             alert.messageText = "Open \"\(url.lastPathComponent)\"?"
             alert.informativeText = "This may run code on your Mac."

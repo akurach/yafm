@@ -8,6 +8,50 @@ the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 _Nothing yet._
 
+## [0.9.5] — File-type tiles · Sidebar reorder · App handling
+
+### Added
+- **File-type tiles** — colored extension chips (drawn, cached, appearance-aware) for
+  ~250 known types skewed to dev / geek / photographer / videographer / musician work:
+  code, 3D/CAD, RAW photo, design, audio/video **project** files (Premiere/Resolve/FCP,
+  Ableton/FL/Logic/Reaper), soundfonts/VST, fonts, binaries. Toggle in Settings ▸
+  Appearance; folders and unknown types keep their real macOS icon.
+- **One type→color palette** — the resolved category color drives both the tile and the
+  optional **"tint file names by type"**, so they can never disagree (the old extension
+  color-coding that fought the tiles is gone). Per-category colors are editable
+  (Settings ▸ Appearance ▸ Type colors), and a **type browser** lists/searches every
+  known extension with its category for override or add.
+- **Live sidebar reorder** — drag a Favorites item (system folders + bookmarks) or a
+  whole **section** (Favorites/Locations/Devices/Network/Tags) to reorder; the grabbed
+  block follows the cursor while neighbors spring into place. Order persists.
+- **Configurable columns** — show/hide Size/Modified/Kind/Git from the column-header
+  right-click or the path-bar options button (not buried in Settings).
+- **Quick tags** — assign a tag straight from a row's right-click menu (colored dots,
+  your real tags + standard colors + New Tag), no modal.
+- **Full Disk Access in Settings** (General) — status + open System Settings + re-check,
+  reachable even after dismissing the access banner.
+- **App right-arrow behavior** setting (browse bundle contents vs launch) + **Show
+  Package Contents** in the row menu.
+
+### Fixed
+- **Big-folder freeze** — a column-resize bug let `nameW` grow unbounded (~2.7M pt) and
+  persist; that width sent AppKit's layout engine into infinite recursion and froze the
+  app on the first folder it drew. Restored the Name-width clamp and added a startup
+  sanitizer that heals corrupt persisted widths before the table renders.
+- **`.app` shown as a folder** — apps now use their real icon, read "Application" in
+  Kind, launch on double-click/Enter (no spurious "may run code" prompt), and enter as a
+  folder on → (configurable).
+- **Sidebar drag moved the window** — clicking-and-dragging a sidebar row no longer
+  drags the whole window (was `isMovableByWindowBackground`).
+- **Click yanked the list** — selecting a row no longer scroll-centers it; the list only
+  scrolls when keyboard navigation moves off-screen.
+- **Light-mode tile contrast** + softer active-pane wash; debounced async plugin/EXIF
+  value resolution to cut re-render churn on image folders.
+
+### Changed
+- **Settings reorganized** — General gains Theme / Density / Motion (quick toggles);
+  Appearance is now Accent + the file-type tile system; window enlarged to 640×560.
+
 ## [0.9.4] — Float layout · Visual redesign
 
 ### Added

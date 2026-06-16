@@ -12,6 +12,21 @@ struct BookmarksSidebar: View {
     @State private var renameVolume: Volume?
     @State private var renameText: String = ""
 
+    // Live section drag-reorder: the grabbed block follows the cursor while the
+    // others animate to make space (heights drive the swap thresholds).
+    @State private var dragKey: String?
+    @State private var dragDY: CGFloat = 0
+    @State private var dragStartVisible: [String] = []   // visible section order captured at grab
+    @State private var dragStartIndex: Int = 0
+    @State private var sectionHeights: [String: CGFloat] = [:]
+
+    // Same live-reorder, but for items inside the Favorites section.
+    @State private var favDragId: String?
+    @State private var favDragDY: CGFloat = 0
+    @State private var favStartOrder: [String] = []
+    @State private var favStartIndex: Int = 0
+    @State private var favHeights: [String: CGFloat] = [:]
+
     private var devices: [Volume] { app.volumes.filter { !$0.isNetwork } }
     private var networkVolumes: [Volume] { app.volumes.filter { $0.isNetwork } }
 
@@ -40,87 +55,58 @@ struct BookmarksSidebar: View {
         if let url { locationRow(label, icon, url) }
     }
 
+    // MARK: Reorder model
+
+    /// One Favorites entry — a system folder or a user bookmark — with a stable id
+    /// for drag-reorder persistence.
+    private enum FavItem: Identifiable {
+        case system(SystemFavorite, URL)
+        case bookmark(Bookmark)
+        var id: String {
+            switch self {
+            case .system(let f, _): return "sys:\(f.rawValue)"
+            case .bookmark(let b):  return "bm:\(b.id.uuidString)"
+            }
+        }
+    }
+
+    /// Favorites in the user's saved order; new items append in natural order.
+    private var orderedFavorites: [FavItem] {
+        var natural: [FavItem] = []
+        for fav in SystemFavorite.allCases where app.settings.enabledFavorites.contains(fav) {
+            if let url = Self.favURLs[fav] ?? nil { natural.append(.system(fav, url)) }
+        }
+        for bm in app.bookmarks { natural.append(.bookmark(bm)) }
+        let order = app.settings.favoritesOrder
+        guard !order.isEmpty else { return natural }
+        let known = natural.filter { order.contains($0.id) }
+            .sorted { (order.firstIndex(of: $0.id) ?? 0) < (order.firstIndex(of: $1.id) ?? 0) }
+        return known + natural.filter { !order.contains($0.id) }
+    }
+
+    private static let allSectionKeys = ["favorites", "locations", "devices", "network", "tags"]
+    private var orderedSectionKeys: [String] {
+        let stored = app.settings.sidebarSectionOrder.filter { Self.allSectionKeys.contains($0) }
+        return stored + Self.allSectionKeys.filter { !stored.contains($0) }
+    }
+
     var body: some View {
         ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 0) {
-
-                if app.settings.sidebarShowFavorites {
-                    SidebarSectionHeader("Favorites").padding(.horizontal, 10)
-                    ForEach(SystemFavorite.allCases) { fav in
-                        if app.settings.enabledFavorites.contains(fav) {
-                            sysFav(fav.label, favImage(fav), Self.favURLs[fav] ?? nil)
-                        }
-                    }
-                    ForEach(app.bookmarks) { bm in
-                        SidebarRow(icon: Ph.folder.bold, label: bm.name,
-                                   isActive: app.activeTab.directory == bm.url)
-                            .onTapGesture { app.activeTab.open(bm.url) }
-                            .contextMenu {
-                                Button("Open") { app.activeTab.open(bm.url) }
-                                Button("Open in New Tab") { app.openInNewTab(bm.url) }
-                                Divider()
-                                Button(role: .destructive) { app.removeBookmark(bm) } label: {
-                                    Label("Remove from Favorites", systemImage: "minus.circle")
-                                }
-                            }
-                    }
-                }
-
-                if app.settings.sidebarShowLocations {
-                    SidebarSectionHeader("Locations").padding(.horizontal, 10)
-                    if app.settings.locShowComputer {
-                        locationRow("Computer", Ph.desktop.bold, URL(fileURLWithPath: "/"))
-                    }
-                    if app.settings.locShowHome {
-                        locationRow("Home", Ph.house.bold,
-                                    FileManager.default.homeDirectoryForCurrentUser)
-                    }
-                    if app.settings.sidebarShowICloud, let url = iCloudDriveURL {
-                        locationRow("iCloud Drive", Ph.cloud.bold, url)
-                    }
-                }
-
-                if app.settings.sidebarShowDevices, !devices.isEmpty {
-                    SidebarSectionHeader("Devices").padding(.horizontal, 10)
-                    ForEach(devices) { vol in
-                        VolumeRow(
-                            app: app, volume: vol,
-                            classification: app.volumeClassifications[vol.url],
-                            onGetInfo: {
-                                infoItem = VolumeInfoItem(
-                                    volume: vol,
-                                    classification: app.volumeClassifications[vol.url])
-                            },
-                            onRename: { renameVolume = vol; renameText = vol.name }
-                        )
-                        .padding(.horizontal, 6)
-                    }
-                }
-
-                if app.settings.sidebarShowNetwork, !networkVolumes.isEmpty {
-                    SidebarSectionHeader("Network").padding(.horizontal, 10)
-                    ForEach(networkVolumes) { vol in
-                        VolumeRow(
-                            app: app, volume: vol,
-                            classification: app.volumeClassifications[vol.url],
-                            onGetInfo: {
-                                infoItem = VolumeInfoItem(
-                                    volume: vol,
-                                    classification: app.volumeClassifications[vol.url])
-                            },
-                            onRename: { renameVolume = vol; renameText = vol.name }
-                        )
-                        .padding(.horizontal, 6)
-                    }
-                }
-
-                if app.settings.sidebarShowTags, !app.knownTags.isEmpty {
-                    SidebarSectionHeader("Tags").padding(.horizontal, 10)
-                    ForEach(app.knownTags, id: \.name) { tag in
-                        TagCloudRow(app: app, tag: tag, count: app.tagCounts[tag.name] ?? 0)
-                            .padding(.horizontal, 6)
-                            .frame(height: 30)
-                    }
+                ForEach(orderedSectionKeys, id: \.self) { key in
+                    section(key)
+                        .background(GeometryReader { g in
+                            Color.clear
+                                .onAppear { sectionHeights[key] = g.size.height }
+                                .onChange(of: g.size.height) { _, h in sectionHeights[key] = h }
+                        })
+                        .offset(y: dragKey == key ? dragDY : 0)
+                        .zIndex(dragKey == key ? 1 : 0)
+                        .shadow(color: .black.opacity(dragKey == key ? 0.25 : 0),
+                                radius: dragKey == key ? 8 : 0, y: 2)
+                        // The grabbed block follows the cursor with no slot animation;
+                        // only the other blocks animate into place.
+                        .transaction { if dragKey == key { $0.animation = nil } }
                 }
             }
             .padding(.vertical, 8)
@@ -143,6 +129,199 @@ struct BookmarksSidebar: View {
         } message: {
             if let vol = renameVolume { Text("Current name: \(vol.name)") }
         }
+    }
+
+    // MARK: Section rendering (order is user-draggable)
+
+    @ViewBuilder private func section(_ key: String) -> some View {
+        switch key {
+        case "favorites":
+            if app.settings.sidebarShowFavorites {
+                sectionHeader("Favorites", key: key)
+                ForEach(orderedFavorites) { item in
+                    favoriteRow(item)
+                        .background(GeometryReader { g in
+                            Color.clear
+                                .onAppear { favHeights[item.id] = g.size.height }
+                                .onChange(of: g.size.height) { _, h in favHeights[item.id] = h }
+                        })
+                        .offset(y: favDragId == item.id ? favDragDY : 0)
+                        .zIndex(favDragId == item.id ? 1 : 0)
+                        .shadow(color: .black.opacity(favDragId == item.id ? 0.22 : 0),
+                                radius: favDragId == item.id ? 6 : 0, y: 2)
+                        .transaction { if favDragId == item.id { $0.animation = nil } }
+                        .gesture(favoriteDrag(item.id))
+                }
+            }
+        case "locations":
+            if app.settings.sidebarShowLocations {
+                sectionHeader("Locations", key: key)
+                if app.settings.locShowComputer {
+                    locationRow("Computer", Ph.desktop.bold, URL(fileURLWithPath: "/"))
+                }
+                if app.settings.locShowHome {
+                    locationRow("Home", Ph.house.bold, FileManager.default.homeDirectoryForCurrentUser)
+                }
+                if app.settings.sidebarShowICloud, let url = iCloudDriveURL {
+                    locationRow("iCloud Drive", Ph.cloud.bold, url)
+                }
+            }
+        case "devices":
+            if app.settings.sidebarShowDevices, !devices.isEmpty {
+                sectionHeader("Devices", key: key)
+                ForEach(devices) { vol in volumeRow(vol) }
+            }
+        case "network":
+            if app.settings.sidebarShowNetwork, !networkVolumes.isEmpty {
+                sectionHeader("Network", key: key)
+                ForEach(networkVolumes) { vol in volumeRow(vol) }
+            }
+        case "tags":
+            if app.settings.sidebarShowTags, !app.knownTags.isEmpty {
+                sectionHeader("Tags", key: key)
+                ForEach(app.knownTags, id: \.name) { tag in
+                    TagCloudRow(app: app, tag: tag, count: app.tagCounts[tag.name] ?? 0)
+                        .padding(.horizontal, 6).frame(height: 30)
+                }
+            }
+        default: EmptyView()
+        }
+    }
+
+    /// Section header — grab it to live-drag the whole block; neighbors animate to
+    /// make space as the grabbed block's edge passes their midpoint.
+    private func sectionHeader(_ title: String, key: String) -> some View {
+        SidebarSectionHeader(title)
+            .padding(.horizontal, 10)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 6, coordinateSpace: .global)
+                    .onChanged { v in
+                        if dragKey == nil {
+                            dragKey = key
+                            dragStartVisible = orderedSectionKeys.filter { (sectionHeights[$0] ?? 0) > 4 }
+                            dragStartIndex = dragStartVisible.firstIndex(of: key) ?? 0
+                        }
+                        updateSectionDrag(v.translation.height)
+                    }
+                    .onEnded { _ in
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { dragDY = 0 }
+                        dragKey = nil
+                    }
+            )
+    }
+
+    /// Position-based live reorder: each frame the target slot is recomputed from the
+    /// order captured at grab time + the cursor's total travel, so it can't drift or
+    /// "fly through" — the grabbed block crosses a neighbor only once the cursor passes
+    /// that neighbor's midpoint, and the offset is compensated so the block stays under
+    /// the cursor exactly. Other blocks spring into place.
+    private func updateSectionDrag(_ t: CGFloat) {
+        guard let key = dragKey, !dragStartVisible.isEmpty else { return }
+        var target = dragStartIndex
+        var crossed: CGFloat = 0
+        if t > 0 {
+            var i = dragStartIndex
+            while i + 1 < dragStartVisible.count {
+                let h = max(sectionHeights[dragStartVisible[i + 1]] ?? 44, 30)
+                if t - crossed > h / 2 { crossed += h; i += 1 } else { break }
+            }
+            target = i
+            dragDY = t - crossed
+        } else {
+            var i = dragStartIndex
+            while i > 0 {
+                let h = max(sectionHeights[dragStartVisible[i - 1]] ?? 44, 30)
+                if -t - crossed > h / 2 { crossed += h; i -= 1 } else { break }
+            }
+            target = i
+            dragDY = t + crossed
+        }
+        // Rebuild the full order: visible slots filled by the reordered visible list,
+        // hidden sections left exactly where they are.
+        var vis = dragStartVisible
+        vis.removeAll { $0 == key }
+        vis.insert(key, at: min(max(target, 0), vis.count))
+        var it = vis.makeIterator()
+        let result = orderedSectionKeys.map { dragStartVisible.contains($0) ? (it.next() ?? $0) : $0 }
+        if result != app.settings.sidebarSectionOrder {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                app.settings.sidebarSectionOrder = result
+            }
+        }
+    }
+
+    @ViewBuilder private func favoriteRow(_ item: FavItem) -> some View {
+        Group {
+            switch item {
+            case .system(let fav, let url):
+                locationRow(fav.label, favImage(fav), url)
+            case .bookmark(let bm):
+                SidebarRow(icon: Ph.folder.bold, label: bm.name, isActive: app.activeTab.directory == bm.url)
+                    .onTapGesture { app.activeTab.open(bm.url) }
+                    .contextMenu {
+                        Button("Open") { app.activeTab.open(bm.url) }
+                        Button("Open in New Tab") { app.openInNewTab(bm.url) }
+                        Divider()
+                        Button(role: .destructive) { app.removeBookmark(bm) } label: {
+                            Label("Remove from Favorites", systemImage: "minus.circle")
+                        }
+                    }
+            }
+        }
+    }
+
+    /// Live drag-reorder for a Favorites item — same feel as section dragging.
+    private func favoriteDrag(_ id: String) -> some Gesture {
+        DragGesture(minimumDistance: 6, coordinateSpace: .global)
+            .onChanged { v in
+                if favDragId == nil {
+                    favDragId = id
+                    favStartOrder = orderedFavorites.map(\.id)
+                    favStartIndex = favStartOrder.firstIndex(of: id) ?? 0
+                }
+                updateFavoriteDrag(v.translation.height)
+            }
+            .onEnded { _ in
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { favDragDY = 0 }
+                favDragId = nil
+            }
+    }
+
+    private func updateFavoriteDrag(_ t: CGFloat) {
+        guard let id = favDragId, !favStartOrder.isEmpty else { return }
+        var target = favStartIndex
+        var crossed: CGFloat = 0
+        if t > 0 {
+            var i = favStartIndex
+            while i + 1 < favStartOrder.count {
+                let h = max(favHeights[favStartOrder[i + 1]] ?? 30, 18)
+                if t - crossed > h / 2 { crossed += h; i += 1 } else { break }
+            }
+            target = i; favDragDY = t - crossed
+        } else {
+            var i = favStartIndex
+            while i > 0 {
+                let h = max(favHeights[favStartOrder[i - 1]] ?? 30, 18)
+                if -t - crossed > h / 2 { crossed += h; i -= 1 } else { break }
+            }
+            target = i; favDragDY = t + crossed
+        }
+        var arr = favStartOrder
+        arr.removeAll { $0 == id }
+        arr.insert(id, at: min(max(target, 0), arr.count))
+        if arr != app.settings.favoritesOrder {
+            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                app.settings.favoritesOrder = arr
+            }
+        }
+    }
+
+    private func volumeRow(_ vol: Volume) -> some View {
+        VolumeRow(app: app, volume: vol, classification: app.volumeClassifications[vol.url],
+                  onGetInfo: { infoItem = VolumeInfoItem(volume: vol, classification: app.volumeClassifications[vol.url]) },
+                  onRename: { renameVolume = vol; renameText = vol.name })
+            .padding(.horizontal, 6)
     }
 
     private func locationRow(_ title: String, _ icon: Image, _ url: URL) -> some View {

@@ -154,6 +154,10 @@ final class AppSettings {
     /// New tabs/panes start with hidden files shown.
     var showHiddenByDefault: Bool { didSet { store.set(showHiddenByDefault, forKey: Keys.showHiddenByDefault) } }
 
+    /// → (right arrow) on an app/package: enter its contents as a folder (on, the
+    /// default) or launch the app (off). Double-click always launches.
+    var rightArrowEntersPackages: Bool { didSet { store.set(rightArrowEntersPackages, forKey: Keys.rightArrowEntersPackages) } }
+
     /// Light / Dark / System.
     var theme: AppTheme {
         didSet {
@@ -172,6 +176,97 @@ final class AppSettings {
 
     /// Row density (Compact / Cozy / Comfortable).
     var density: Density { didSet { store.set(density.rawValue, forKey: Keys.density) } }
+
+    /// Draw colored file-type tiles (extension chips) for known types instead of
+    /// the system icon. Off → every file uses its real macOS icon.
+    var filetypeTiles: Bool { didSet { store.set(filetypeTiles, forKey: Keys.filetypeTiles) } }
+
+    /// User-defined extension → tile overrides, stored as `"categoryRaw|LABEL"`.
+    /// Checked before the built-in catalog, so users can add or recolor types.
+    var customFileTypes: [String: String] { didSet { store.set(customFileTypes, forKey: Keys.customFileTypes) } }
+
+    /// Per-category color overrides, stored as `"r,g,b"` (0–1 sRGB). The resolved
+    /// color is the single source of truth for BOTH the tile and (optionally) the
+    /// filename tint, so they can never disagree.
+    var categoryColors: [String: String] { didSet { store.set(categoryColors, forKey: Keys.categoryColors) } }
+
+    /// Tint the filename with its type color (same color as the tile). Off → the
+    /// name uses the normal text color; the tile alone carries the type color.
+    var tintNamesByType: Bool { didSet { store.set(tintNamesByType, forKey: Keys.tintNamesByType) } }
+
+    /// Drag-to-reorder state for the sidebar. `favoritesOrder` is item ids
+    /// (`"sys:downloads"` / `"bm:<uuid>"`); `sidebarSectionOrder` is section keys.
+    /// Empty/missing entries fall back to the natural order and are appended.
+    var favoritesOrder: [String] { didSet { store.set(favoritesOrder, forKey: Keys.favoritesOrder) } }
+    var sidebarSectionOrder: [String] { didSet { store.set(sidebarSectionOrder, forKey: Keys.sidebarSectionOrder) } }
+
+    /// Move `dragged` to where `target` currently sits within an ordered id list.
+    static func reordered(_ list: [String], moving dragged: String, before target: String) -> [String] {
+        guard dragged != target, let from = list.firstIndex(of: dragged) else { return list }
+        var arr = list
+        arr.remove(at: from)
+        let to = arr.firstIndex(of: target) ?? arr.count
+        arr.insert(dragged, at: to)
+        return arr
+    }
+
+    /// Resolved sRGB for a category: user override → built-in default.
+    func rgb(for category: FileTypeCategory) -> (r: CGFloat, g: CGFloat, b: CGFloat) {
+        if let raw = categoryColors[category.rawValue] {
+            let c = raw.split(separator: ",").compactMap { Double($0) }
+            if c.count == 3 { return (CGFloat(c[0]), CGFloat(c[1]), CGFloat(c[2])) }
+        }
+        return category.rgb
+    }
+
+    func color(for category: FileTypeCategory) -> Color {
+        let c = rgb(for: category); return Color(red: c.r, green: c.g, blue: c.b)
+    }
+
+    /// Persist a category color from a SwiftUI `Color` (resets to default if nil-ish).
+    func setColor(_ color: Color, for category: FileTypeCategory) {
+        let ns = NSColor(color).usingColorSpace(.sRGB) ?? .gray
+        categoryColors[category.rawValue] = "\(ns.redComponent),\(ns.greenComponent),\(ns.blueComponent)"
+    }
+
+    func resetColor(for category: FileTypeCategory) { categoryColors[category.rawValue] = nil }
+
+    /// Resolved tile for an entry: (sRGB, label) or nil for folders/unknown/off.
+    func tileTint(for entry: FSEntry) -> (rgb: (r: CGFloat, g: CGFloat, b: CGFloat), label: String)? {
+        guard let (cat, label) = tile(for: entry) else { return nil }
+        return (rgb(for: cat), label)
+    }
+
+    /// Resolve (category, label) for an extension: user override → built-in catalog
+    /// → nil. Ignores the `filetypeTiles` toggle (used by both the tile and the
+    /// name-tint paths, which gate on the toggle themselves).
+    func typeMapping(forExtension ext: String) -> (category: FileTypeCategory, label: String)? {
+        let key = ext.lowercased()
+        if let raw = customFileTypes[key] {
+            let parts = raw.split(separator: "|", maxSplits: 1).map(String.init)
+            if let first = parts.first, let cat = FileTypeCategory(rawValue: first) {
+                return (cat, parts.count > 1 ? parts[1] : key.uppercased())
+            }
+        }
+        return FileTypeCatalog.entry(forExtension: key)
+    }
+
+    /// Resolve the tile for a file extension, honoring the tiles toggle.
+    func tile(forExtension ext: String) -> (category: FileTypeCategory, label: String)? {
+        filetypeTiles ? typeMapping(forExtension: ext) : nil
+    }
+
+    /// Tile for an entry (folders always use the system icon → nil).
+    func tile(for entry: FSEntry) -> (category: FileTypeCategory, label: String)? {
+        entry.isDirectory ? nil : tile(forExtension: entry.url.pathExtension)
+    }
+
+    /// File-table column visibility (Name is always shown). Hiding columns also
+    /// keeps the row from overflowing a narrow pane.
+    var showSizeColumn: Bool     { didSet { store.set(showSizeColumn, forKey: Keys.showSizeColumn) } }
+    var showModifiedColumn: Bool { didSet { store.set(showModifiedColumn, forKey: Keys.showModifiedColumn) } }
+    var showKindColumn: Bool     { didSet { store.set(showKindColumn, forKey: Keys.showKindColumn) } }
+    var showGitColumn: Bool      { didSet { store.set(showGitColumn, forKey: Keys.showGitColumn) } }
 
     /// UI language. Writing it updates `AppleLanguages` (effective next launch).
     var language: AppLanguage {
@@ -226,8 +321,19 @@ final class AppSettings {
     private enum Keys {
         static let rightArrowOpensFiles = "rightArrowOpensFiles"
         static let showHiddenByDefault = "showHiddenByDefault"
+        static let rightArrowEntersPackages = "rightArrowEntersPackages"
         static let theme = "theme"
         static let density = "density"
+        static let filetypeTiles = "filetypeTiles"
+        static let showSizeColumn = "showSizeColumn"
+        static let showModifiedColumn = "showModifiedColumn"
+        static let showKindColumn = "showKindColumn"
+        static let showGitColumn = "showGitColumn"
+        static let customFileTypes = "customFileTypes"
+        static let categoryColors = "categoryColors"
+        static let tintNamesByType = "tintNamesByType"
+        static let favoritesOrder = "favoritesOrder"
+        static let sidebarSectionOrder = "sidebarSectionOrder"
         static let language = "language"
         static let animations = "animations"
         static let startMode = "startMode"
@@ -252,8 +358,20 @@ final class AppSettings {
         let d = UserDefaults.standard
         rightArrowOpensFiles = d.bool(forKey: Keys.rightArrowOpensFiles)   // default false → folders only
         showHiddenByDefault = d.bool(forKey: Keys.showHiddenByDefault)
+        rightArrowEntersPackages = d.object(forKey: Keys.rightArrowEntersPackages) as? Bool ?? true
         theme = AppTheme(rawValue: d.string(forKey: Keys.theme) ?? "") ?? .system
         density = Density(rawValue: d.string(forKey: Keys.density) ?? "") ?? .cozy
+        filetypeTiles = d.object(forKey: Keys.filetypeTiles) as? Bool ?? true   // default on
+        showSizeColumn     = d.object(forKey: Keys.showSizeColumn)     as? Bool ?? true
+        showModifiedColumn = d.object(forKey: Keys.showModifiedColumn) as? Bool ?? true
+        showKindColumn     = d.object(forKey: Keys.showKindColumn)     as? Bool ?? true
+        showGitColumn      = d.object(forKey: Keys.showGitColumn)      as? Bool ?? true
+        customFileTypes    = d.dictionary(forKey: Keys.customFileTypes) as? [String: String] ?? [:]
+        categoryColors     = d.dictionary(forKey: Keys.categoryColors) as? [String: String] ?? [:]
+        tintNamesByType    = d.object(forKey: Keys.tintNamesByType) as? Bool ?? false
+        favoritesOrder     = d.stringArray(forKey: Keys.favoritesOrder) ?? []
+        sidebarSectionOrder = d.stringArray(forKey: Keys.sidebarSectionOrder) ?? []
+
         language = AppLanguage(rawValue: d.string(forKey: Keys.language) ?? "") ?? .system
         animations = d.object(forKey: Keys.animations) as? Bool ?? true   // default on
         startMode = StartMode(rawValue: d.string(forKey: Keys.startMode) ?? "") ?? .home
@@ -367,50 +485,10 @@ struct SettingsView: View {
             plugins.tabItem    { Ph.puzzlePiece.regular;    Text("Plugins") }
             updatesTab.tabItem { Ph.arrowCircleDown.regular; Text("Updates") }
         }
-        .frame(width: 520, height: 360)
+        .frame(width: 640, height: 560)
     }
 
     private var general: some View {
-        sScroll {
-            SettingsGroup("START FOLDER") {
-                SettingsRow("New windows open at") {
-                    Picker("", selection: bindable.startMode) {
-                        ForEach(StartMode.allCases) { Text($0.label).tag($0) }
-                    }.labelsHidden().frame(width: 140)
-                }
-                if settings.startMode == .custom {
-                    SettingsDivider()
-                    SettingsRow("Folder") {
-                        HStack(spacing: 6) {
-                            Text(settings.customStartPath.isEmpty ? "None" : settings.customStartPath)
-                                .font(IBMPlex.mono(11)).lineLimit(1).truncationMode(.head).foregroundStyle(.secondary)
-                            Button("Choose…") { chooseStartFolder() }.controlSize(.small)
-                        }
-                    }
-                }
-            }
-            SettingsGroup("NAVIGATION",
-                          footer: "Off: → only enters folders. On: → also opens files. Enter always opens.") {
-                SettingsRow("Right arrow opens files") {
-                    Toggle("", isOn: bindable.rightArrowOpensFiles).labelsHidden().toggleStyle(.switch)
-                }
-            }
-            SettingsGroup("LISTING") {
-                SettingsRow("Show hidden files in new tabs") {
-                    Toggle("", isOn: bindable.showHiddenByDefault).labelsHidden().toggleStyle(.switch)
-                }
-            }
-            SettingsGroup("LANGUAGE", footer: "Takes effect after you quit and reopen yafm.") {
-                SettingsRow("Language") {
-                    Picker("", selection: bindable.language) {
-                        ForEach(AppLanguage.allCases) { Text($0.label).tag($0) }
-                    }.labelsHidden().frame(width: 120)
-                }
-            }
-        }
-    }
-
-    private var appearance: some View {
         sScroll {
             SettingsGroup("THEME") {
                 SettingsRow("Appearance") {
@@ -433,6 +511,71 @@ struct SettingsView: View {
                     Toggle("", isOn: bindable.animations).labelsHidden().toggleStyle(.switch)
                 }
             }
+            SettingsGroup("START FOLDER") {
+                SettingsRow("New windows open at") {
+                    Picker("", selection: bindable.startMode) {
+                        ForEach(StartMode.allCases) { Text($0.label).tag($0) }
+                    }.labelsHidden().frame(width: 140)
+                }
+                if settings.startMode == .custom {
+                    SettingsDivider()
+                    SettingsRow("Folder") {
+                        HStack(spacing: 6) {
+                            Text(settings.customStartPath.isEmpty ? "None" : settings.customStartPath)
+                                .font(IBMPlex.mono(11)).lineLimit(1).truncationMode(.head).foregroundStyle(.secondary)
+                            Button("Choose…") { chooseStartFolder() }.controlSize(.small)
+                        }
+                    }
+                }
+            }
+            SettingsGroup("NAVIGATION",
+                          footer: "Off: → only enters folders. On: → also opens files. Enter always opens. For apps, → either browses the bundle contents or launches the app.") {
+                SettingsRow("Right arrow opens files") {
+                    Toggle("", isOn: bindable.rightArrowOpensFiles).labelsHidden().toggleStyle(.switch)
+                }
+                SettingsDivider()
+                SettingsRow("Right arrow on apps") {
+                    Picker("", selection: bindable.rightArrowEntersPackages) {
+                        Text("Show contents").tag(true)
+                        Text("Launch app").tag(false)
+                    }.pickerStyle(.segmented).labelsHidden().frame(width: 220)
+                }
+            }
+            SettingsGroup("LISTING") {
+                SettingsRow("Show hidden files in new tabs") {
+                    Toggle("", isOn: bindable.showHiddenByDefault).labelsHidden().toggleStyle(.switch)
+                }
+            }
+            SettingsGroup("LANGUAGE", footer: "Takes effect after you quit and reopen yafm.") {
+                SettingsRow("Language") {
+                    Picker("", selection: bindable.language) {
+                        ForEach(AppLanguage.allCases) { Text($0.label).tag($0) }
+                    }.labelsHidden().frame(width: 120)
+                }
+            }
+            SettingsGroup("FULL DISK ACCESS",
+                          footer: "Lets yafm read protected folders (Desktop, Documents, others apps' data). Grant it in System Settings, then re-check. Always reachable here even after dismissing the banner.") {
+                SettingsRow("Status") {
+                    HStack(spacing: 6) {
+                        Image(systemName: app.hasFullDiskAccess ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                            .foregroundStyle(app.hasFullDiskAccess ? .green : .orange)
+                        Text(app.hasFullDiskAccess ? "Enabled" : "Not granted")
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                SettingsDivider()
+                SettingsRow("Access") {
+                    HStack(spacing: 8) {
+                        Button("Open System Settings…") { app.openFullDiskAccessSettings() }
+                        Button("Re-check") { app.checkAccess() }.controlSize(.small)
+                    }
+                }
+            }
+        }
+    }
+
+    private var appearance: some View {
+        sScroll {
             SettingsGroup("ACCENT COLOR",
                           footer: "System follows macOS System Preferences → General → Accent color.") {
                 SettingsRow("Accent color") {
@@ -443,6 +586,28 @@ struct SettingsView: View {
                             }
                         }
                     }
+                }
+            }
+            // File-type tiles: switches, then the one type→color palette (used by
+            // both the tile and the name tint), then a browser of every known type.
+            // (Column show/hide is NOT here — it's on the table's own header.)
+            SettingsGroup("FILE-TYPE TILES",
+                          footer: "Colored extension chips for known types. Off: every file uses its real macOS icon; folders always do.") {
+                SettingsRow("Colored type tiles") {
+                    Toggle("", isOn: bindable.filetypeTiles).labelsHidden().toggleStyle(.switch)
+                }
+                SettingsRow("Tint file names by type") {
+                    Toggle("", isOn: bindable.tintNamesByType).labelsHidden().toggleStyle(.switch)
+                }
+            }
+            if settings.filetypeTiles || settings.tintNamesByType {
+                SettingsGroup("TYPE COLORS",
+                              footer: "One palette drives both the tile and the name tint, so they always match. Click a swatch to recolor; ↺ resets.") {
+                    CategoryColorsEditor(settings: settings)
+                }
+                SettingsGroup("FILE TYPES",
+                              footer: "Every known extension and its category. Search to check what's mapped; pick a different category to override, or add your own.") {
+                    TypeBrowser(settings: settings)
                 }
             }
         }
@@ -897,5 +1062,115 @@ struct TagManagerView: View {
         .menuStyle(.borderlessButton)
         .menuIndicator(.hidden)
         .fixedSize()
+    }
+}
+
+// MARK: - File-type tile editors (Settings ▸ Appearance)
+
+/// One row per category: a live tile sample + name + color well + reset. The
+/// color is the single source for the tile and the (optional) name tint.
+struct CategoryColorsEditor: View {
+    @Bindable var settings: AppSettings
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            ForEach(FileTypeCategory.allCases) { cat in
+                HStack(spacing: 8) {
+                    FileTypeTile(rgb: settings.rgb(for: cat),
+                                 label: FileTypeCatalog.extensions(in: cat).first?.uppercased() ?? "?",
+                                 size: 16)
+                    Text(cat.displayName).font(.system(size: 12))
+                    Spacer()
+                    if settings.categoryColors[cat.rawValue] != nil {
+                        Button { settings.resetColor(for: cat) } label: {
+                            Image(systemName: "arrow.uturn.backward").font(.system(size: 10))
+                        }
+                        .buttonStyle(.plain).foregroundStyle(.secondary)
+                        .accessibilityLabel("Reset \(cat.displayName) color")
+                    }
+                    ColorPicker("", selection: Binding(
+                        get: { settings.color(for: cat) },
+                        set: { settings.setColor($0, for: cat) }
+                    )).labelsHidden().frame(width: 44)
+                }
+            }
+        }
+    }
+}
+
+/// Browsable list of every known extension with its category, searchable, with a
+/// per-row category override and an add-your-own row. Lets users see exactly what
+/// is mapped (e.g. is `py` or `vcf` here?) and change it.
+struct TypeBrowser: View {
+    @Bindable var settings: AppSettings
+    @State private var query = ""
+    @State private var newExt = ""
+    @State private var newCat: FileTypeCategory = .code
+
+    private struct Row: Identifiable { let ext: String; let cat: FileTypeCategory; let label: String; let custom: Bool; var id: String { ext } }
+
+    private var rows: [Row] {
+        var seen = Set<String>()
+        var out: [Row] = []
+        for (ext, raw) in settings.customFileTypes {
+            let parts = raw.split(separator: "|", maxSplits: 1).map(String.init)
+            if let first = parts.first, let cat = FileTypeCategory(rawValue: first) {
+                out.append(Row(ext: ext, cat: cat, label: parts.count > 1 ? parts[1] : ext.uppercased(), custom: true))
+                seen.insert(ext)
+            }
+        }
+        for (ext, v) in FileTypeCatalog.map where !seen.contains(ext) {
+            out.append(Row(ext: ext, cat: v.category, label: v.label, custom: false))
+        }
+        let q = query.lowercased().trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ".", with: "")
+        return out.filter { q.isEmpty || $0.ext.contains(q) }.sorted { $0.ext < $1.ext }
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            TextField("Search extension — e.g. py, vcf, braw…", text: $query)
+                .textFieldStyle(.roundedBorder).font(.system(size: 12))
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 1) {
+                    ForEach(rows) { row in
+                        HStack(spacing: 8) {
+                            FileTypeTile(rgb: settings.rgb(for: row.cat), label: row.label, size: 16)
+                            Text(".\(row.ext)").font(.system(size: 12, design: .monospaced))
+                            if row.custom {
+                                Text("custom").font(.system(size: 9)).foregroundStyle(.tertiary)
+                            }
+                            Spacer()
+                            Picker("", selection: Binding(
+                                get: { row.cat },
+                                set: { settings.customFileTypes[row.ext] = "\($0.rawValue)|\(row.label)" }
+                            )) {
+                                ForEach(FileTypeCategory.allCases) { Text($0.displayName).tag($0) }
+                            }.labelsHidden().frame(width: 150)
+                            if row.custom {
+                                Button { settings.customFileTypes[row.ext] = nil } label: {
+                                    Image(systemName: "arrow.uturn.backward").font(.system(size: 10))
+                                }.buttonStyle(.plain).foregroundStyle(.secondary)
+                                .accessibilityLabel("Reset .\(row.ext)")
+                            }
+                        }
+                        .padding(.vertical, 1)
+                    }
+                }
+            }
+            .frame(height: 220)
+            Divider()
+            HStack(spacing: 6) {
+                TextField("add ext", text: $newExt).frame(width: 70).textFieldStyle(.roundedBorder)
+                Picker("", selection: $newCat) {
+                    ForEach(FileTypeCategory.allCases) { Text($0.displayName).tag($0) }
+                }.labelsHidden().frame(width: 150)
+                Button("Add") {
+                    let e = newExt.trimmingCharacters(in: .whitespaces).lowercased().replacingOccurrences(of: ".", with: "")
+                    guard !e.isEmpty else { return }
+                    settings.customFileTypes[e] = "\(newCat.rawValue)|\(e.uppercased())"
+                    newExt = ""; query = e
+                }.disabled(newExt.trimmingCharacters(in: .whitespaces).isEmpty)
+            }.font(.system(size: 12))
+        }
     }
 }

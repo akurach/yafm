@@ -37,7 +37,7 @@ struct PaneView: View {
             Rectangle()
                 .fill(isActive ? Color.accentColor : Color(nsColor: .separatorColor).opacity(0.5))
                 .frame(height: 2)
-            PathBarView(tab: pane.active, activate: activateSelf)
+            PathBarView(tab: pane.active, app: app, activate: activateSelf)
             // Inline find bar (⌘F) on the active pane only — replaces the modal.
             if isActive && app.searchActive {
                 Divider()
@@ -92,9 +92,11 @@ struct TabBarView: View {
 
 struct PathBarView: View {
     @Bindable var tab: TabModel
+    var app: AppState? = nil
     var activate: () -> Void = {}
     @State private var editing = false
     @State private var typed = ""
+    @State private var showColumns = false
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -115,6 +117,15 @@ struct PathBarView: View {
             } else {
                 breadcrumbs
                 Spacer()
+                if let app, tab.viewMode == .list {
+                    Button { showColumns.toggle() } label: {
+                        Image(systemName: "slider.horizontal.3")
+                    }.buttonStyle(.plain)
+                    .accessibilityLabel("Columns")
+                    .popover(isPresented: $showColumns, arrowEdge: .bottom) {
+                        ColumnOptionsPopover(settings: app.settings)
+                    }
+                }
                 Button {
                     tab.viewMode = tab.viewMode == .list ? .icons : .list
                 } label: {
@@ -151,6 +162,24 @@ struct PathBarView: View {
                 }
             }
         }
+    }
+}
+
+/// Column show/hide — a discoverable popover off the path bar's options button
+/// (also available by right-clicking the column header). Name is always shown.
+struct ColumnOptionsPopover: View {
+    @Bindable var settings: AppSettings
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("COLUMNS").font(IBMPlex.sans(10, weight: .semibold)).foregroundStyle(.secondary)
+            Toggle("Size", isOn: $settings.showSizeColumn)
+            Toggle("Modified", isOn: $settings.showModifiedColumn)
+            Toggle("Kind", isOn: $settings.showKindColumn)
+            Toggle("Git status", isOn: $settings.showGitColumn)
+        }
+        .toggleStyle(.checkbox)
+        .padding(12)
+        .frame(width: 180)
     }
 }
 
@@ -221,9 +250,9 @@ struct FileTableView: View {
     @AppStorage("yafm.col.modW")  private var modW:  Double = 124
     @AppStorage("yafm.col.kindW") private var kindW: Double = 92
     @AppStorage("yafm.col.gitW")  private var gitW:  Double = 34
-    // One-time flag: snap Name to fill the pane on the very first run only, then
-    // respect the user's stored width forever after (don't re-fill every launch).
-    @AppStorage("yafm.col.didSnapName") private var didSnapName = false
+    /// Captured from the column-header geometry — drives `effectiveNameW`. A safe
+    /// 600 default so the clamp is active from the first frame (before geometry).
+    @State private var paneWidth: Double = 600
     @State private var pluginWidths: [String: Double] = [:]
     // Plugin columns filtered to those relevant for the current folder's content.
     @State private var visiblePluginCols: [PluginColumn] = []
@@ -286,11 +315,7 @@ struct FileTableView: View {
                                     tab.selection = [entry.url]
                                 }
                             }
-                            .simultaneousGesture(TapGesture(count: 2).onEnded {
-                                if entry.isDirectory { tab.open(entry.url) }
-                                else if entry.url.isFileURL, entry.url.pathExtension.lowercased() == "zip" { app.browseArchive(entry.url) }
-                                else { app.openFile(entry.url) }
-                            })
+                            .simultaneousGesture(TapGesture(count: 2).onEnded { openEntry(entry) })
                             // Drag out: the row's URL becomes the payload, so it
                             // drops into another pane, Finder, or any app.
                             .onDrag { dragPayload(entry) }
@@ -308,12 +333,9 @@ struct FileTableView: View {
                     columnHeader
                 }
             }
-            // One tag editor for the whole table (driven by app.tagSheet), NOT a
-            // .popover per row — a per-row popover modifier is instantiated for
-            // every row and beachballed large folders. Sheet needs no anchor.
-            .sheet(item: $app.tagSheet) { item in
-                TagEditorSheet(app: app, url: item.url)
-            }
+            // NB: the tag-editor sheet is presented ONCE from RootView, not here —
+            // FileTableView exists twice (one per pane), so two .sheet modifiers bound
+            // to the same app.tagSheet fought to present it and the modal flickered.
             .contextMenu { backgroundMenu() }   // empty area below the rows
             .background(PaneActivationOverlay { app.activePaneIsLeft = tabBelongsToLeft() })
             // Drop onto empty pane area → into the current directory. No
@@ -335,7 +357,9 @@ struct FileTableView: View {
             .animation(app.settings.animations && !tab.isStreaming ? Theme.Motion.selection : nil, value: tab.selection)
             .onChange(of: tab.cursor) { _, new in
                 guard let new else { return }
-                proxy.scrollTo(new, anchor: .center)
+                // Minimal scroll (nil anchor): only moves if the row is off-screen.
+                // Centering on every cursor change yanked the list on a plain click.
+                proxy.scrollTo(new)
                 // Follow the cursor with QuickLook when its panel is open.
                 if tab.id == app.activeTab.id {
                     QuickLook.updateIfVisible(urls: tab.actionable.map(\.url))
@@ -372,16 +396,31 @@ struct FileTableView: View {
     // Drives the Name snap/clamp in the GeometryReader below (nameW = pane − this).
     private var fixedColumnsWidth: Double {
         let iconW = Double(app.settings.density.iconSize)
-        var w = iconW + Double(Theme.Space.row) + 8  // icon + gap + H1
-        w += sizeW + 8 + modW + 8 + kindW
-        let hasGit = !tab.gitStatus.isEmpty
+        var w = iconW + Double(Theme.Space.row) + 8  // icon + gap + H1 (always)
+        if showSize     { w += sizeW + 8 }
+        if showModified { w += modW + 8 }
+        if showKind     { w += kindW }
         let hasPlugins = !visiblePluginCols.isEmpty
-        if hasGit { w += 8 + gitW; if hasPlugins { w += 8 } }
-        else if hasPlugins { w += 8 }
+        if showKind && (showGit || hasPlugins) { w += 8 }   // kindBind handle
+        if showGit { w += gitW; if hasPlugins { w += 8 } }
         for col in visiblePluginCols { w += (pluginWidths[col.id] ?? 104) + 8 }
         w += 2 * Double(Theme.Space.rowLeading)
         return w
     }
+
+    /// Displayed Name width = the stored preference, clamped to the space left in
+    /// the pane (min 80). This is load-bearing: without it the row can exceed the
+    /// pane width (a too-wide Name, many plugin columns, or a corrupt stored value),
+    /// and that horizontal overflow sends AppKit's layout engine into an infinite
+    /// `_layoutSubtree` recursion that freezes the app. Clamping the *display* (not
+    /// mutating `nameW`) keeps the row within the pane with no state write that loops.
+    private var effectiveNameW: Double { max(80, min(nameW, paneWidth - fixedColumnsWidth)) }
+
+    // Column visibility (Name is always shown). Git also needs the folder to be a repo.
+    private var showSize: Bool { app.settings.showSizeColumn }
+    private var showModified: Bool { app.settings.showModifiedColumn }
+    private var showKind: Bool { app.settings.showKindColumn }
+    private var showGit: Bool { app.settings.showGitColumn && !tab.gitStatus.isEmpty }
 
     // Column resize: all handles compensate via Kind (rightmost). Dragging H1/H2/H3
     // right makes the left column grow; Kind absorbs by shrinking. The columns between
@@ -437,62 +476,60 @@ struct FileTableView: View {
             Color.clear.frame(width: app.settings.density.iconSize)
             Color.clear.frame(width: Theme.Space.row)
             headerButton("Name", .name)
-                .frame(width: max(0, CGFloat(nameW)), alignment: .leading)
+                .frame(width: max(0, CGFloat(effectiveNameW)), alignment: .leading)
             ColResizeHandle(width: nameBind)
-            headerButton("Size", .size).frame(width: CGFloat(sizeW), alignment: .trailing)
-            ColResizeHandle(width: sizeBind)
-            headerButton("Modified", .modified).frame(width: CGFloat(modW), alignment: .trailing)
-            ColResizeHandle(width: modBind)
-            headerButton("Kind", .kind).frame(width: CGFloat(kindW), alignment: .leading)
-            if !tab.gitStatus.isEmpty {
-                ColResizeHandle(width: kindBind)
-                Text("Git").frame(width: CGFloat(gitW), alignment: .center)
-                if !visiblePluginCols.isEmpty {
-                    ColResizeHandle(width: Binding(get: { gitW }, set: { gitW = max(28, $0) }))
-                }
-            } else if !visiblePluginCols.isEmpty {
-                ColResizeHandle(width: kindBind)
-            }
-            ForEach(visiblePluginCols) { col in
-                Text(col.title).lineLimit(1).frame(width: pluginWidth(col), alignment: .leading)
-                ColResizeHandle(width: pluginWidthBind(col))
-            }
+            headerTrailingColumns
         }
         .font(Theme.Font.header)
         .foregroundStyle(.secondary)
         .padding(.horizontal, Theme.Space.rowLeading).padding(.vertical, Theme.Space.tight)
         .background(.bar)
+        // Read-only width probe: only writes @State paneWidth (never @AppStorage),
+        // so it can't feed back into layout. Drives effectiveNameW's clamp.
         .background {
             GeometryReader { geo in
                 Color.clear
-                    // Column widths are shared @AppStorage (TC convention: one set for
-                    // both panes). Only the LEFT pane drives Name from geometry — else
-                    // both panes write the same key on every resize and double-apply the
-                    // delta / fight over the snap, which corrupted the layout.
-                    .onAppear {
-                        guard tabBelongsToLeft() else { return }
-                        let avail = max(80, geo.size.width - fixedColumnsWidth)
-                        if !didSnapName {
-                            nameW = avail            // first run ever: fill the pane
-                            didSnapName = true
-                        } else {
-                            nameW = min(nameW, avail) // later: keep user width, only shrink to fit
-                        }
-                    }
-                    .onChange(of: geo.size.width) { old, new in
-                        guard tabBelongsToLeft() else { return }
-                        // Absorb window resize into Name (the flex column). When Name
-                        // hits its 80-pt floor, spill the remainder into Kind so the row
-                        // never overflows the pane.
-                        let desired = nameW + (new - old)
-                        if desired >= 80 {
-                            nameW = desired
-                        } else {
-                            nameW = 80
-                            kindW = max(40, kindW + (80 - desired))
-                        }
-                    }
+                    .onAppear { paneWidth = geo.size.width }
+                    .onChange(of: geo.size.width) { _, w in paneWidth = w }
             }
+        }
+        // Column show/hide lives here — right-click the header — not in Settings.
+        .contextMenu { columnVisibilityMenu }
+    }
+
+    // Extracted from columnHeader to keep that HStack within the Swift type-checker's
+    // reach (the conditional column blocks pushed it to a timeout otherwise).
+    @ViewBuilder private var headerTrailingColumns: some View {
+        if showSize {
+            headerButton("Size", .size).frame(width: CGFloat(sizeW), alignment: .trailing)
+            ColResizeHandle(width: sizeBind)
+        }
+        if showModified {
+            headerButton("Modified", .modified).frame(width: CGFloat(modW), alignment: .trailing)
+            ColResizeHandle(width: modBind)
+        }
+        if showKind {
+            headerButton("Kind", .kind).frame(width: CGFloat(kindW), alignment: .leading)
+            if showGit || !visiblePluginCols.isEmpty { ColResizeHandle(width: kindBind) }
+        }
+        if showGit {
+            Text("Git").frame(width: CGFloat(gitW), alignment: .center)
+            if !visiblePluginCols.isEmpty {
+                ColResizeHandle(width: Binding(get: { gitW }, set: { gitW = max(28, $0) }))
+            }
+        }
+        ForEach(visiblePluginCols) { col in
+            Text(col.title).lineLimit(1).frame(width: pluginWidth(col), alignment: .leading)
+            ColResizeHandle(width: pluginWidthBind(col))
+        }
+    }
+
+    @ViewBuilder private var columnVisibilityMenu: some View {
+        Section("Columns") {
+            Toggle("Size",     isOn: Binding(get: { app.settings.showSizeColumn },     set: { app.settings.showSizeColumn = $0 }))
+            Toggle("Modified", isOn: Binding(get: { app.settings.showModifiedColumn }, set: { app.settings.showModifiedColumn = $0 }))
+            Toggle("Kind",     isOn: Binding(get: { app.settings.showKindColumn },     set: { app.settings.showKindColumn = $0 }))
+            Toggle("Git status", isOn: Binding(get: { app.settings.showGitColumn },    set: { app.settings.showGitColumn = $0 }))
         }
     }
 
@@ -533,6 +570,21 @@ struct FileTableView: View {
     /// inverse, but yafm is move-on-⌘ to match its explicit F6-move muscle memory).
     private func dropIsMove() -> Bool { NSEvent.modifierFlags.contains(.command) }
 
+    /// A package is a directory the system treats as a single file (`.app`, `.bundle`,
+    /// `.rtfd`, photo libraries…). Double-click should OPEN it (launch the app), not
+    /// navigate into it; → (right arrow) still enters it as a folder to browse inside.
+    private func isPackage(_ entry: FSEntry) -> Bool {
+        entry.isDirectory && NSWorkspace.shared.isFilePackage(atPath: entry.url.path)
+    }
+
+    /// Double-click / open: enter real folders, browse a `.zip`, otherwise open the
+    /// file — and that includes packages (`.app` launches via the system).
+    private func openEntry(_ entry: FSEntry) {
+        if entry.isDirectory && !isPackage(entry) { tab.open(entry.url) }
+        else if !entry.isDirectory && entry.url.pathExtension.lowercased() == "zip" { app.browseArchive(entry.url) }
+        else { app.openFile(entry.url) }
+    }
+
     private func row(_ entry: FSEntry) -> some View {
         let density = app.settings.density
         // Tie rows to the async-plugin version so a resolved value re-renders.
@@ -540,7 +592,7 @@ struct FileTableView: View {
         return HStack(spacing: Theme.Space.row) {
             // Real macOS file-type icon (cached). A color-coding rule, if any,
             // now tints the name instead of the icon so the true icon shows.
-            FileIconView(entry: entry, size: density.iconSize)
+            FileIconView(entry: entry, size: density.iconSize, tile: app.settings.tileTint(for: entry))
                 .frame(width: density.iconSize)
             // Name cell: filename + optional iCloud badge + color tags — packed into
             // a single fixed-width frame so the Size column never shifts between rows.
@@ -560,18 +612,24 @@ struct FileTableView: View {
                         .frame(width: Theme.Col.tagDot, height: Theme.Col.tagDot)
                 }
             }
-            .frame(width: max(0, CGFloat(nameW)), alignment: .leading)
+            .frame(width: max(0, CGFloat(effectiveNameW)), alignment: .leading)
             .clipped()
-            Text(entry.isDirectory ? "--" : (entry.size.map(byteString) ?? "--"))
-                .font(Theme.Font.mono).foregroundStyle(.secondary)
-                .frame(width: CGFloat(sizeW), alignment: .trailing)
-            Text(entry.modified.map { modifiedText($0) } ?? "--")
-                .font(Theme.Font.mono).foregroundStyle(.secondary)
-                .frame(width: CGFloat(modW), alignment: .trailing)
-            Text(kindText(entry))
-                .font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                .frame(width: CGFloat(kindW), alignment: .leading)
-            if !tab.gitStatus.isEmpty {
+            if showSize {
+                Text(entry.isDirectory ? "--" : (entry.size.map(byteString) ?? "--"))
+                    .font(Theme.Font.mono).foregroundStyle(.secondary)
+                    .frame(width: CGFloat(sizeW), alignment: .trailing)
+            }
+            if showModified {
+                Text(entry.modified.map { modifiedText($0) } ?? "--")
+                    .font(Theme.Font.mono).foregroundStyle(.secondary)
+                    .frame(width: CGFloat(modW), alignment: .trailing)
+            }
+            if showKind {
+                Text(kindText(entry))
+                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    .frame(width: CGFloat(kindW), alignment: .leading)
+            }
+            if showGit {
                 Text(tab.gitStatus[entry.url] ?? "")
                     .font(.caption.monospaced().bold())
                     .foregroundStyle(gitColor(tab.gitStatus[entry.url]))
@@ -611,7 +669,7 @@ struct FileTableView: View {
     /// the background resolve bumps `pluginValuesVersion` (read in `row`).
     private func pluginText(_ col: PluginColumn, _ entry: FSEntry) -> String {
         let value = app.pluginValueCache.value(for: entry, in: col) {
-            app.pluginValuesVersion &+= 1
+            app.scheduleValuesBump()   // coalesced — avoids O(n²) re-render churn on load
         }
         switch value {
         case .text(let s): return s
@@ -625,11 +683,13 @@ struct FileTableView: View {
     // turns 10k per-render lookups into dictionary hits (perf P1-D).
     @MainActor private static var kindCache: [String: String] = [:]
     private func kindText(_ entry: FSEntry) -> String {
-        if entry.isDirectory { return "Folder" }
         let ext = entry.url.pathExtension
+        if entry.isDirectory && ext.isEmpty { return "Folder" }
         if let hit = Self.kindCache[ext] { return hit }
         let text: String
+        // A package (dir with ext, e.g. .app) resolves to its real kind ("Application").
         if let t = UTType(filenameExtension: ext), let d = t.localizedDescription { text = d }
+        else if entry.isDirectory { text = "Folder" }
         else { text = ext.isEmpty ? "Document" : ext.uppercased() }
         Self.kindCache[ext] = text
         return text
@@ -680,7 +740,14 @@ struct FileTableView: View {
 
     /// Color-coding rule tints the name (the icon now shows the real file type).
     private func nameColor(_ entry: FSEntry) -> Color {
+        // Tag/regex color rules win (explicit user intent). Then, only if the user
+        // opted in, tint by file type — using the SAME category color as the tile,
+        // so the name and its chip can never disagree.
         if let c = Color.named(app.colorCoder.colorName(for: entry)) { return c }
+        if app.settings.tintNamesByType, !entry.isDirectory,
+           let (cat, _) = app.settings.typeMapping(forExtension: entry.url.pathExtension) {
+            return app.settings.color(for: cat)
+        }
         return entry.isHidden ? .secondary : .primary
     }
 
@@ -719,7 +786,7 @@ struct FileTableView: View {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 72))], spacing: 12) {
                 ForEach(tab.displayed) { entry in
                     VStack(spacing: 4) {
-                        FileIconView(entry: entry, size: 48).frame(width: 48, height: 48)
+                        FileIconView(entry: entry, size: 48, tile: app.settings.tileTint(for: entry)).frame(width: 48, height: 48)
                         Text(entry.name)
                             .font(IBMPlex.mono(11))
                             .lineLimit(2)
@@ -747,11 +814,7 @@ struct FileTableView: View {
                             tab.selection = [entry.url]
                         }
                     }
-                    .simultaneousGesture(TapGesture(count: 2).onEnded {
-                        if entry.isDirectory { tab.open(entry.url) }
-                        else if entry.url.pathExtension.lowercased() == "zip" { app.browseArchive(entry.url) }
-                        else { app.openFile(entry.url) }
-                    })
+                    .simultaneousGesture(TapGesture(count: 2).onEnded { openEntry(entry) })
                     .contextMenu { rowMenu(entry) }
                 }
             }
@@ -775,9 +838,70 @@ struct FileTableView: View {
     /// nested submenus that enumerate apps (Open With) and share services (Share)
     /// were built 286× and froze big folders. Open With / Share are now single
     /// buttons that open the system picker on demand. (perf — user-confirmed.)
+    /// Quick tag assignment from the row's context menu — lists the user's ACTUAL
+    /// tags (from the index) to toggle, offers standard colors not yet used, and a
+    /// "New Tag…" prompt. Each item shows a real colored dot.
+    @ViewBuilder private func tagMenu(_ entry: FSEntry) -> some View {
+        // Normalize spelling so a custom "Grey" tag isn't duplicated by standard "Gray".
+        let knownNorm = Set(app.knownTags.map { Self.normTag($0.name) })
+        ForEach(app.knownTags, id: \.name) { tag in
+            let on = entry.tags.contains { $0.name == tag.name }
+            Button {
+                focus(entry)
+                app.toggleColorTag(name: tag.name, colorIndex: tag.colorIndex ?? 0, on: entry)
+            } label: {
+                Label { Text(tag.name) } icon: { Image(nsImage: Self.tagDot(tag.colorName, filled: on)) }
+            }
+        }
+        let unused = Array(Tag.colorNames.dropFirst().enumerated())
+            .filter { !knownNorm.contains(Self.normTag($0.element)) }
+        if !app.knownTags.isEmpty && !unused.isEmpty { Divider() }
+        ForEach(unused, id: \.element) { offset, name in
+            Button { focus(entry); app.toggleColorTag(name: name, colorIndex: offset + 1, on: entry) } label: {
+                Label { Text(name) } icon: { Image(nsImage: Self.tagDot(name, filled: false)) }
+            }
+        }
+        Divider()
+        Button { focus(entry); app.promptNewTag(on: entry) } label: { Label("New Tag…", systemImage: "plus") }
+    }
+
+    private static func normTag(_ s: String) -> String {
+        let l = s.lowercased(); return l == "grey" ? "gray" : l
+    }
+
+    private static func tagNSColor(_ name: String?) -> NSColor? {
+        switch name?.lowercased() {
+        case "gray", "grey": return .systemGray
+        case "green":  return .systemGreen
+        case "purple": return .systemPurple
+        case "blue":   return .systemBlue
+        case "yellow": return .systemYellow
+        case "red":    return .systemRed
+        case "orange": return .systemOrange
+        default:       return nil
+        }
+    }
+
+    /// A small colored dot for a tag menu item. Non-template so the menu draws it in
+    /// color (template images render monochrome). Filled = applied, ring = not.
+    private static func tagDot(_ colorName: String?, filled: Bool) -> NSImage {
+        let color = tagNSColor(colorName) ?? .tertiaryLabelColor
+        let img = NSImage(size: NSSize(width: 12, height: 12), flipped: false) { rect in
+            let path = NSBezierPath(ovalIn: rect.insetBy(dx: 1.5, dy: 1.5))
+            if filled { color.setFill(); path.fill() }
+            color.setStroke(); path.lineWidth = 1.5; path.stroke()
+            return true
+        }
+        img.isTemplate = false
+        return img
+    }
+
     @ViewBuilder
     private func rowMenu(_ entry: FSEntry) -> some View {
         Button { focus(entry); app.openCursor() } label: { Label("Open", systemImage: "arrow.up.forward.app") }
+        if isPackage(entry) {
+            Button { focus(entry); tab.open(entry.url) } label: { Label("Show Package Contents", systemImage: "folder") }
+        }
         Button { focus(entry); app.openWithOther(entry.url) } label: { Label("Open With…", systemImage: "square.and.arrow.up.on.square") }
         Button { focus(entry); QuickLook.toggle(urls: tab.actionable.map(\.url)) } label: { Label("Quick Look", systemImage: "eye") }
 
@@ -794,7 +918,11 @@ struct FileTableView: View {
         Button(role: .destructive) { focus(entry); app.run(CommandID.delete) } label: { Label("Delete Permanently…", systemImage: "trash.slash") }
 
         Divider()
-        Button { focus(entry); app.tagSheet = .init(url: entry.url) } label: { Label("Tags…", systemImage: "tag") }
+        // Tags write an xattr ONTO the file; for an app bundle macOS App Management
+        // blocks that, so don't offer tagging for packages.
+        if !isPackage(entry) {
+            Menu { tagMenu(entry) } label: { Label("Tags", systemImage: "tag") }
+        }
         Button { focus(entry); app.sharePicker(for: tab.actionable.map(\.url)) } label: { Label("Share…", systemImage: "square.and.arrow.up") }
 
         if entry.isDirectory {

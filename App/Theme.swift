@@ -58,7 +58,7 @@ enum Theme {
         static let selectionFill = Color.accentColor.opacity(0.22)
         static let cursorFill = Color.accentColor.opacity(0.12)   // raised for light-mode contrast (design audit)
         static let cursorStroke = Color.accentColor
-        static let activePaneTint = Color.accentColor.opacity(0.10)
+        static let activePaneTint = Color.accentColor.opacity(0.06)  // gentle wash; the 2pt accent bar + tab underline carry the signal
         static let tabActive = Color.accentColor.opacity(0.20)
         /// Generic control fill/hover so the function bar etc. stop using literal grays.
         static let controlHover = Color.accentColor.opacity(0.22)

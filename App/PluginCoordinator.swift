@@ -12,6 +12,22 @@ final class PluginCoordinator {
     let pluginHost = JSPluginHost()
     let pluginValueCache = PluginValueCache()
     var pluginValuesVersion = 0
+    private var valuesBumpScheduled = false
+
+    /// Coalesce async plugin-value resolutions into at most one table re-render per
+    /// ~100 ms. Each EXIF/JS resolve used to bump `pluginValuesVersion` directly, and
+    /// every row reads that version — so a folder of N resolving images triggered N
+    /// full-table re-renders (O(n²) layout churn that made image folders stutter on
+    /// load). Debouncing collapses a burst of resolves into a single bump.
+    func scheduleValuesBump() {
+        guard !valuesBumpScheduled else { return }
+        valuesBumpScheduled = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            guard let self else { return }
+            self.valuesBumpScheduled = false
+            self.pluginValuesVersion &+= 1
+        }
+    }
     var disabledPluginIDs: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "disabledPlugins") ?? [])
 
     // Extensions that may execute code — shared by openFile (AppState), editCursor,

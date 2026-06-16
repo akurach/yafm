@@ -90,8 +90,12 @@ final class CoreLogicTests: XCTestCase {
     // MARK: Color coding
 
     func testColorCoderMatchesExtension() {
-        let coder = ColorCoder()
+        // Extension-based defaults were removed (file *type* color now lives in the
+        // tile + opt-in name tint, to avoid two conflicting palettes). The default
+        // coder no longer colors by extension; an explicit rule still matches.
         let png = FSEntry(url: URL(fileURLWithPath: "/a.png"), name: "a.png", isDirectory: false, isHidden: false, size: 0, modified: nil)
+        XCTAssertNil(ColorCoder().colorName(for: png))
+        let coder = ColorCoder(rules: [ColorRule(match: .ext(["png"]), colorName: "Purple")])
         XCTAssertEqual(coder.colorName(for: png), "Purple")
     }
 
