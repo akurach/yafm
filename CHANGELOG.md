@@ -4,6 +4,12 @@ All notable changes to yafm are recorded here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.6.1] — Hotfix
+
+### Fixed
+- **Right-click and drag-drop in empty folders** — the "Empty folder" placeholder blocked
+  all interaction; right-click and file drops now work as in non-empty folders.
+
 ## [0.9.6] — Sidebar collapse · Settings overlay · Sidebar polish
 
 ### Added

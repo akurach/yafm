@@ -277,6 +277,12 @@ struct FileTableView: View {
         } else {
             ContentUnavailableView("Empty folder", systemImage: "folder",
                                    description: Text("This folder has no items."))
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .contentShape(Rectangle())
+                .contextMenu { backgroundMenu() }
+                .dropDestination(for: URL.self) { urls, _ in
+                    app.dropEntries(urls, onto: tab.directory, move: dropIsMove()); return true
+                }
         }
     }
 
