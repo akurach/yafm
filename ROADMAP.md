@@ -215,7 +215,7 @@ half-built.
   (auto-prompt on camera plug-in), itself deferred since v0.6. Tracked in `docs/feature-requests/`.
 - [ ] **Notarized DMG** (paid Apple Developer ID) — **deferred**: still gated on the cert.
 
-## v0.9.1 – v0.9.4 — Point releases ✅ shipped
+## v0.9.1 – v0.9.5 — Point releases ✅ shipped
 
 Post-1.0-candidate hardening and the visual redesign (see `CHANGELOG.md` for full detail):
 
@@ -230,6 +230,15 @@ Post-1.0-candidate hardening and the visual redesign (see `CHANGELOG.md` for ful
 - [x] **v0.9.4 — Float layout · Visual redesign.** Floating sidebar/panes cards, unified
   chrome titlebar, Phosphor icons + IBM Plex fonts, accent-color picker; column-resize
   cross-pane corruption fixed (single-writer geometry); chrome colors folded into `Theme.Palette`.
+- [x] **v0.9.5 — File-type tiles · Sidebar reorder · App handling.** Colored extension
+  tiles for ~250 types (`App/FileTypeTile.swift`) with one editable type→color palette
+  driving both the tile and an optional name tint + a searchable type browser; live
+  drag-reorder of Favorites items and whole sidebar sections; configurable columns
+  (header menu / path-bar popover); quick tags from the row menu; Full Disk Access in
+  Settings; proper `.app` handling (launch vs browse-contents). Fixed: big-folder freeze
+  (unbounded persisted `nameW` → AppKit layout recursion; Name-width clamp + startup
+  sanitizer), sidebar-drag-moved-window, click-scroll-centering, light-mode tile contrast,
+  debounced plugin/EXIF re-render churn.
 
 ## Open questions to revisit
 
@@ -259,13 +268,13 @@ Deferred (tracked, not yet done): — все закрыты в v0.9:
 
 ## Next up
 
-**v0.9.4 shipped** (float-layout visual redesign + column-resize fix). The v0.1–0.9 arc is
-complete and the 1.0 candidate line holds; the public plugin API is frozen at `apiVersion 1.0`.
-What remains before tagging **1.0**:
+**v0.9.5 shipped** (file-type tiles, sidebar reorder, app handling, big-folder-freeze fix).
+The v0.1–0.9 arc is complete and the 1.0 candidate line holds; the public plugin API is
+frozen at `apiVersion 1.0`. What remains before tagging **1.0**:
 
 - **Notarized DMG** — the recurring blocker; needs a paid Apple Developer ID cert
   (`CODESIGN_IDENTITY` + `AC_NOTARY_PROFILE`). Also gates Sparkle-style auto-update.
-- **Polish pass** on the redesign — light/dark audit now that chrome surfaces live in
-  `Theme.Palette`; remaining design-system cleanup from the v0.9.0 `AUDIT.md` brief.
+- **Polish pass** — finish the design-system cleanup from the v0.9.0 `AUDIT.md` brief;
+  the light/dark tile audit landed in v0.9.5.
 - **Deferred first-party features** (post-1.0, tracked in `docs/feature-requests/`): Photo
   Ingest + device detection; remote plugin marketplace + signing (hosted infra).

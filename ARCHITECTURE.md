@@ -1,7 +1,12 @@
-# yafm — Architecture (v0.1 spine)
+# yafm — Architecture (spine + current layout)
 
-This describes the v0.1 skeleton. Everything here serves the two non-negotiables from `VISION.md`:
-**never freeze silently** (everything async, always a visible loading state) and **native/fast/beautiful** (Swift Concurrency + SwiftUI, thin testable core).
+This describes the v0.1 skeleton — the thesis that still holds through **v0.9.5**.
+Everything here serves the two non-negotiables from `VISION.md`: **never freeze silently**
+(everything async, always a visible loading state) and **native/fast/beautiful** (Swift
+Concurrency + SwiftUI, thin testable core). The "Module layout" below is kept current; the
+conceptual sections (concurrency, protocols, the open-a-directory flow) are unchanged since
+v0.1 — that they never needed a rewrite is the point. `CLAUDE.md` carries the most detailed
+file-by-file map.
 
 ## Layers
 
@@ -29,26 +34,47 @@ This describes the v0.1 skeleton. Everything here serves the two non-negotiables
 
 ```
 yafm/
-├── Package.swift               # SwiftPM: Core library + yafm executable target
+├── Package.swift               # SwiftPM: Core lib + yafm executable; PhosphorSwift (forked) dep
 ├── Core/Sources/Core/          # UI-free domain package
 │   ├── FileSystem.swift        # FileSystemProvider, LocalFileSystem, FSEntry, ListingState, Tag
+│   ├── FileSystemRouter.swift  # scheme → provider routing (local now; SMB/VFS behind it)
+│   ├── SMBFileSystem.swift     # native SMB/AFP share mounting (v0.7 VFS)
 │   ├── Operations.swift        # FileEngine — streamed copy/move/delete/rename + progress
 │   ├── Tags.swift              # TagService (xattr bridge + index + background indexer)
-│   ├── Volumes.swift           # VolumeService, Volume (mounted drives; §2)
-│   ├── Sorting.swift           # SortOrder/SortKey, color rules, rename rules
-│   └── Commands.swift          # Command, CommandID, keybindings, ExtensionRegistry
-│   └── Core/Tests/CoreTests/
+│   ├── Volumes.swift           # VolumeService, Volume (mounted drives + classification)
+│   ├── Sorting.swift           # SortOrder/SortKey, ColorRule/ColorCoder, rename transformers
+│   ├── Commands.swift          # Command, CommandID, keybindings, ExtensionRegistry, PluginColumn
+│   ├── Plugins.swift           # JSPluginHost — JavaScriptCore column/action plugins
+│   ├── Git.swift               # GitStatusService (native git-status column)
+│   └── Search.swift            # SearchService (mdfind + own fallback)
+│   └── Core/Tests/CoreTests/   # XCTest suites (81 tests)
 └── App/                        # SwiftUI executable sources (flat)
-    ├── yafm.swift              # @main, RootView, inspector/preview wrappers, menu commands
+    ├── yafm.swift              # @main, RootView, sheets (tag/rename/onboarding/palette), menus
     ├── State.swift             # AppState · PaneModel · TabModel (@Observable @MainActor)
-    ├── Views.swift             # panes, table+columns, sidebar, tag cloud, F-bar, inspector
-    ├── Onboarding.swift        # Full Disk Access sheet + limited-access banner (§6)
+    ├── PluginCoordinator.swift # plugins + registry + EXIF; TagCoordinator / SearchCoordinator
+    ├── Views.swift             # panes, file table + columns, rows, drag/drop, context menus
+    ├── Sidebar.swift           # Favorites/Locations/Devices/Network/Tags + live drag-reorder
+    ├── FloatLayout.swift       # floating-card chrome (ChromeBackground/PanelBackground)
+    ├── Theme.swift             # UI tokens — spacing, type, Palette (incl. chrome surfaces), motion
+    ├── FileIcon.swift          # cached real macOS icons (folders, files, app bundles)
+    ├── FileTypeTile.swift      # FileTypeCategory + FileTypeCatalog (dict) + drawn tile renderer
+    ├── Settings.swift          # AppSettings + Settings scene (General/Appearance/…); type browser
+    ├── Inspector.swift · FunctionBar.swift · RenameSheet.swift · SearchSheet.swift
+    ├── TagEditor.swift · CommandPalette.swift · ConnectServerSheet.swift
+    ├── Onboarding.swift        # Full Disk Access sheet + limited-access banner
     ├── Keyboard.swift          # NSEvent key monitor → CommandID dispatch
     ├── QuickLook.swift         # QLPreviewPanel bridge
-    └── Resources/Info.plist    # bundle id + TCC usage strings
+    └── Resources/Info.plist    # bundle id + TCC usage strings + Fonts
 ```
 
-Core as a real package (not just folders) enforces the no-UI boundary at compile time and makes it independently testable.
+Core as a real package (not just folders) enforces the no-UI boundary at compile time and makes
+it independently testable.
+
+**Tile/color note (v0.9.5):** `FileTypeCategory` resolves its color through `AppSettings`
+(override → default), making one palette the single source of truth for both the drawn
+`FileTypeTile` and the optional name tint. Tiles are rendered to a cached `NSImage` (not SwiftUI
+`Text`) on purpose — a per-row auto-sizing `Text` once drove an `NSHostingView` layout recursion
+that froze big folders.
 
 ## Concurrency model
 

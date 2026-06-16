@@ -1,6 +1,6 @@
 # yafm User Guide
 
-*Yet Another File Manager for macOS — v0.9.0* · [Русская версия](USER_GUIDE.ru.md)
+*Yet Another File Manager for macOS — v0.9.5* · [Русская версия](USER_GUIDE.ru.md)
 
 ---
 
@@ -28,7 +28,7 @@ After the first successful launch, yafm opens normally like any other app.
 
 On first run yafm shows a short **welcome sheet** explaining why it asks for access. macOS hides some protected folders (Mail, Safari, and others) until you grant **Full Disk Access**. yafm only reads files you actually open — but without access, those folders would look empty with no explanation, which violates the "never lie" principle.
 
-From the welcome sheet, click **Open System Settings…**, enable yafm under **Privacy & Security ▸ Full Disk Access**, then **relaunch yafm** so it can see the newly available folders. You can skip this and use yafm in the available scope — you'll just see a non-intrusive **"Limited access"** banner with a button to enable it later.
+From the welcome sheet, click **Open System Settings…**, enable yafm under **Privacy & Security ▸ Full Disk Access**, then **relaunch yafm** so it can see the newly available folders. You can skip this and use yafm in the available scope — you'll just see a non-intrusive **"Limited access"** banner with a button to enable it later. Even after you dismiss that banner, you can manage access any time from **Settings ▸ General ▸ Full Disk Access**, which shows the current status and offers **Open System Settings…** and **Re-check** buttons.
 
 Removable and network volumes prompt for access the first time you open them. That system dialog is normal — allow it.
 
@@ -41,8 +41,8 @@ yafm's window is laid out for two-handed, keyboard-first work:
 - **Two panes, side by side.** The **active pane** is marked with a colored top bar and a faint tint. Most actions (copy, move, navigate) act on the active pane; copy/move send files *to the other pane*.
 - **Tab bar** (top of each pane). Each pane has its own tabs. Click a tab to switch, the **+** button to open a new one, or the **×** to close it.
 - **Path bar + breadcrumbs.** Below the tabs, the current path is shown as clickable breadcrumbs — click any component to jump there. Click the **pencil** to type a path directly.
-- **File table.** Columns are **Name · Size · Modified · Kind**, plus a **Git** column when you're inside a git repository, plus any columns added by plugins. Click a column header to sort; click again to reverse.
-- **Sidebar** (left). Sections for **Favorites** (your bookmarks), **Locations** (Computer, Home), **Devices** (mounted/USB drives with a capacity bar and **eject** button), **Network** (network shares), and **Tags** (the tag cloud — every tag with its color and file count; click to filter).
+- **File table.** Columns are **Name · Size · Modified · Kind**, plus a **Git** column when you're inside a git repository, plus any columns added by plugins. Click a column header to sort; click again to reverse. **Name** is always shown; **Size / Modified / Kind / Git** can each be shown or hidden — right-click the column header, or click the **options button** (slider icon) in the path bar, and toggle them.
+- **Sidebar** (left). Sections for **Favorites** (your bookmarks), **Locations** (Computer, Home), **Devices** (mounted/USB drives with a capacity bar and **eject** button), **Network** (network shares), and **Tags** (the tag cloud — every tag with its color and file count; click to filter). **Drag to reorder:** grab a Favorites item (system folder or bookmark) to move it within Favorites, or grab a whole section header to reorder the sections themselves — the block you're dragging follows the cursor while its neighbors slide into place, and the order is saved.
 - **Function-key bar** (bottom). A clickable Total Commander-style strip: **F2** Rename · **F3** View · **F4** Edit · **F5** Copy · **F6** Move · **F7** New Folder · **F8** Delete.
 - **Inspector / preview panel** (right). Toggle between **Info** (kind, size, dates, permissions, location, and a tag editor) and **Preview** (a live QuickLook of the selected file).
 - **Operation queue.** Whenever a copy/move/delete is running, a queue appears showing each task's progress with a **cancel** button.
@@ -61,15 +61,15 @@ yafm follows the **Total Commander** model. With a pane focused:
 | Key | What it does |
 |-----|--------------|
 | **↑ / ↓** | Move the cursor up/down one row |
-| **→** | Go *into* the folder under the cursor (also opens files only if you turn that on in Settings) |
+| **→** | Go *into* the folder under the cursor; on an app, either show its contents or launch it (your choice in Settings); (also opens files only if you turn that on in Settings) |
 | **←** | Go *up* to the parent folder |
-| **Enter** | Open — enter a folder, or open a file in its default app |
+| **Enter** | Open — enter a folder, open a file in its default app, or **launch** an app |
 | **Backspace** | Go up to the parent folder |
 | **Tab** | Switch the active pane (left ⇄ right) |
 | **⇧ + ↑ / ↓** | Extend the selection (multi-select) |
 | **Space** | Quick Look the file under the cursor (preview follows the cursor as you move) |
 
-Click a row to select it instantly; double-click to open. Right-click any row (or the empty area) for the full context menu.
+Click a row to select it instantly; double-click to open (or **launch**, for an app). Selecting a row no longer scroll-centers the list — your place stays put. Right-click any row (or the empty area) for the full context menu.
 
 ---
 
@@ -149,13 +149,13 @@ When a copy or move hits a file that already exists, yafm follows your default c
 
 ### More row actions (right-click)
 
-- **Open** / **Open With…** (pick an app, or *Other…*)
+- **Open** / **Open With…** (pick an app, or *Other…*). On an **app**, **Open** *launches* it and **Show Package Contents** browses inside the bundle as a folder.
 - **Quick Look**
 - **Reveal in Finder**
 - **Get Info** (**⌘I**) and **Copy Path**
 - **Share** — AirDrop and the macOS share services, on a file or your whole selection
 - **Add to Favorites** (folders)
-- **Tags…** — open the inline tag editor
+- **Tags** — a quick submenu with colored dots: toggle any tag you already use, pick a standard color, or **New Tag…**, all without a modal. (You can also open the full inline tag editor from the **Info** inspector.) The Tags menu is hidden for **apps** — macOS App Management blocks writing tags to `.app` bundles.
 
 ---
 
@@ -163,11 +163,20 @@ When a copy or move hits a file that already exists, yafm follows your default c
 
 yafm uses **native macOS tags** (stored in extended attributes), so they stay fully compatible with Finder — tags you set in yafm show up in Finder and vice versa. On top of that, yafm keeps its own fast **index** and gives tags a proper UI.
 
-- **Tag a file** from the row's **Tags…** menu or the **Info** inspector. Pick from the 7 standard Finder colors or type a new named tag.
+- **Tag a file** from the row's **Tags** quick menu or the **Info** inspector. Pick from the 7 standard Finder colors or type a new named tag.
 - **Tag cloud** in the sidebar lists every known tag with its color and file count. Click a tag to show all files carrying it.
 - **Color coding** tints file/folder icons by rules — by type, by tag, or custom rules — so you can read a folder at a glance.
 
 Manage all tags in **Settings ▸ Tags**: recolor, rename across every file, or remove a tag from all files, plus rescan/rebuild the index (useful if you tagged files outside yafm).
+
+### File-type tiles
+
+Instead of the same generic document icon for everything, yafm can draw a small **colored chip** showing the file's extension — recognised for around **250 known types**: source code, 3D/CAD, RAW photo, design files, and the **project files** of audio/video tools (Premiere, DaVinci Resolve, Final Cut, Ableton, FL Studio, Logic, Reaper), soundfonts/VST, fonts, and binaries. Tiles are drawn and cached, and adapt to **light and dark** appearance. Folders and unknown extensions keep their real macOS icon. Turn tiles on or off in **Settings ▸ Appearance ▸ File-Type Tiles**.
+
+A single **type → color palette** drives both the tile *and* an optional **"Tint file names by type"** toggle, so a file's tile and its name always share the same color. In **Settings ▸ Appearance** you'll find:
+
+- **Type Colors** — per-category color pickers.
+- **Type Browser** — a searchable list of every known extension with its category. Override a type's category, or add your own.
 
 ---
 
@@ -190,10 +199,10 @@ The dual-pane workflow is the heart of yafm: browse the source in one pane, the 
 
 ## 9. Settings
 
-Open Settings with **⌘,**. The window has six tabs:
+Open Settings with **⌘,**. The (now roomier) window has six tabs:
 
-- **General** — *Start folder* (Home / Last used / a specific folder); *Right arrow opens files* (off by default: → only enters folders, Enter always opens); *Show hidden files in new tabs*; **Language** (System / English / Русский — applies after you quit and reopen yafm).
-- **Appearance** — theme **Light / Dark / System**; **Density** (Compact / Cozy / Comfortable — how many rows fit on screen); **Motion** (animate selection & navigation, or keep it instant).
+- **General** — *Start folder* (Home / Last used / a specific folder); quick toggles for **Theme** (Light / Dark / System), **Density** (Compact / Cozy / Comfortable — how many rows fit on screen), and **Motion** (animate selection & navigation, or keep it instant); *Right arrow opens files* (off by default: → only enters folders, Enter always opens); **Navigation ▸ "Right arrow on apps"** (Show contents — browse the bundle — or Launch; default *Show contents*); *Show hidden files in new tabs*; **Full Disk Access** (status + **Open System Settings…** + **Re-check**); **Language** (System / English / Русский — applies after you quit and reopen yafm).
+- **Appearance** — **Accent color**; the **file-type tile** system: **File-Type Tiles** toggle, **Tint file names by type** toggle, per-category **Type Colors**, and the searchable **Type Browser** (see section 7).
 - **Operations** — *Confirm before deleting* (on by default; note delete is **permanent**, not Trash); *Copy/Move collisions* default (Keep both / Skip / Replace).
 - **Tags** — the full tag manager (recolor, rename, delete across files) plus *Rescan* / *Clear index*.
 - **Plugins** — open the plugins folder, reload plugins, and see what's loaded (with any errors).
@@ -236,10 +245,10 @@ Open a **`.zip`** (Enter or double-click) to browse it **read-only**, like any f
 | Action | Shortcut |
 |--------|----------|
 | Move cursor up / down | ↑ / ↓ |
-| Into folder (open file if enabled) | → |
+| Into folder (open file if enabled); on an app, show contents or launch | → |
 | Up to parent folder | ← |
 | Up to parent folder | Backspace |
-| Open (folder or file) | Enter |
+| Open (folder or file); launch an app | Enter |
 | Switch active pane | Tab |
 | Extend selection | ⇧ + ↑ / ↓ |
 | Quick Look | Space |
@@ -302,7 +311,7 @@ macOS is blocking yafm from protected folders. Click **Enable Full Disk Access**
 yafm isn't notarized yet. **Right-click** the app → **Open** → **Open**, or use System Settings ▸ Privacy & Security ▸ **Open Anyway**. You only need to do this once. (See section 2.)
 
 **An external disk shows "Reading…" for a long time.**
-That's the never-freeze design doing its job — yafm is genuinely reading the disk and showing you the live count, rather than freezing on a blank window like Finder. Slow or sleeping external/network drives simply take time to wake and enumerate; the badge updates as entries arrive, and you can switch tabs or panes while it loads.
+That's the never-freeze design doing its job — yafm is genuinely reading the disk and showing you the live count, rather than freezing on a blank window like Finder. Slow or sleeping external/network drives simply take time to wake and enumerate; the badge updates as entries arrive, and you can switch tabs or panes while it loads. Even very large folders stream in without freezing the window.
 
 **A folder I tagged outside yafm doesn't show its tags in the sidebar cloud.**
 The tag cloud is built from yafm's index. Open **Settings ▸ Tags** and click **Rescan now** (or **Clear index** to rebuild from scratch).

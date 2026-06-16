@@ -20,7 +20,7 @@ file engine, tag/xattr bridge, listing, keyboard monitor, and app state.
 | High | Unbounded xattr read → memory exhaustion | `Tags.swift`: cap attribute at 128 KiB and ≤64 entries |
 | High | Copy progress double-counted directory entry bytes (`fraction > 1`) | `totalBytes` sums file bytes only |
 | High | Cancelled listing emitted `.finished` → shown as complete | `FileSystem.swift`: finish without `.finished` when cancelled |
-| High | `NSWorkspace.open` ran scripts/executables with no prompt | `AppState.openFile`: confirm before opening `.sh/.command/.scpt/.app/…` |
+| High | `NSWorkspace.open` ran scripts/executables with no prompt | `AppState.openFile`: confirm before opening loose code (`.sh/.command/.scpt/…`). Apps (`.app`) launch directly as of v0.9.5 — a deliberate double-click is normal and macOS Gatekeeper still gates untrusted/quarantined apps. |
 | High | QuickLook `nonisolated(unsafe)` discarded Swift 6 isolation | `@MainActor` class + `assumeIsolated` callbacks |
 | High | `fillTags` could overwrite the new directory's state after navigation | guard `directory == dir` across suspension points |
 | Medium | Unsafe-pointer copy loop missing overshoot guard | bound `written <= read - offset` |
@@ -36,6 +36,20 @@ file engine, tag/xattr bridge, listing, keyboard monitor, and app state.
   `PluginContext` that hands plugins only a vetted capability subset. Never pass `FileEngine`,
   `TagService`, or `LocalFileSystem` to plugin-facing code. Every path-traversal class above
   becomes plugin-reachable otherwise.
+
+## macOS privacy gates (TCC)
+
+yafm is non-sandboxed but still bound by TCC. Two gates surface in the UI:
+
+- **Full Disk Access** — without it, protected folders (Desktop/Documents, other apps'
+  data) read as empty. yafm shows the status and a one-click path to System Settings in
+  **Settings ▸ General ▸ Full Disk Access** (and an onboarding banner), so it's always
+  reachable, never silently required.
+- **App Management** (macOS 13+) — writing extended attributes onto an app bundle (e.g.
+  applying a Finder tag to a `.app`) counts as *modifying an app* and is blocked unless the
+  user grants App Management. yafm does not request it; instead the **tag menu is hidden for
+  packages** (v0.9.5) so the operation is never attempted and the user doesn't hit an opaque
+  system denial.
 
 ## Reporting
 

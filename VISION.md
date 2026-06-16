@@ -72,7 +72,8 @@ The arc in brief:
   UI tokens) · v0.5 visual polish + drag-and-drop · v0.6 content search + honest empty/error states
   + update check · v0.7 SMB virtual filesystem (XPC) + accessibility + **Russian i18n** · v0.8
   public plugins re-open (scoped-FS capability, manifests, archive mounting) · v0.9 API freeze
-  (`apiVersion 1.0`) + 1.0 candidate, then point releases v0.9.1–0.9.4 (audit pass · plugin-API
-  extensions · column resize + sidebar config · **float-layout visual redesign**). Currently
-  **v0.9.4**; before 1.0: notarized DMG (paid cert) + polish. Photo-ingest + marketplace deferred
-  post-1.0. Full status-tracked breakdown in [`ROADMAP.md`](ROADMAP.md).
+  (`apiVersion 1.0`) + 1.0 candidate, then point releases v0.9.1–0.9.5 (audit pass · plugin-API
+  extensions · column resize + sidebar config · float-layout visual redesign · **file-type
+  tiles + sidebar drag-reorder + app handling**). Currently **v0.9.5**; before 1.0: notarized
+  DMG (paid cert) + final polish. Photo-ingest + marketplace deferred post-1.0. Full
+  status-tracked breakdown in [`ROADMAP.md`](ROADMAP.md).
