@@ -6,7 +6,15 @@ the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-_Nothing yet._
+### Added
+- **Collapsible sidebar sections** — click a section header (Favorites / Locations /
+  Devices / Network / Tags) to collapse or expand it; a caret rotates to show state.
+  Tap collapses, grab-and-drag still reorders (a tap never starts a drag). State
+  persists per section.
+- **In-window Settings (⌘,)** — Settings now opens as a floating card *inside* the main
+  window over a dimmed backdrop, instead of a separate Preferences window that could be
+  dragged outside the app. A Mole-style pill switcher glides between tabs; click the
+  backdrop, ✕, or Esc to dismiss. Matches the float-layout chrome.
 
 ## [0.9.5] — File-type tiles · Sidebar reorder · App handling
 

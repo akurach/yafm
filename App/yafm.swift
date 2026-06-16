@@ -48,9 +48,13 @@ struct YafmApp: App {
                 Button("Keyboard Shortcuts") { app.run(CommandID.cheatSheet) }
                     .keyboardShortcut("/", modifiers: [.command])
             }
+            // In-window Settings (Mole-style): replace the native Preferences
+            // window so it can't be torn off outside the app.
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") { app.showSettings = true }
+                    .keyboardShortcut(",", modifiers: [.command])
+            }
         }
-
-        Settings { SettingsView(app: app) }
     }
 }
 
@@ -116,6 +120,7 @@ struct RootView: View {
         .sheet(isPresented: $app.connectSheet)   { ConnectServerSheet(app: app) }
         .sheet(isPresented: $app.commandPalette) { CommandPalette(app: app) }
         .sheet(isPresented: $app.cheatSheet)     { CheatSheet(app: app) }
+        .overlay { SettingsOverlay(app: app) }
         .environment(\.font, IBMPlex.sans(13))
     }
 }

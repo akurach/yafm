@@ -471,6 +471,10 @@ final class AppState {
     var commandPalette = false
     var cheatSheet = false
 
+    /// In-window Settings overlay (⌘,) — replaces the native Preferences window so
+    /// it can't be dragged outside the app (Mole-style modal).
+    var showSettings = false
+
     /// Connect-to-Server (⌘⇧K): the smb:// address sheet (v0.7).
     var connectSheet = false
     var connectAddress = "smb://"

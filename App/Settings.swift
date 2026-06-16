@@ -200,6 +200,17 @@ final class AppSettings {
     var favoritesOrder: [String] { didSet { store.set(favoritesOrder, forKey: Keys.favoritesOrder) } }
     var sidebarSectionOrder: [String] { didSet { store.set(sidebarSectionOrder, forKey: Keys.sidebarSectionOrder) } }
 
+    /// Collapsed sidebar sections (by section key). Collapsed = only the header
+    /// shows; tapping the header toggles it.
+    var collapsedSidebarSections: Set<String> {
+        didSet { store.set(Array(collapsedSidebarSections), forKey: Keys.collapsedSidebarSections) }
+    }
+
+    func toggleSectionCollapsed(_ key: String) {
+        if collapsedSidebarSections.contains(key) { collapsedSidebarSections.remove(key) }
+        else { collapsedSidebarSections.insert(key) }
+    }
+
     /// Move `dragged` to where `target` currently sits within an ordered id list.
     static func reordered(_ list: [String], moving dragged: String, before target: String) -> [String] {
         guard dragged != target, let from = list.firstIndex(of: dragged) else { return list }
@@ -334,6 +345,7 @@ final class AppSettings {
         static let tintNamesByType = "tintNamesByType"
         static let favoritesOrder = "favoritesOrder"
         static let sidebarSectionOrder = "sidebarSectionOrder"
+        static let collapsedSidebarSections = "collapsedSidebarSections"
         static let language = "language"
         static let animations = "animations"
         static let startMode = "startMode"
@@ -371,6 +383,7 @@ final class AppSettings {
         tintNamesByType    = d.object(forKey: Keys.tintNamesByType) as? Bool ?? false
         favoritesOrder     = d.stringArray(forKey: Keys.favoritesOrder) ?? []
         sidebarSectionOrder = d.stringArray(forKey: Keys.sidebarSectionOrder) ?? []
+        collapsedSidebarSections = Set(d.stringArray(forKey: Keys.collapsedSidebarSections) ?? [])
 
         language = AppLanguage(rawValue: d.string(forKey: Keys.language) ?? "") ?? .system
         animations = d.object(forKey: Keys.animations) as? Bool ?? true   // default on
@@ -469,23 +482,86 @@ final class UpdateChecker {
 
 // MARK: - Settings window (⌘,)
 
+/// Settings tabs (drives the Mole-style pill switcher).
+enum SettingsTab: String, CaseIterable, Identifiable {
+    case general, appearance, operations, sidebar, tags, plugins, updates
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .general:    return "General"
+        case .appearance: return "Appearance"
+        case .operations: return "Operations"
+        case .sidebar:    return "Sidebar"
+        case .tags:       return "Tags"
+        case .plugins:    return "Plugins"
+        case .updates:    return "Updates"
+        }
+    }
+    var icon: Image {
+        switch self {
+        case .general:    return Ph.gearSix.regular
+        case .appearance: return Ph.paintBrush.regular
+        case .operations: return Ph.arrowsLeftRight.regular
+        case .sidebar:    return Ph.sidebarSimple.regular
+        case .tags:       return Ph.tag.regular
+        case .plugins:    return Ph.puzzlePiece.regular
+        case .updates:    return Ph.arrowCircleDown.regular
+        }
+    }
+}
+
 struct SettingsView: View {
     @Bindable var app: AppState
     @State private var updates = UpdateChecker()
+    @State private var tab: SettingsTab = .general
+    var onClose: () -> Void = {}
 
     private var settings: AppSettings { app.settings }
 
     var body: some View {
-        TabView {
-            general.tabItem    { Ph.gearSix.regular;        Text("General") }
-            appearance.tabItem { Ph.paintBrush.regular;     Text("Appearance") }
-            operations.tabItem { Ph.arrowsLeftRight.regular; Text("Operations") }
-            sidebarTab.tabItem { Ph.sidebarSimple.regular;  Text("Sidebar") }
-            tags.tabItem       { Ph.tag.regular;            Text("Tags") }
-            plugins.tabItem    { Ph.puzzlePiece.regular;    Text("Plugins") }
-            updatesTab.tabItem { Ph.arrowCircleDown.regular; Text("Updates") }
+        VStack(spacing: 0) {
+            header
+            SettingsTabBar(selection: $tab)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 14)
+            Divider()
+            content
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
-        .frame(width: 640, height: 560)
+        .frame(width: 660, height: 580)
+    }
+
+    private var header: some View {
+        HStack {
+            Text("Settings")
+                .font(IBMPlex.sans(22, weight: .semibold))
+            Spacer()
+            Button(action: onClose) {
+                Ph.x.bold
+                    .renderingMode(.template).resizable().aspectRatio(contentMode: .fit)
+                    .frame(width: 12, height: 12)
+                    .foregroundStyle(.secondary)
+                    .padding(7)
+                    .background(Circle().fill(Color.primary.opacity(0.08)))
+            }
+            .buttonStyle(.plain)
+            .keyboardShortcut(.cancelAction)
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 20)
+        .padding(.bottom, 16)
+    }
+
+    @ViewBuilder private var content: some View {
+        switch tab {
+        case .general:    general
+        case .appearance: appearance
+        case .operations: operations
+        case .sidebar:    sidebarTab
+        case .tags:       tags
+        case .plugins:    plugins
+        case .updates:    updatesTab
+        }
     }
 
     private var general: some View {
@@ -803,6 +879,93 @@ struct SettingsView: View {
     }
 }
 
+// MARK: - In-window Settings overlay (Mole-style)
+
+/// Dimmed backdrop + floating settings card, presented inside the main window so
+/// it can never be dragged outside the app. Click-outside or ✕ / Esc dismisses.
+struct SettingsOverlay: View {
+    @Bindable var app: AppState
+    @Environment(\.colorScheme) private var scheme
+
+    var body: some View {
+        ZStack {
+            if app.showSettings {
+                Color.black.opacity(0.32)
+                    .ignoresSafeArea()
+                    .contentShape(Rectangle())
+                    .onTapGesture { close() }
+                    .transition(.opacity)
+
+                SettingsView(app: app, onClose: close)
+                    .background(Theme.Palette.panesSurface(scheme == .dark))
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(Color.primary.opacity(scheme == .dark ? 0.16 : 0.10), lineWidth: 1)
+                    }
+                    .shadow(color: .black.opacity(scheme == .dark ? 0.55 : 0.28), radius: 40, y: 18)
+                    .transition(.scale(scale: 0.97).combined(with: .opacity))
+            }
+        }
+        .animation(.spring(response: 0.32, dampingFraction: 0.88), value: app.showSettings)
+    }
+
+    private func close() { app.showSettings = false }
+}
+
+/// Pill-style tab switcher (Mole-style): a capsule track with one filled pill for
+/// the active tab; the fill glides between pills.
+struct SettingsTabBar: View {
+    @Binding var selection: SettingsTab
+    @Environment(\.colorScheme) private var scheme
+    @Namespace private var pill
+
+    private var selectedFill: Color {
+        // Same neutral gamut as the chrome/panel surfaces, just darker than the
+        // track — a grey "selected" chip, never harsh black.
+        scheme == .dark ? Color(white: 0.30) : Color(white: 0.62)
+    }
+    private var selectedText: Color {
+        scheme == .dark ? Color.white : Color(white: 0.12)
+    }
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(SettingsTab.allCases) { t in
+                let active = t == selection
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) { selection = t }
+                } label: {
+                    HStack(spacing: 5) {
+                        t.icon
+                            .renderingMode(.template).resizable().aspectRatio(contentMode: .fit)
+                            .frame(width: 13, height: 13)
+                        Text(t.label).font(IBMPlex.sans(12, weight: active ? .semibold : .regular))
+                    }
+                    // Inverted selected pill (Mole-style): dark chip on light theme,
+                    // light chip on dark theme — text flips to stay legible.
+                    .foregroundStyle(active ? selectedText : Color.secondary)
+                    .padding(.vertical, 6)
+                    .padding(.horizontal, 11)
+                    .background {
+                        if active {
+                            Capsule(style: .continuous)
+                                .fill(selectedFill)
+                                .matchedGeometryEffect(id: "pill", in: pill)
+                                .shadow(color: .black.opacity(scheme == .dark ? 0.35 : 0.20), radius: 3, y: 1)
+                        }
+                    }
+                    .contentShape(Capsule())
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(3)
+        .background(Capsule(style: .continuous).fill(Color.primary.opacity(scheme == .dark ? 0.07 : 0.05)))
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
 // MARK: - Settings layout helpers
 
 private extension SettingsView {
@@ -1004,31 +1167,42 @@ struct TagManagerView: View {
     }
 
     var body: some View {
-        Form {
-            Section("Manage tags") {
-                if tags.isEmpty {
-                    Text("No tags yet. Tag a file, or Rescan if you tagged files outside yafm.")
-                        .font(.caption).foregroundStyle(.secondary)
-                } else {
-                    ForEach(tags, id: \.name) { tag in row(tag) }
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                SettingsGroup("MANAGE TAGS") {
+                    if tags.isEmpty {
+                        HStack {
+                            Text("No tags yet. Tag a file, or Rescan if you tagged files outside yafm.")
+                                .font(IBMPlex.sans(12)).foregroundStyle(.secondary)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 12).frame(minHeight: 38)
+                    } else {
+                        ForEach(Array(tags.enumerated()), id: \.1.name) { i, tag in
+                            if i > 0 { SettingsDivider() }
+                            row(tag)
+                        }
+                    }
+                }
+                SettingsGroup("TAG INDEX",
+                              footer: "The sidebar cloud and this list are built from an index of your files. Rescan after tagging outside yafm; clear to rebuild from scratch.") {
+                    SettingsRow("Index") {
+                        HStack(spacing: 8) {
+                            Button("Rescan now") { app.rescanTags() }.controlSize(.small)
+                            Button("Clear index") { app.clearTags() }.controlSize(.small)
+                        }
+                    }
                 }
             }
-            Section("Tag index") {
-                Text("The sidebar cloud and this list are built from an index of your files. Rescan after tagging outside yafm; clear to rebuild from scratch.")
-                    .font(.caption).foregroundStyle(.secondary)
-                HStack {
-                    Button("Rescan now") { app.rescanTags() }
-                    Button("Clear index") { app.clearTags() }
-                }
-            }
+            .padding(20)
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .formStyle(.grouped)
     }
 
     private func row(_ tag: Tag) -> some View {
         HStack(spacing: 10) {
             colorMenu(tag)
-            Text(tag.name).lineLimit(1)
+            Text(tag.name).font(IBMPlex.sans(13)).lineLimit(1)
             Spacer()
             Text("\(app.tagCounts[tag.name] ?? 0)")
                 .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
@@ -1039,6 +1213,7 @@ struct TagManagerView: View {
             }
             .buttonStyle(.borderless).help("Remove from all files")
         }
+        .padding(.horizontal, 12).frame(minHeight: 38)
     }
 
     /// A swatch that opens the 7 Finder colors + "No color"; picking recolors the

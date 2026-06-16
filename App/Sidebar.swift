@@ -133,82 +133,112 @@ struct BookmarksSidebar: View {
 
     // MARK: Section rendering (order is user-draggable)
 
+    private func isCollapsed(_ key: String) -> Bool {
+        app.settings.collapsedSidebarSections.contains(key)
+    }
+
     @ViewBuilder private func section(_ key: String) -> some View {
         switch key {
         case "favorites":
             if app.settings.sidebarShowFavorites {
                 sectionHeader("Favorites", key: key)
-                ForEach(orderedFavorites) { item in
-                    favoriteRow(item)
-                        .background(GeometryReader { g in
-                            Color.clear
-                                .onAppear { favHeights[item.id] = g.size.height }
-                                .onChange(of: g.size.height) { _, h in favHeights[item.id] = h }
-                        })
-                        .offset(y: favDragId == item.id ? favDragDY : 0)
-                        .zIndex(favDragId == item.id ? 1 : 0)
-                        .shadow(color: .black.opacity(favDragId == item.id ? 0.22 : 0),
-                                radius: favDragId == item.id ? 6 : 0, y: 2)
-                        .transaction { if favDragId == item.id { $0.animation = nil } }
-                        .gesture(favoriteDrag(item.id))
+                if !isCollapsed(key) {
+                    ForEach(orderedFavorites) { item in
+                        favoriteRow(item)
+                            .background(GeometryReader { g in
+                                Color.clear
+                                    .onAppear { favHeights[item.id] = g.size.height }
+                                    .onChange(of: g.size.height) { _, h in favHeights[item.id] = h }
+                            })
+                            .offset(y: favDragId == item.id ? favDragDY : 0)
+                            .zIndex(favDragId == item.id ? 1 : 0)
+                            .shadow(color: .black.opacity(favDragId == item.id ? 0.22 : 0),
+                                    radius: favDragId == item.id ? 6 : 0, y: 2)
+                            .transaction { if favDragId == item.id { $0.animation = nil } }
+                            .gesture(favoriteDrag(item.id))
+                    }
                 }
             }
         case "locations":
             if app.settings.sidebarShowLocations {
                 sectionHeader("Locations", key: key)
-                if app.settings.locShowComputer {
-                    locationRow("Computer", Ph.desktop.bold, URL(fileURLWithPath: "/"))
-                }
-                if app.settings.locShowHome {
-                    locationRow("Home", Ph.house.bold, FileManager.default.homeDirectoryForCurrentUser)
-                }
-                if app.settings.sidebarShowICloud, let url = iCloudDriveURL {
-                    locationRow("iCloud Drive", Ph.cloud.bold, url)
+                if !isCollapsed(key) {
+                    if app.settings.locShowComputer {
+                        locationRow("Computer", Ph.desktop.bold, URL(fileURLWithPath: "/"))
+                    }
+                    if app.settings.locShowHome {
+                        locationRow("Home", Ph.house.bold, FileManager.default.homeDirectoryForCurrentUser)
+                    }
+                    if app.settings.sidebarShowICloud, let url = iCloudDriveURL {
+                        locationRow("iCloud Drive", Ph.cloud.bold, url)
+                    }
                 }
             }
         case "devices":
             if app.settings.sidebarShowDevices, !devices.isEmpty {
                 sectionHeader("Devices", key: key)
-                ForEach(devices) { vol in volumeRow(vol) }
+                if !isCollapsed(key) {
+                    ForEach(devices) { vol in volumeRow(vol) }
+                }
             }
         case "network":
             if app.settings.sidebarShowNetwork, !networkVolumes.isEmpty {
                 sectionHeader("Network", key: key)
-                ForEach(networkVolumes) { vol in volumeRow(vol) }
+                if !isCollapsed(key) {
+                    ForEach(networkVolumes) { vol in volumeRow(vol) }
+                }
             }
         case "tags":
             if app.settings.sidebarShowTags, !app.knownTags.isEmpty {
                 sectionHeader("Tags", key: key)
-                ForEach(app.knownTags, id: \.name) { tag in
-                    TagCloudRow(app: app, tag: tag, count: app.tagCounts[tag.name] ?? 0)
-                        .padding(.horizontal, 6).frame(height: 30)
+                if !isCollapsed(key) {
+                    ForEach(app.knownTags, id: \.name) { tag in
+                        TagCloudRow(app: app, tag: tag, count: app.tagCounts[tag.name] ?? 0)
+                            .padding(.horizontal, 6).frame(height: 30)
+                    }
                 }
             }
         default: EmptyView()
         }
     }
 
-    /// Section header — grab it to live-drag the whole block; neighbors animate to
-    /// make space as the grabbed block's edge passes their midpoint.
+    /// Section header — tap toggles collapse (chevron rotates); grab-and-drag
+    /// live-reorders the whole block (neighbors animate as the edge passes their
+    /// midpoint). A tap moves <6 pt so it never starts a drag.
     private func sectionHeader(_ title: String, key: String) -> some View {
-        SidebarSectionHeader(title)
-            .padding(.horizontal, 10)
-            .contentShape(Rectangle())
-            .gesture(
-                DragGesture(minimumDistance: 6, coordinateSpace: .global)
-                    .onChanged { v in
-                        if dragKey == nil {
-                            dragKey = key
-                            dragStartVisible = orderedSectionKeys.filter { (sectionHeights[$0] ?? 0) > 4 }
-                            dragStartIndex = dragStartVisible.firstIndex(of: key) ?? 0
-                        }
-                        updateSectionDrag(v.translation.height)
+        let collapsed = isCollapsed(key)
+        return HStack(spacing: 4) {
+            Ph.caretRight.bold
+                .renderingMode(.template).resizable().aspectRatio(contentMode: .fit)
+                .frame(width: 8, height: 8)
+                .rotationEffect(.degrees(collapsed ? 0 : 90))
+                .foregroundStyle(.secondary)
+                .padding(.top, 8)
+            SidebarSectionHeader(title)
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 10)
+        .contentShape(Rectangle())
+        .onTapGesture {
+            withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+                app.settings.toggleSectionCollapsed(key)
+            }
+        }
+        .gesture(
+            DragGesture(minimumDistance: 6, coordinateSpace: .global)
+                .onChanged { v in
+                    if dragKey == nil {
+                        dragKey = key
+                        dragStartVisible = orderedSectionKeys.filter { (sectionHeights[$0] ?? 0) > 4 }
+                        dragStartIndex = dragStartVisible.firstIndex(of: key) ?? 0
                     }
-                    .onEnded { _ in
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { dragDY = 0 }
-                        dragKey = nil
-                    }
-            )
+                    updateSectionDrag(v.translation.height)
+                }
+                .onEnded { _ in
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { dragDY = 0 }
+                    dragKey = nil
+                }
+        )
     }
 
     /// Position-based live reorder: each frame the target slot is recomputed from the
