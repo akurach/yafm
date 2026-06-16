@@ -105,6 +105,7 @@ struct RootView: View {
                     .background(PanelBackground(kind: .panes))
                     .floatingPanel()
                 }
+                .animation(.spring(response: 0.3, dampingFraction: 0.85), value: app.sidebarCollapsed)
                 .padding(9)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
@@ -172,6 +173,8 @@ struct CommandMenus: Commands {
             Button("Up") { app.run(CommandID.goUp) }
             Button("Toggle Hidden Files") { app.run(CommandID.toggleHidden) }
                 .keyboardShortcut(".", modifiers: [.command, .shift])
+            Button("Toggle Sidebar") { app.run(CommandID.toggleSidebar) }
+                .keyboardShortcut("s", modifiers: [.command, .option])
             Button("Toggle Preview") { app.run(CommandID.togglePreview) }
                 .keyboardShortcut("p", modifiers: [.command, .shift])
         }

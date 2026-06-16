@@ -91,28 +91,51 @@ struct BookmarksSidebar: View {
     }
 
     var body: some View {
-        ScrollView(.vertical, showsIndicators: false) {
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(orderedSectionKeys, id: \.self) { key in
-                    section(key)
-                        .background(GeometryReader { g in
-                            Color.clear
-                                .onAppear { sectionHeights[key] = g.size.height }
-                                .onChange(of: g.size.height) { _, h in sectionHeights[key] = h }
-                        })
-                        .offset(y: dragKey == key ? dragDY : 0)
-                        .zIndex(dragKey == key ? 1 : 0)
-                        .shadow(color: .black.opacity(dragKey == key ? 0.25 : 0),
-                                radius: dragKey == key ? 8 : 0, y: 2)
-                        // The grabbed block follows the cursor with no slot animation;
-                        // only the other blocks animate into place.
-                        .transaction { if dragKey == key { $0.animation = nil } }
+        VStack(spacing: 0) {
+            // Toggle button — always visible regardless of collapse state
+            HStack {
+                if !sidebarCollapsed { Spacer() }
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                        app.sidebarCollapsed.toggle()
+                    }
+                } label: {
+                    Ph.sidebarSimple.bold
+                        .renderingMode(.template).resizable().aspectRatio(contentMode: .fit)
+                        .frame(width: 14, height: 14)
+                        .foregroundStyle(.secondary)
                 }
+                .buttonStyle(.plain)
+                .frame(width: sidebarCollapsed ? 44 : 28, height: 28)
+                .contentShape(Rectangle())
             }
-            .padding(.vertical, 8)
+            .padding(.top, 4)
+
+            Divider().opacity(0.5)
+
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(orderedSectionKeys, id: \.self) { key in
+                        section(key)
+                            .background(GeometryReader { g in
+                                Color.clear
+                                    .onAppear { sectionHeights[key] = g.size.height }
+                                    .onChange(of: g.size.height) { _, h in sectionHeights[key] = h }
+                            })
+                            .offset(y: dragKey == key ? dragDY : 0)
+                            .zIndex(dragKey == key ? 1 : 0)
+                            .shadow(color: .black.opacity(dragKey == key ? 0.25 : 0),
+                                    radius: dragKey == key ? 8 : 0, y: 2)
+                            .transaction { if dragKey == key { $0.animation = nil } }
+                    }
+                }
+                .padding(.vertical, 8)
+            }
         }
         .background(PanelBackground(kind: .sidebar))
-        .frame(width: 198)
+        .frame(width: app.sidebarCollapsed ? 44 : 198)
+        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: app.sidebarCollapsed)
+        .clipped()
         .sheet(item: $infoItem) { item in
             VolumeInfoSheet(item: item)
         }
@@ -133,7 +156,9 @@ struct BookmarksSidebar: View {
 
     // MARK: Section rendering (order is user-draggable)
 
-    private func isCollapsed(_ key: String) -> Bool {
+    private var sidebarCollapsed: Bool { app.sidebarCollapsed }
+
+    private func isSectionCollapsed(_ key: String) -> Bool {
         app.settings.collapsedSidebarSections.contains(key)
     }
 
@@ -141,8 +166,8 @@ struct BookmarksSidebar: View {
         switch key {
         case "favorites":
             if app.settings.sidebarShowFavorites {
-                sectionHeader("Favorites", key: key)
-                if !isCollapsed(key) {
+                if !sidebarCollapsed { sectionHeader("Favorites", key: key) }
+                if !isSectionCollapsed(key) || sidebarCollapsed {
                     ForEach(orderedFavorites) { item in
                         favoriteRow(item)
                             .background(GeometryReader { g in
@@ -155,14 +180,14 @@ struct BookmarksSidebar: View {
                             .shadow(color: .black.opacity(favDragId == item.id ? 0.22 : 0),
                                     radius: favDragId == item.id ? 6 : 0, y: 2)
                             .transaction { if favDragId == item.id { $0.animation = nil } }
-                            .gesture(favoriteDrag(item.id))
+                            .gesture(sidebarCollapsed ? nil : favoriteDrag(item.id))
                     }
                 }
             }
         case "locations":
             if app.settings.sidebarShowLocations {
-                sectionHeader("Locations", key: key)
-                if !isCollapsed(key) {
+                if !sidebarCollapsed { sectionHeader("Locations", key: key) }
+                if !isSectionCollapsed(key) || sidebarCollapsed {
                     if app.settings.locShowComputer {
                         locationRow("Computer", Ph.desktop.bold, URL(fileURLWithPath: "/"))
                     }
@@ -176,25 +201,26 @@ struct BookmarksSidebar: View {
             }
         case "devices":
             if app.settings.sidebarShowDevices, !devices.isEmpty {
-                sectionHeader("Devices", key: key)
-                if !isCollapsed(key) {
+                if !sidebarCollapsed { sectionHeader("Devices", key: key) }
+                if !isSectionCollapsed(key) || sidebarCollapsed {
                     ForEach(devices) { vol in volumeRow(vol) }
                 }
             }
         case "network":
             if app.settings.sidebarShowNetwork, !networkVolumes.isEmpty {
-                sectionHeader("Network", key: key)
-                if !isCollapsed(key) {
+                if !sidebarCollapsed { sectionHeader("Network", key: key) }
+                if !isSectionCollapsed(key) || sidebarCollapsed {
                     ForEach(networkVolumes) { vol in volumeRow(vol) }
                 }
             }
         case "tags":
             if app.settings.sidebarShowTags, !app.knownTags.isEmpty {
-                sectionHeader("Tags", key: key)
-                if !isCollapsed(key) {
+                if !sidebarCollapsed { sectionHeader("Tags", key: key) }
+                if !isSectionCollapsed(key) || sidebarCollapsed {
                     ForEach(app.knownTags, id: \.name) { tag in
-                        TagCloudRow(app: app, tag: tag, count: app.tagCounts[tag.name] ?? 0)
-                            .padding(.horizontal, 6).frame(height: 30)
+                        TagCloudRow(app: app, tag: tag, count: app.tagCounts[tag.name] ?? 0,
+                                    collapsed: sidebarCollapsed)
+                            .padding(.horizontal, sidebarCollapsed ? 0 : 6).frame(height: 30)
                     }
                 }
             }
@@ -206,7 +232,7 @@ struct BookmarksSidebar: View {
     /// live-reorders the whole block (neighbors animate as the edge passes their
     /// midpoint). A tap moves <6 pt so it never starts a drag.
     private func sectionHeader(_ title: String, key: String) -> some View {
-        let collapsed = isCollapsed(key)
+        let collapsed = isSectionCollapsed(key)
         return HStack(spacing: 4) {
             Ph.caretRight.bold
                 .renderingMode(.template).resizable().aspectRatio(contentMode: .fit)
@@ -287,7 +313,8 @@ struct BookmarksSidebar: View {
             case .system(let fav, let url):
                 locationRow(fav.label, favImage(fav), url)
             case .bookmark(let bm):
-                SidebarRow(icon: Ph.folder.bold, label: bm.name, isActive: app.activeTab.directory == bm.url)
+                SidebarRow(icon: Ph.folder.bold, label: bm.name, isActive: app.activeTab.directory == bm.url,
+                           collapsed: sidebarCollapsed)
                     .onTapGesture { app.activeTab.open(bm.url) }
                     .contextMenu {
                         Button("Open") { app.activeTab.open(bm.url) }
@@ -349,13 +376,15 @@ struct BookmarksSidebar: View {
 
     private func volumeRow(_ vol: Volume) -> some View {
         VolumeRow(app: app, volume: vol, classification: app.volumeClassifications[vol.url],
+                  collapsed: sidebarCollapsed,
                   onGetInfo: { infoItem = VolumeInfoItem(volume: vol, classification: app.volumeClassifications[vol.url]) },
                   onRename: { renameVolume = vol; renameText = vol.name })
-            .padding(.horizontal, 6)
+            .padding(.horizontal, sidebarCollapsed ? 0 : 6)
     }
 
     private func locationRow(_ title: String, _ icon: Image, _ url: URL) -> some View {
-        SidebarRow(icon: icon, label: title, isActive: app.activeTab.directory == url)
+        SidebarRow(icon: icon, label: title, isActive: app.activeTab.directory == url,
+                   collapsed: sidebarCollapsed)
             .onTapGesture { app.activeTab.open(url) }
             .contextMenu {
                 Button("Open") { app.activeTab.open(url) }
@@ -463,10 +492,12 @@ struct SidebarSectionHeader: View {
 }
 
 /// Single sidebar item row: accent bar + fill when active, Phosphor icon + label.
+/// In collapsed sidebar shows icon only, centred.
 struct SidebarRow: View {
     let icon: Image
     let label: String
     let isActive: Bool
+    var collapsed: Bool = false
 
     var body: some View {
         ZStack(alignment: .leading) {
@@ -480,41 +511,78 @@ struct SidebarRow: View {
                     .clipShape(RoundedRectangle(cornerRadius: 1.5, style: .continuous))
                     .padding(.vertical, 4)
             }
-            HStack(spacing: 7) {
+            if collapsed {
                 icon
                     .renderingMode(.template)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(width: 14, height: 14)
-                    .frame(width: 16, alignment: .center)
                     .foregroundStyle(isActive ? Color.accentColor : .secondary)
-                Text(label)
-                    .font(IBMPlex.sans(13))
-                    .foregroundStyle(isActive ? Color.accentColor : .primary)
-                Spacer()
+                    .frame(maxWidth: .infinity)
+            } else {
+                HStack(spacing: 7) {
+                    icon
+                        .renderingMode(.template)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 14, height: 14)
+                        .frame(width: 16, alignment: .center)
+                        .foregroundStyle(isActive ? Color.accentColor : .secondary)
+                    Text(label)
+                        .font(IBMPlex.sans(13))
+                        .foregroundStyle(isActive ? Color.accentColor : .primary)
+                    Spacer()
+                }
+                .padding(.leading, 10)
             }
-            .padding(.leading, 10)
-            .frame(height: 30)
         }
+        .frame(height: 30)
         .contentShape(Rectangle())
         .padding(.horizontal, 6)
     }
 }
 
 /// One tag in the sidebar: color dot · name · count.
+/// In collapsed sidebar shows dot only, centred.
 struct TagCloudRow: View {
     let app: AppState
     let tag: Tag
     let count: Int
+    var collapsed: Bool = false
+
+    private var isActive: Bool {
+        app.activeTab.virtualName == "Tag: \(tag.name)"
+    }
 
     var body: some View {
-        HStack(spacing: 6) {
-            Circle().fill(Color.named(tag.colorName) ?? .secondary)
-                .frame(width: Theme.Col.tagDot, height: Theme.Col.tagDot)
-            Text(tag.name).lineLimit(1)
-            Spacer()
-            Text("\(count)").font(.caption2).foregroundStyle(.secondary)
+        ZStack(alignment: .leading) {
+            if isActive {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(Color.accentColor.opacity(0.14))
+                    .padding(.vertical, 1)
+                Rectangle()
+                    .fill(Color.accentColor)
+                    .frame(width: 3)
+                    .clipShape(RoundedRectangle(cornerRadius: 1.5, style: .continuous))
+                    .padding(.vertical, 4)
+            }
+            if collapsed {
+                Circle().fill(Color.named(tag.colorName) ?? .secondary)
+                    .frame(width: Theme.Col.tagDot, height: Theme.Col.tagDot)
+                    .frame(maxWidth: .infinity)
+            } else {
+                HStack(spacing: 6) {
+                    Circle().fill(Color.named(tag.colorName) ?? .secondary)
+                        .frame(width: Theme.Col.tagDot, height: Theme.Col.tagDot)
+                    Text(tag.name).lineLimit(1)
+                        .foregroundStyle(isActive ? Color.accentColor : .primary)
+                    Spacer()
+                    Text("\(count)").font(.caption2).foregroundStyle(.secondary)
+                }
+                .padding(.leading, 10)
+            }
         }
+        .frame(height: 30)
         .contentShape(Rectangle())
         .onTapGesture { app.openTag(tag) }
         .contextMenu {
@@ -524,44 +592,73 @@ struct TagCloudRow: View {
 }
 
 /// One mounted volume: Phosphor icon, name, type/FS subtitle, capacity bar, eject.
+/// In collapsed sidebar shows icon only, centred.
 struct VolumeRow: View {
     let app: AppState
     let volume: Volume
     var classification: VolumeClassification?
+    var collapsed: Bool = false
     var onGetInfo: (() -> Void)? = nil
     var onRename: (() -> Void)? = nil
 
+    private var isActive: Bool {
+        app.activeTab.directory == volume.url && app.activeTab.virtualName == nil
+    }
+
     var body: some View {
-        HStack(spacing: 7) {
-            volumeIcon
-                .renderingMode(.template)
-                .resizable()
-                .aspectRatio(contentMode: .fit)
-                .frame(width: 14, height: 14)
-                .frame(width: 16, alignment: .center)
-                .foregroundStyle(.secondary)
-            VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: 4) {
-                    Text(volume.name).font(IBMPlex.sans(13)).lineLimit(1)
-                    if classification?.isReadOnly == true {
-                        Image(systemName: "lock.fill")
-                            .font(.system(size: 8)).foregroundStyle(.secondary)
+        ZStack(alignment: .leading) {
+            if isActive {
+                RoundedRectangle(cornerRadius: 5, style: .continuous)
+                    .fill(Color.accentColor.opacity(0.14))
+                    .padding(.vertical, 1)
+                Rectangle()
+                    .fill(Color.accentColor)
+                    .frame(width: 3)
+                    .clipShape(RoundedRectangle(cornerRadius: 1.5, style: .continuous))
+                    .padding(.vertical, 4)
+            }
+            if collapsed {
+                volumeIcon
+                    .renderingMode(.template)
+                    .resizable()
+                    .aspectRatio(contentMode: .fit)
+                    .frame(width: 14, height: 14)
+                    .foregroundStyle(isActive ? Color.accentColor : .secondary)
+                    .frame(maxWidth: .infinity)
+            } else {
+                HStack(spacing: 7) {
+                    volumeIcon
+                        .renderingMode(.template)
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 14, height: 14)
+                        .frame(width: 16, alignment: .center)
+                        .foregroundStyle(isActive ? Color.accentColor : .secondary)
+                    VStack(alignment: .leading, spacing: 1) {
+                        HStack(spacing: 4) {
+                            Text(volume.name).font(IBMPlex.sans(13)).lineLimit(1)
+                                .foregroundStyle(isActive ? Color.accentColor : .primary)
+                            if classification?.isReadOnly == true {
+                                Image(systemName: "lock.fill")
+                                    .font(.system(size: 8)).foregroundStyle(.secondary)
+                            }
+                        }
+                        Text(subtitleText)
+                            .font(IBMPlex.sans(10)).foregroundStyle(.secondary)
+                        if let frac = volume.usedFraction {
+                            ProgressView(value: frac).controlSize(.mini).padding(.top, 1)
+                        }
+                    }
+                    Spacer()
+                    if volume.canEject {
+                        Button { app.eject(volume) } label: { Image(systemName: "eject") }
+                            .buttonStyle(.plain).foregroundStyle(.secondary)
+                            .font(.system(size: 11))
                     }
                 }
-                Text(subtitleText)
-                    .font(IBMPlex.sans(10)).foregroundStyle(.secondary)
-                if let frac = volume.usedFraction {
-                    ProgressView(value: frac).controlSize(.mini).padding(.top, 1)
-                }
-            }
-            Spacer()
-            if volume.canEject {
-                Button { app.eject(volume) } label: { Image(systemName: "eject") }
-                    .buttonStyle(.plain).foregroundStyle(.secondary)
-                    .font(.system(size: 11))
+                .padding(.leading, 10)
             }
         }
-        .padding(.leading, 10)
         .frame(minHeight: 36)
         .contentShape(Rectangle())
         .contextMenu {

@@ -79,6 +79,8 @@ public enum CommandID {
     public static let toggleSelect = "sel.toggle"     // Insert — toggle + advance
     public static let deletePermanent = "op.deletePermanent" // ⇧F8 (F8 = Trash)
     public static let trash = "op.trash"              // F8 → move to Trash
+    // v0.9.6 layout
+    public static let toggleSidebar = "view.toggleSidebar" // ⌘⌥S
 }
 
 /// The default Total Commander-style bindings.
@@ -116,6 +118,7 @@ public enum DefaultCommands {
         Command(id: CommandID.invertSelection, title: "Invert Selection"),
         Command(id: CommandID.trash, title: "Move to Trash", defaultKey: KeyBinding(.function(8))),
         Command(id: CommandID.deletePermanent, title: "Delete Permanently", defaultKey: KeyBinding(.function(8), [.shift])),
+        Command(id: CommandID.toggleSidebar, title: "Toggle Sidebar", defaultKey: KeyBinding(.char("s"), [.command, .option])),
     ]
 
     /// Single source of truth for key dispatch: binding → command id, derived

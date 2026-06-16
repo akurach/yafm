@@ -1,6 +1,6 @@
 # yafm User Guide
 
-*Yet Another File Manager for macOS — v0.9.5* · [Русская версия](USER_GUIDE.ru.md)
+*Yet Another File Manager for macOS — v0.9.6* · [Русская версия](USER_GUIDE.ru.md)
 
 ---
 
@@ -42,7 +42,7 @@ yafm's window is laid out for two-handed, keyboard-first work:
 - **Tab bar** (top of each pane). Each pane has its own tabs. Click a tab to switch, the **+** button to open a new one, or the **×** to close it.
 - **Path bar + breadcrumbs.** Below the tabs, the current path is shown as clickable breadcrumbs — click any component to jump there. Click the **pencil** to type a path directly.
 - **File table.** Columns are **Name · Size · Modified · Kind**, plus a **Git** column when you're inside a git repository, plus any columns added by plugins. Click a column header to sort; click again to reverse. **Name** is always shown; **Size / Modified / Kind / Git** can each be shown or hidden — right-click the column header, or click the **options button** (slider icon) in the path bar, and toggle them.
-- **Sidebar** (left). Sections for **Favorites** (your bookmarks), **Locations** (Computer, Home), **Devices** (mounted/USB drives with a capacity bar and **eject** button), **Network** (network shares), and **Tags** (the tag cloud — every tag with its color and file count; click to filter). **Drag to reorder:** grab a Favorites item (system folder or bookmark) to move it within Favorites, or grab a whole section header to reorder the sections themselves — the block you're dragging follows the cursor while its neighbors slide into place, and the order is saved. **Collapse:** click a section header to fold it away (a caret shows the state); a tap collapses while a grab-and-drag still reorders. Collapsed state is remembered.
+- **Sidebar** (left). Sections for **Favorites** (your bookmarks), **Locations** (Computer, Home), **Devices** (mounted/USB drives with a capacity bar and **eject** button), **Network** (network shares), and **Tags** (the tag cloud — every tag with its color and file count; click to filter). **Drag to reorder:** grab a Favorites item (system folder or bookmark) to move it within Favorites, or grab a whole section header to reorder the sections themselves — the block you're dragging follows the cursor while its neighbors slide into place, and the order is saved. **Collapse sections:** click a section header to fold it away (a caret shows the state); a tap collapses while a grab-and-drag still reorders. Collapsed state is remembered. **Collapse sidebar:** press **⌘⌥S** or click the sidebar-toggle button (top-right corner of the sidebar) to collapse the whole sidebar to a narrow icon-only strip; press again to expand.
 - **Function-key bar** (bottom). A clickable Total Commander-style strip: **F2** Rename · **F3** View · **F4** Edit · **F5** Copy · **F6** Move · **F7** New Folder · **F8** Delete.
 - **Inspector / preview panel** (right). Toggle between **Info** (kind, size, dates, permissions, location, and a tag editor) and **Preview** (a live QuickLook of the selected file).
 - **Operation queue.** Whenever a copy/move/delete is running, a queue appears showing each task's progress with a **cancel** button.

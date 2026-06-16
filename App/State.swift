@@ -435,6 +435,7 @@ final class AppState {
     var bookmarks: [Bookmark]
     var colorCoder = ColorCoder()
     var showPreview = false
+    var sidebarCollapsed = false
 
     /// The right inspector has two modes (§4): metadata vs large QuickLook.
     enum InspectorMode { case info, preview }
@@ -827,6 +828,7 @@ final class AppState {
         case CommandID.newTab: activePane.newTab()
         case CommandID.closeTab: activePane.closeTab(activePane.active.id)
         case CommandID.togglePreview: showPreview.toggle()
+        case CommandID.toggleSidebar: sidebarCollapsed.toggle()
         case CommandID.clipCopy: clipboardCopy(cut: false)
         case CommandID.clipCut: clipboardCopy(cut: true)
         case CommandID.paste: paste()

@@ -4,17 +4,26 @@ All notable changes to yafm are recorded here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.9.6] — Sidebar collapse · Settings overlay · Sidebar polish
 
 ### Added
+- **Collapsible sidebar to icon strip** — press **⌘⌥S** or click the sidebar-toggle
+  button (top-right of the sidebar) to collapse the sidebar to a 44 pt icon-only strip;
+  all items remain tappable as icon-only rows. Press again to expand. State is session-
+  local (sidebar starts expanded).
 - **Collapsible sidebar sections** — click a section header (Favorites / Locations /
   Devices / Network / Tags) to collapse or expand it; a caret rotates to show state.
   Tap collapses, grab-and-drag still reorders (a tap never starts a drag). State
-  persists per section.
+  persists per section across launches.
 - **In-window Settings (⌘,)** — Settings now opens as a floating card *inside* the main
   window over a dimmed backdrop, instead of a separate Preferences window that could be
   dragged outside the app. A Mole-style pill switcher glides between tabs; click the
   backdrop, ✕, or Esc to dismiss. Matches the float-layout chrome.
+
+### Fixed
+- **Devices and Tags sidebar rows now highlight when active** — clicking a volume or a
+  tag now shows the same accent bar + fill highlight that Favorites / Locations rows have
+  always had.
 
 ## [0.9.5] — File-type tiles · Sidebar reorder · App handling
 

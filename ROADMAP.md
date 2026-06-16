@@ -230,6 +230,10 @@ Post-1.0-candidate hardening and the visual redesign (see `CHANGELOG.md` for ful
 - [x] **v0.9.4 — Float layout · Visual redesign.** Floating sidebar/panes cards, unified
   chrome titlebar, Phosphor icons + IBM Plex fonts, accent-color picker; column-resize
   cross-pane corruption fixed (single-writer geometry); chrome colors folded into `Theme.Palette`.
+- [x] **v0.9.6 — Sidebar collapse · Settings overlay · Sidebar polish.** Sidebar collapses
+  to a 44 pt icon-only strip (⌘⌥S / toggle button); section headers collapse individually
+  (caret, persisted); Settings opens as in-window floating card (Mole-style pill switcher);
+  devices and tags now highlight when active (accent bar + fill).
 - [x] **v0.9.5 — File-type tiles · Sidebar reorder · App handling.** Colored extension
   tiles for ~250 types (`App/FileTypeTile.swift`) with one editable type→color palette
   driving both the tile and an optional name tint + a searchable type browser; live
@@ -268,13 +272,13 @@ Deferred (tracked, not yet done): — все закрыты в v0.9:
 
 ## Next up
 
-**v0.9.5 shipped** (file-type tiles, sidebar reorder, app handling, big-folder-freeze fix).
-The v0.1–0.9 arc is complete and the 1.0 candidate line holds; the public plugin API is
-frozen at `apiVersion 1.0`. What remains before tagging **1.0**:
+**v0.9.6 shipped** (collapsible sidebar icon-strip + section collapse, in-window Settings
+overlay, active highlights for devices/tags). The v0.1–0.9 arc is complete and the 1.0
+candidate line holds; the public plugin API is frozen at `apiVersion 1.0`. What remains
+before tagging **1.0**:
 
 - **Notarized DMG** — the recurring blocker; needs a paid Apple Developer ID cert
   (`CODESIGN_IDENTITY` + `AC_NOTARY_PROFILE`). Also gates Sparkle-style auto-update.
-- **Polish pass** — finish the design-system cleanup from the v0.9.0 `AUDIT.md` brief;
-  the light/dark tile audit landed in v0.9.5.
+- **Polish pass** — finish the design-system cleanup from the v0.9.0 `AUDIT.md` brief.
 - **Deferred first-party features** (post-1.0, tracked in `docs/feature-requests/`): Photo
   Ingest + device detection; remote plugin marketplace + signing (hosted infra).
