@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Hardened-runtime entitlements for the notarized build. yafm embeds
+	  JavaScriptCore for plugins; under the hardened runtime JSC's JIT needs
+	  these or the app is killed when a plugin first executes. We are NOT
+	  sandboxed (sandbox would break plugins / SMB / Full Disk Access — see
+	  VISION), so no App Sandbox keys here; Full Disk Access is granted at
+	  runtime via TCC, not an entitlement.
+	-->
+	<key>com.apple.security.cs.allow-jit</key>
+	<true/>
+	<key>com.apple.security.cs.allow-unsigned-executable-memory</key>
+	<true/>
+</dict>
+</plist>

@@ -81,9 +81,14 @@ public actor SMBFileSystem: FileSystemProvider {
     private func localURL(for url: URL) async throws -> URL {
         guard let loc = SMBLocation(url: url) else { throw SMBError.notSMB }
         let mp: URL
-        if let cached = mountpoints[loc.shareRoot] {
+        // Trust the cache only while the mountpoint still exists. A share that
+        // dropped (laptop slept, NAS rebooted, user unmounted) leaves a stale
+        // /Volumes path that would list as a dead local dir forever — drop it and
+        // re-mount instead.
+        if let cached = mountpoints[loc.shareRoot], FileManager.default.fileExists(atPath: cached.path) {
             mp = cached
         } else {
+            mountpoints[loc.shareRoot] = nil
             mp = try await mounter.mountPoint(forShareRoot: loc.shareRoot)
             mountpoints[loc.shareRoot] = mp
         }
@@ -152,9 +157,31 @@ public actor SMBFileSystem: FileSystemProvider {
 /// never holds a plaintext password. Treated as the trust boundary: we pass the
 /// URL the user typed and let the OS do the protocol + security.
 public struct NetFSShareMounter: ShareMounter {
+    /// Give up waiting on a mount after this long. `NetFSMountURLSync` blocks on a
+    /// firewalled/packet-dropping host for the system's full TCP timeout (30–75s),
+    /// which reads as "loading…" forever. We can't interrupt the C call (it leaks
+    /// the background thread until the OS gives up), but surfacing a timeout turns
+    /// an endless spinner into an honest "couldn't connect" dead-end.
+    public static let timeoutSeconds: Double = 20
+
     public init() {}
 
     public func mountPoint(forShareRoot shareRoot: URL) async throws -> URL {
+        try await withThrowingTaskGroup(of: URL.self) { group in
+            group.addTask { try await Self.mount(shareRoot) }
+            group.addTask {
+                try await Task.sleep(nanoseconds: UInt64(Self.timeoutSeconds * 1_000_000_000))
+                throw SMBError.mountFailed(code: ETIMEDOUT, host: shareRoot.host ?? "server")
+            }
+            defer { group.cancelAll() }            // whoever lost the race is cancelled
+            return try await group.next()!         // first result (or first throw) wins
+        }
+    }
+
+    /// The blocking NetFS mount, off the main actor. The system presents its own
+    /// auth UI when needed and stores credentials in the Keychain — yafm never
+    /// holds a plaintext password.
+    private static func mount(_ shareRoot: URL) async throws -> URL {
         try await withCheckedThrowingContinuation { continuation in
             DispatchQueue.global(qos: .userInitiated).async {
                 var mountpoints: Unmanaged<CFArray>?

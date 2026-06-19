@@ -1,6 +1,20 @@
 import Foundation
 import JavaScriptCore
 
+// JavaScriptCore's execution-time-limit API lives in the private
+// JSContextRefPrivate.h, which is absent from the public Swift module map — so we
+// bind the stable exported symbol directly. This caps continuous JS execution so a
+// runaway plugin (`while(true){}`) can't permanently freeze the app, which would
+// break the product's defining "never freezes silently" guarantee. yafm is not
+// sandboxed / App-Store-bound (see VISION), so using the private symbol is allowed.
+private typealias JSShouldTerminateCallback =
+    @convention(c) (JSContextRef?, UnsafeMutableRawPointer?) -> Bool
+
+@_silgen_name("JSContextGroupSetExecutionTimeLimit")
+private func JSContextGroupSetExecutionTimeLimit(
+    _ group: JSContextGroupRef?, _ limit: Double,
+    _ callback: JSShouldTerminateCallback?, _ context: UnsafeMutableRawPointer?)
+
 // MARK: - JavaScript plugin runtime (v0.3 Platform)
 
 /// Hosts community plugins written in JavaScript, run through JavaScriptCore —
@@ -17,8 +31,12 @@ import JavaScriptCore
 ///   `JSON`, `Date`, …) are pure-compute and safe. There is no DOM, no XHR, no
 ///   timers wired up, no module loader.
 /// - A plugin column function is called synchronously on the main actor while the
-///   table builds a row, so a runaway plugin slows the UI but can't corrupt state
-///   or escape the snapshot it's handed.
+///   table builds a row, so a runaway plugin can't corrupt state or escape the
+///   snapshot it's handed. To stop a `while(true){}` from *permanently* freezing
+///   the UI, every context's VM is capped via `JSContextGroupSetExecutionTimeLimit`
+///   (`jsExecutionTimeLimitSeconds`): execution past the cap is aborted and the
+///   call returns an empty cell, so the "never freezes silently" pillar holds even
+///   for hostile plugin code.
 ///
 /// This is the boundary `PluginContext` was drafted for: widening it (scoped FS
 /// reads, a vetted git/exec capability) happens here, in one place, before any
@@ -96,6 +114,12 @@ public final class JSPluginHost {
     public static let readTextCallLimit = 500
     /// Cap a single capability read so a sync read of a 2 GB file can't freeze.
     public static let readTextCap = 256 * 1024   // 256 KB
+    /// Wall-clock cap on a single uninterrupted JS call (column/command/menu).
+    /// Past this the VM aborts the call (renders as an empty cell), so a runaway
+    /// plugin can't permanently freeze the app. Generous enough that legitimate
+    /// I/O-bound columns (EXIF/readText) finish; tight enough to bound an infinite
+    /// loop to a recoverable hiccup rather than a dead window.
+    public static let jsExecutionTimeLimitSeconds = 2.0
 
     // MARK: App-layer action handlers (set by AppState before loadPlugins)
 
@@ -213,6 +237,7 @@ public final class JSPluginHost {
             errors.append(LoadError(name: name, message: "could not create JS context"))
             return []
         }
+        Self.capExecutionTime(of: context)   // bound runaway JS before any script runs
         var thrown: String?
         context.exceptionHandler = { _, value in
             thrown = value?.toString() ?? "unknown JS exception"
@@ -341,6 +366,17 @@ public final class JSPluginHost {
         if result.isNull || result.isUndefined { return .none }
         if result.isNumber { return .number(result.toDouble()) }
         return .text(result.toString() ?? "")
+    }
+
+    /// Cap continuous JS execution on `context`'s VM so a runaway plugin aborts
+    /// instead of freezing the app. `JSContext()` makes a fresh VM (its own group)
+    /// per context, so the limit is naturally scoped to this one plugin. A nil
+    /// callback means JSC terminates execution at the limit (the call then throws,
+    /// surfacing as an empty cell). See the `@_silgen_name` binding at file top.
+    private static func capExecutionTime(of context: JSContext) {
+        guard let global = context.jsGlobalContextRef else { return }
+        JSContextGroupSetExecutionTimeLimit(
+            JSContextGetGroup(global), jsExecutionTimeLimitSeconds, nil, nil)
     }
 
     /// Clear all handle maps and reset the readText call budget. Call on directory

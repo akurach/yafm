@@ -65,6 +65,28 @@ final class SMBTests: XCTestCase {
         XCTAssertTrue(urls.contains(URL(string: "smb://nas/Media/hello.txt")!))
     }
 
+    // MARK: A stale mountpoint (share dropped) triggers a re-mount, not a dead dir
+
+    func testStaleMountpointTriggersRemount() async throws {
+        let mounter = CountingMounter()
+        defer { mounter.cleanup() }
+        let fs = SMBFileSystem(mounter: mounter)
+        let shareURL = URL(string: "smb://nas/Media")!
+
+        // First listing mounts once.
+        for await _ in fs.list(shareURL) {}
+        XCTAssertEqual(mounter.calls, 1)
+
+        // Listing again reuses the cached mountpoint — no re-mount.
+        for await _ in fs.list(shareURL) {}
+        XCTAssertEqual(mounter.calls, 1, "a live mountpoint must be cached, not re-mounted")
+
+        // Simulate the share dropping (NAS reboot / sleep): the cached path vanishes.
+        mounter.removeLastMountpoint()
+        for await _ in fs.list(shareURL) {}
+        XCTAssertEqual(mounter.calls, 2, "a vanished mountpoint must be dropped and re-mounted")
+    }
+
     // MARK: A failed mount becomes a visible .failed listing (never a freeze)
 
     func testFailedMountYieldsFailedEvent() async {
@@ -88,5 +110,35 @@ private struct StubMounter: ShareMounter {
 private struct FailingMounter: ShareMounter {
     func mountPoint(forShareRoot shareRoot: URL) async throws -> URL {
         throw SMBError.mountFailed(code: 64, host: shareRoot.host ?? "server")
+    }
+}
+
+/// Counts mount calls and hands back a fresh, real temp dir each time, so the
+/// provider's cache-validity check (fileExists on the mountpoint) can be exercised.
+private final class CountingMounter: ShareMounter, @unchecked Sendable {
+    private let lock = NSLock()
+    private var _calls = 0
+    private var dirs: [URL] = []
+
+    var calls: Int { lock.withLock { _calls } }
+
+    func mountPoint(forShareRoot shareRoot: URL) async throws -> URL {
+        lock.withLock {
+            _calls += 1
+            let dir = URL(fileURLWithPath: NSTemporaryDirectory())
+                .appendingPathComponent("smb-remount-\(UUID().uuidString)")
+            try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            dirs.append(dir)
+            return dir
+        }
+    }
+
+    /// Delete the most recently issued mountpoint — simulates the share dropping.
+    func removeLastMountpoint() {
+        lock.withLock { if let last = dirs.last { try? FileManager.default.removeItem(at: last) } }
+    }
+
+    func cleanup() {
+        lock.withLock { dirs.forEach { try? FileManager.default.removeItem(at: $0) } }
     }
 }

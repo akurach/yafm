@@ -69,6 +69,20 @@ final class PluginCapabilityTests: XCTestCase {
         return col.evaluate(entry)
     }
 
+    // A runaway plugin (infinite loop) must be aborted by the execution-time cap
+    // and render as an empty cell — never freeze the app. If the watchdog were
+    // absent this test would hang forever instead of returning .none.
+    func testRunawayColumnIsTerminatedNotFrozen() {
+        let src = #"yafm.registerColumn({ id:"loop", title:"Loop", value:function(e){ while(true){} } });"#
+        let entry = FSEntry(url: URL(fileURLWithPath: "/tmp/x"), name: "x",
+                            isDirectory: false, isHidden: false, size: nil, modified: nil)
+        let start = Date()
+        let result = column(src, manifest: nil, host: JSPluginHost(), entry: entry)
+        XCTAssertEqual(result, .none, "a runaway column yields an empty cell")
+        XCTAssertLessThan(Date().timeIntervalSince(start), JSPluginHost.jsExecutionTimeLimitSeconds + 5,
+                          "the watchdog must abort the loop, not hang")
+    }
+
     func testReadCwdReadsScopedFileWhenGranted() throws {
         let dir = try tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }

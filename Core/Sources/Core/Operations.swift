@@ -145,8 +145,9 @@ public actor FileEngine {
                         done += Self.size(of: source); progress(source, .running); continue   // skipped
                     }
                     let bytes = Self.size(of: source)   // size BEFORE the move (P2-4)
-                    try FileManager.default.moveItem(at: source, to: dst)
-                    done += bytes
+                    try moveOrCopyDelete(source, to: dst, replacing: task.collision == .replace,
+                                         taskID: task.id, bytes: bytes, done: &done, total: total, emit: emit)
+                    if isCancelled(task.id) { progress(source, .cancelled); return }
                     progress(dst, .running)
                 case .copy:
                     guard let dir = task.destination else { throw OpError.noDestination }
@@ -235,6 +236,49 @@ public actor FileEngine {
             done += Int64(read)
             emit(OperationProgress(id: taskID, completedBytes: done, totalBytes: total, currentFile: dst, state: .running))
         }
+    }
+
+    /// Move `source` onto `dst`. A plain `moveItem` is a fast metadata rename, but
+    /// it throws across filesystems (`EXDEV` — USB sticks, network mounts, DMGs,
+    /// some APFS volume boundaries) and when `dst` already exists. In those cases
+    /// fall back to the streamed `copy` (atomic when replacing) + delete-source, so
+    /// F6/move to another volume actually works instead of failing outright. The
+    /// source is removed **only after a clean copy**; a cancel/throw mid-copy leaves
+    /// it intact — the move simply didn't happen. Any non-EXDEV error propagates.
+    private nonisolated func moveOrCopyDelete(
+        _ source: URL, to dst: URL, replacing: Bool, taskID: UUID,
+        bytes: Int64, done: inout Int64, total: Int64,
+        emit: @Sendable (OperationProgress) -> Void
+    ) throws {
+        let fm = FileManager.default
+        // Fast path: a real rename. Skipped when replacing an existing item
+        // (moveItem can't overwrite) — that routes through the atomic copy below.
+        if !(replacing && fm.fileExists(atPath: dst.path)) {
+            do {
+                try fm.moveItem(at: source, to: dst)
+                done += bytes
+                return
+            } catch {
+                guard Self.isCrossDevice(error) else { throw error }
+                // EXDEV → fall through to copy + delete.
+            }
+        }
+        try copy(source, to: dst, taskID: taskID, replacing: replacing,
+                 done: &done, total: total, emit: emit)
+        if isCancelled(taskID) { return }   // caller emits .cancelled; source kept
+        try fm.removeItem(at: source)
+    }
+
+    /// True when `error` (or its underlying error) is POSIX `EXDEV` — a
+    /// cross-device link, i.e. `moveItem` can't rename across filesystems.
+    /// `FileManager` wraps the POSIX failure in an `NSCocoaErrorDomain` error with
+    /// the real `EXDEV` carried under `NSUnderlyingErrorKey`.
+    static func isCrossDevice(_ error: Error) -> Bool {
+        let ns = error as NSError
+        if ns.domain == NSPOSIXErrorDomain && ns.code == Int(EXDEV) { return true }
+        if let u = ns.userInfo[NSUnderlyingErrorKey] as? NSError,
+           u.domain == NSPOSIXErrorDomain && u.code == Int(EXDEV) { return true }
+        return false
     }
 
     // MARK: Helpers

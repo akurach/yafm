@@ -25,6 +25,7 @@ VERSION="$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$PLIS
 APP="$ROOT/.build/release/yafm.app"
 DMG="$ROOT/.build/release/yafm-$VERSION.dmg"
 STAGE="$ROOT/.build/release/dmg-stage"
+ENTITLEMENTS="$ROOT/App/Resources/yafm.entitlements"
 
 echo "▸ Building release binary…"
 swift build -c release
@@ -35,8 +36,13 @@ echo "▸ Wrapping into yafm.app…"
 # Real signing if a Developer ID identity is provided; else keep the ad-hoc
 # signature make-app.sh already applied.
 if [[ -n "${CODESIGN_IDENTITY:-}" ]]; then
-	echo "▸ Code-signing with Developer ID (hardened runtime)…"
+	echo "▸ Code-signing with Developer ID (hardened runtime + JSC JIT entitlements)…"
+	# --entitlements is REQUIRED: JavaScriptCore's JIT is killed under the
+	# hardened runtime without com.apple.security.cs.allow-jit, so a notarized
+	# build would crash the moment a plugin runs. (--deep applies entitlements to
+	# the main executable, which is the one embedding JSC.)
 	codesign --force --deep --options runtime --timestamp \
+		--entitlements "$ENTITLEMENTS" \
 		--sign "$CODESIGN_IDENTITY" "$APP"
 fi
 

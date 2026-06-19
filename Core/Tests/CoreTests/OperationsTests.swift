@@ -55,6 +55,42 @@ final class OperationsTests: XCTestCase {
         XCTAssertTrue(FileManager.default.fileExists(atPath: destDir.appendingPathComponent("m.txt").path))
     }
 
+    // MARK: Move onto an existing file with .replace (was: moveItem threw)
+
+    func testMoveReplaceOntoExistingFileSucceeds() async throws {
+        let dir = try tmpDir(); defer { try? FileManager.default.removeItem(at: dir) }
+        let src = dir.appendingPathComponent("m.txt")
+        let destDir = dir.appendingPathComponent("dest")
+        try FileManager.default.createDirectory(at: destDir, withIntermediateDirectories: true)
+        try "new".write(to: src, atomically: true, encoding: .utf8)
+        let dst = destDir.appendingPathComponent("m.txt")
+        try "old".write(to: dst, atomically: true, encoding: .utf8)   // collision
+
+        let engine = FileEngine()
+        for await _ in engine.run(OperationTask(kind: .move, sources: [src],
+                                                destination: destDir, collision: .replace)) {}
+
+        // Source gone, destination overwritten with the new content — the
+        // copy-then-delete fallback (moveItem can't overwrite) did its job.
+        XCTAssertFalse(FileManager.default.fileExists(atPath: src.path))
+        XCTAssertEqual(try String(contentsOf: dst, encoding: .utf8), "new")
+    }
+
+    // MARK: Cross-volume (EXDEV) detection drives the copy+delete fallback
+
+    func testIsCrossDeviceDetectsEXDEV() {
+        let direct = NSError(domain: NSPOSIXErrorDomain, code: Int(EXDEV))
+        XCTAssertTrue(FileEngine.isCrossDevice(direct))
+
+        // FileManager wraps the POSIX failure under NSUnderlyingErrorKey.
+        let wrapped = NSError(domain: NSCocoaErrorDomain, code: 512,
+                              userInfo: [NSUnderlyingErrorKey: NSError(domain: NSPOSIXErrorDomain, code: Int(EXDEV))])
+        XCTAssertTrue(FileEngine.isCrossDevice(wrapped))
+
+        // A permission error (EACCES) must NOT be treated as cross-device.
+        XCTAssertFalse(FileEngine.isCrossDevice(NSError(domain: NSPOSIXErrorDomain, code: Int(EACCES))))
+    }
+
     // MARK: T-3 — rename changes only the leaf name
 
     func testRenameChangesLeafName() async throws {
