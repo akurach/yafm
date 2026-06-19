@@ -96,7 +96,7 @@ struct BookmarksSidebar: View {
             HStack {
                 if !sidebarCollapsed { Spacer() }
                 Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+                    withAnimation(Theme.Motion.layout) {
                         app.sidebarCollapsed.toggle()
                     }
                 } label: {
@@ -134,7 +134,7 @@ struct BookmarksSidebar: View {
         }
         .background(PanelBackground(kind: .sidebar))
         .frame(width: app.sidebarCollapsed ? 44 : 198)
-        .animation(.spring(response: 0.3, dampingFraction: 0.85), value: app.sidebarCollapsed)
+        .animation(Theme.Motion.layout, value: app.sidebarCollapsed)
         .clipped()
         .sheet(item: $infoItem) { item in
             VolumeInfoSheet(item: item)
@@ -246,7 +246,7 @@ struct BookmarksSidebar: View {
         .padding(.horizontal, 10)
         .contentShape(Rectangle())
         .onTapGesture {
-            withAnimation(.spring(response: 0.28, dampingFraction: 0.86)) {
+            withAnimation(Theme.Motion.layout) {
                 app.settings.toggleSectionCollapsed(key)
             }
         }
@@ -261,7 +261,7 @@ struct BookmarksSidebar: View {
                     updateSectionDrag(v.translation.height)
                 }
                 .onEnded { _ in
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { dragDY = 0 }
+                    withAnimation(Theme.Motion.layout) { dragDY = 0 }
                     dragKey = nil
                 }
         )
@@ -301,7 +301,7 @@ struct BookmarksSidebar: View {
         var it = vis.makeIterator()
         let result = orderedSectionKeys.map { dragStartVisible.contains($0) ? (it.next() ?? $0) : $0 }
         if result != app.settings.sidebarSectionOrder {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+            withAnimation(Theme.Motion.layout) {
                 app.settings.sidebarSectionOrder = result
             }
         }
@@ -340,7 +340,7 @@ struct BookmarksSidebar: View {
                 updateFavoriteDrag(v.translation.height)
             }
             .onEnded { _ in
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { favDragDY = 0 }
+                withAnimation(Theme.Motion.layout) { favDragDY = 0 }
                 favDragId = nil
             }
     }
@@ -368,7 +368,7 @@ struct BookmarksSidebar: View {
         arr.removeAll { $0 == id }
         arr.insert(id, at: min(max(target, 0), arr.count))
         if arr != app.settings.favoritesOrder {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) {
+            withAnimation(Theme.Motion.layout) {
                 app.settings.favoritesOrder = arr
             }
         }

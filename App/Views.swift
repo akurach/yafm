@@ -470,7 +470,10 @@ struct FileTableView: View {
     private func pluginWidthBind(_ col: PluginColumn) -> Binding<Double> {
         Binding(
             get: { pluginWidths[col.id] ?? 104 },
-            set: { pluginWidths[col.id] = max(40, $0) }
+            // Clamp both ends: an unbounded width feeds AppKit a runaway column
+            // frame — the same overflow class that froze layout (see effectiveNameW
+            // / sanitizeColumnWidths). 2000 matches the other resizable columns.
+            set: { pluginWidths[col.id] = min(2000, max(40, $0)) }
         )
     }
 
@@ -632,18 +635,18 @@ struct FileTableView: View {
             }
             if showKind {
                 Text(kindText(entry))
-                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    .font(Theme.Font.meta).foregroundStyle(.secondary).lineLimit(1)
                     .frame(width: CGFloat(kindW), alignment: .leading)
             }
             if showGit {
                 Text(tab.gitStatus[entry.url] ?? "")
-                    .font(.caption.monospaced().bold())
+                    .font(Theme.Font.badge).fontWeight(.bold)
                     .foregroundStyle(gitColor(tab.gitStatus[entry.url]))
                     .frame(width: CGFloat(gitW), alignment: .center)
             }
             ForEach(visiblePluginCols) { col in
                 Text(pluginText(col, entry))
-                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    .font(Theme.Font.meta).foregroundStyle(.secondary).lineLimit(1)
                     .frame(width: pluginWidth(col), alignment: .leading)
             }
         }
@@ -1036,9 +1039,9 @@ struct StatusBarView: View {
             }
             Spacer()
         }
-        .font(.caption).foregroundStyle(.secondary)
-        .padding(.horizontal, 8).padding(.vertical, 4)
-        .background(Color.clear)
+        // No own padding/background — it lives in the shared bottom band (the band
+        // sets insets + surface). The trailing Spacer pushes the F-keys to the right.
+        .font(Theme.Font.meta).foregroundStyle(.secondary)
     }
 }
 

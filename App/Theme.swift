@@ -46,6 +46,13 @@ enum Theme {
         static let badge  = IBMPlex.mono(11)
         static let chevron = SwiftUI.Font.system(size: 7)
         static let micro   = SwiftUI.Font.system(size: 9)
+
+        // Settings scale — one place, so the window stops mixing IBM Plex with raw
+        // SF .system / .caption2 across its groups and editors.
+        static let settingsTitle = IBMPlex.sans(22, weight: .semibold)
+        static let groupHeader   = IBMPlex.sans(10, weight: .semibold)
+        static let rowLabel      = IBMPlex.sans(13)
+        static let footer        = IBMPlex.sans(11)
     }
 
     // MARK: Semantic colors
@@ -63,6 +70,13 @@ enum Theme {
         /// Generic control fill/hover so the function bar etc. stop using literal grays.
         static let controlHover = Color.accentColor.opacity(0.22)
         static let controlFill = Color.secondary.opacity(0.12)
+        /// Settings/segmented-tab active pill — the app's accent-wash selection
+        /// language (like `tabActive`/`selectionFill`), a touch stronger because
+        /// it's a small icon+label capsule on a faint track, not a full-row wash.
+        /// Replaces the old muddy mid-gray chip.
+        static func segmentActive(_ dark: Bool) -> Color {
+            Color.accentColor.opacity(dark ? 0.22 : 0.16)
+        }
 
         // Git markers: untracked/added green, modified orange, deleted red.
         static let gitAdded = Color.green
@@ -106,6 +120,10 @@ enum Theme {
         /// Selection / cursor / navigation glide. Streaming row inserts stay
         /// un-animated (handled at the call site) to avoid load-time jank.
         static let selection: Animation = .easeOut(duration: 0.12)
+        /// Layout settle for sidebar collapse / reorder / drag — a calm ease-out
+        /// instead of a spring (springs overshoot, which reads as "springy" in a
+        /// utility). Slightly slower than `selection` so layout trails focus.
+        static let layout: Animation = .easeOut(duration: 0.18)
     }
 
     // MARK: Geometry

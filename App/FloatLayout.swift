@@ -25,9 +25,9 @@ struct FloatingPanelModifier: ViewModifier {
     func body(content: Content) -> some View {
         let isDark = scheme == .dark
         content
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous)
                     .stroke(Color.primary.opacity(isDark ? 0.14 : 0.10), lineWidth: 1)
             }
             // Light shadow for depth — heavier in dark, lighter in light

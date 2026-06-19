@@ -373,7 +373,9 @@ final class AppSettings {
         rightArrowEntersPackages = d.object(forKey: Keys.rightArrowEntersPackages) as? Bool ?? true
         theme = AppTheme(rawValue: d.string(forKey: Keys.theme) ?? "") ?? .system
         density = Density(rawValue: d.string(forKey: Keys.density) ?? "") ?? .cozy
-        filetypeTiles = d.object(forKey: Keys.filetypeTiles) as? Bool ?? true   // default on
+        // Decorative tinting (tiles + name tint) is OFF by default — a calm,
+        // native-feeling list out of the box; both remain opt-in toggles in Settings.
+        filetypeTiles = d.object(forKey: Keys.filetypeTiles) as? Bool ?? false
         showSizeColumn     = d.object(forKey: Keys.showSizeColumn)     as? Bool ?? true
         showModifiedColumn = d.object(forKey: Keys.showModifiedColumn) as? Bool ?? true
         showKindColumn     = d.object(forKey: Keys.showKindColumn)     as? Bool ?? true
@@ -534,7 +536,7 @@ struct SettingsView: View {
     private var header: some View {
         HStack {
             Text("Settings")
-                .font(IBMPlex.sans(22, weight: .semibold))
+                .font(Theme.Font.settingsTitle)
             Spacer()
             Button(action: onClose) {
                 Ph.x.bold
@@ -584,7 +586,7 @@ struct SettingsView: View {
             SettingsGroup("MOTION",
                           footer: "Off: instant, no motion. Streaming row inserts never animate either way.") {
                 SettingsRow("Animate selection & navigation") {
-                    Toggle("", isOn: bindable.animations).labelsHidden().toggleStyle(.switch)
+                    Toggle("", isOn: bindable.animations).settingsSwitch()
                 }
             }
             SettingsGroup("START FOLDER") {
@@ -607,7 +609,7 @@ struct SettingsView: View {
             SettingsGroup("NAVIGATION",
                           footer: "Off: → only enters folders. On: → also opens files. Enter always opens. For apps, → either browses the bundle contents or launches the app.") {
                 SettingsRow("Right arrow opens files") {
-                    Toggle("", isOn: bindable.rightArrowOpensFiles).labelsHidden().toggleStyle(.switch)
+                    Toggle("", isOn: bindable.rightArrowOpensFiles).settingsSwitch()
                 }
                 SettingsDivider()
                 SettingsRow("Right arrow on apps") {
@@ -619,7 +621,7 @@ struct SettingsView: View {
             }
             SettingsGroup("LISTING") {
                 SettingsRow("Show hidden files in new tabs") {
-                    Toggle("", isOn: bindable.showHiddenByDefault).labelsHidden().toggleStyle(.switch)
+                    Toggle("", isOn: bindable.showHiddenByDefault).settingsSwitch()
                 }
             }
             SettingsGroup("LANGUAGE", footer: "Takes effect after you quit and reopen yafm.") {
@@ -641,10 +643,15 @@ struct SettingsView: View {
                 }
                 SettingsDivider()
                 SettingsRow("Access") {
+                    // Both buttons the same control size so they read as a pair
+                    // (Re-check was .small — visibly different size + font next to its
+                    // neighbour). Open-Settings is the primary action → prominent.
                     HStack(spacing: 8) {
                         Button("Open System Settings…") { app.openFullDiskAccessSettings() }
-                        Button("Re-check") { app.checkAccess() }.controlSize(.small)
+                            .buttonStyle(.borderedProminent)
+                        Button("Re-check") { app.checkAccess() }
                     }
+                    .controlSize(.regular)
                 }
             }
         }
@@ -670,10 +677,10 @@ struct SettingsView: View {
             SettingsGroup("FILE-TYPE TILES",
                           footer: "Colored extension chips for known types. Off: every file uses its real macOS icon; folders always do.") {
                 SettingsRow("Colored type tiles") {
-                    Toggle("", isOn: bindable.filetypeTiles).labelsHidden().toggleStyle(.switch)
+                    Toggle("", isOn: bindable.filetypeTiles).settingsSwitch()
                 }
                 SettingsRow("Tint file names by type") {
-                    Toggle("", isOn: bindable.tintNamesByType).labelsHidden().toggleStyle(.switch)
+                    Toggle("", isOn: bindable.tintNamesByType).settingsSwitch()
                 }
             }
             if settings.filetypeTiles || settings.tintNamesByType {
@@ -694,7 +701,7 @@ struct SettingsView: View {
             SettingsGroup("DELETE",
                           footer: "Delete is permanent (not Trash). Keep this on unless you're sure.") {
                 SettingsRow("Confirm before deleting") {
-                    Toggle("", isOn: bindable.confirmBeforeDelete).labelsHidden().toggleStyle(.switch)
+                    Toggle("", isOn: bindable.confirmBeforeDelete).settingsSwitch()
                 }
             }
             SettingsGroup("COPY / MOVE COLLISIONS") {
@@ -712,20 +719,20 @@ struct SettingsView: View {
     private var sidebarTab: some View {
         sScroll {
             SettingsGroup("SECTIONS") {
-                SettingsRow("Favorites")  { Toggle("", isOn: bindable.sidebarShowFavorites).labelsHidden().toggleStyle(.switch) }
+                SettingsRow("Favorites")  { Toggle("", isOn: bindable.sidebarShowFavorites).settingsSwitch() }
                 SettingsDivider()
-                SettingsRow("Locations")  { Toggle("", isOn: bindable.sidebarShowLocations).labelsHidden().toggleStyle(.switch) }
+                SettingsRow("Locations")  { Toggle("", isOn: bindable.sidebarShowLocations).settingsSwitch() }
                 SettingsDivider()
-                SettingsRow("Devices")    { Toggle("", isOn: bindable.sidebarShowDevices).labelsHidden().toggleStyle(.switch) }
+                SettingsRow("Devices")    { Toggle("", isOn: bindable.sidebarShowDevices).settingsSwitch() }
                 SettingsDivider()
-                SettingsRow("Network")    { Toggle("", isOn: bindable.sidebarShowNetwork).labelsHidden().toggleStyle(.switch) }
+                SettingsRow("Network")    { Toggle("", isOn: bindable.sidebarShowNetwork).settingsSwitch() }
                 SettingsDivider()
-                SettingsRow("Tags")       { Toggle("", isOn: bindable.sidebarShowTags).labelsHidden().toggleStyle(.switch) }
+                SettingsRow("Tags")       { Toggle("", isOn: bindable.sidebarShowTags).settingsSwitch() }
             }
             SettingsGroup("FAVORITES") {
                 ForEach(Array(SystemFavorite.allCases.enumerated()), id: \.1.id) { i, fav in
                     if i > 0 { SettingsDivider() }
-                    SettingsRow(fav.label) { Toggle("", isOn: favBinding(fav)).labelsHidden().toggleStyle(.switch) }
+                    SettingsRow(fav.label) { Toggle("", isOn: favBinding(fav)).settingsSwitch() }
                 }
                 SettingsDivider()
                 if app.bookmarks.isEmpty {
@@ -751,17 +758,17 @@ struct SettingsView: View {
                         Text("Add Folder…").font(IBMPlex.sans(13)).foregroundStyle(Color.accentColor)
                         Spacer()
                     }
-                    .padding(.horizontal, 12).frame(minHeight: 38)
+                    .padding(.horizontal, 12).frame(minHeight: 34)
                 }
                 .buttonStyle(.plain)
             }
             .disabled(!settings.sidebarShowFavorites)
             SettingsGroup("LOCATIONS") {
-                SettingsRow("Computer")    { Toggle("", isOn: bindable.locShowComputer).labelsHidden().toggleStyle(.switch) }
+                SettingsRow("Computer")    { Toggle("", isOn: bindable.locShowComputer).settingsSwitch() }
                 SettingsDivider()
-                SettingsRow("Home")        { Toggle("", isOn: bindable.locShowHome).labelsHidden().toggleStyle(.switch) }
+                SettingsRow("Home")        { Toggle("", isOn: bindable.locShowHome).settingsSwitch() }
                 SettingsDivider()
-                SettingsRow("iCloud Drive") { Toggle("", isOn: bindable.sidebarShowICloud).labelsHidden().toggleStyle(.switch) }
+                SettingsRow("iCloud Drive") { Toggle("", isOn: bindable.sidebarShowICloud).settingsSwitch() }
             }
             .disabled(!settings.sidebarShowLocations)
         }
@@ -809,7 +816,7 @@ struct SettingsView: View {
                     HStack {
                         Text("No plugins installed.").font(IBMPlex.sans(12)).foregroundStyle(.secondary)
                         Spacer()
-                    }.padding(.horizontal, 12).frame(minHeight: 38)
+                    }.padding(.horizontal, 12).frame(minHeight: 34)
                 } else {
                     ForEach(Array(available.enumerated()), id: \.1.id) { i, p in
                         if i > 0 { SettingsDivider() }
@@ -829,14 +836,14 @@ struct SettingsView: View {
                             Text(p.columnTitles.joined(separator: ", "))
                                 .font(IBMPlex.sans(11)).foregroundStyle(.secondary).lineLimit(1)
                         }
-                        .padding(.horizontal, 12).frame(minHeight: 38)
+                        .padding(.horizontal, 12).frame(minHeight: 34)
                     }
                     ForEach(app.pluginHost.errors, id: \.name) { e in
                         SettingsDivider()
                         HStack {
                             Image(systemName: "exclamationmark.triangle").foregroundStyle(.red)
                             Text("\(e.name): \(e.message)").font(IBMPlex.sans(12)).foregroundStyle(.red).lineLimit(2)
-                        }.padding(.horizontal, 12).frame(minHeight: 38)
+                        }.padding(.horizontal, 12).frame(minHeight: 34)
                     }
                 }
             }
@@ -898,16 +905,16 @@ struct SettingsOverlay: View {
 
                 SettingsView(app: app, onClose: close)
                     .background(Theme.Palette.panesSurface(scheme == .dark))
-                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous))
                     .overlay {
-                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                        RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous)
                             .stroke(Color.primary.opacity(scheme == .dark ? 0.16 : 0.10), lineWidth: 1)
                     }
                     .shadow(color: .black.opacity(scheme == .dark ? 0.55 : 0.28), radius: 40, y: 18)
                     .transition(.scale(scale: 0.97).combined(with: .opacity))
             }
         }
-        .animation(.spring(response: 0.32, dampingFraction: 0.88), value: app.showSettings)
+        .animation(Theme.Motion.layout, value: app.showSettings)
     }
 
     private func close() { app.showSettings = false }
@@ -919,22 +926,14 @@ struct SettingsTabBar: View {
     @Binding var selection: SettingsTab
     @Environment(\.colorScheme) private var scheme
     @Namespace private var pill
-
-    private var selectedFill: Color {
-        // Same neutral gamut as the chrome/panel surfaces, just darker than the
-        // track — a grey "selected" chip, never harsh black.
-        scheme == .dark ? Color(white: 0.30) : Color(white: 0.62)
-    }
-    private var selectedText: Color {
-        scheme == .dark ? Color.white : Color(white: 0.12)
-    }
+    @State private var hovered: SettingsTab?
 
     var body: some View {
         HStack(spacing: 2) {
             ForEach(SettingsTab.allCases) { t in
                 let active = t == selection
                 Button {
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.82)) { selection = t }
+                    withAnimation(Theme.Motion.layout) { selection = t }
                 } label: {
                     HStack(spacing: 5) {
                         t.icon
@@ -942,22 +941,26 @@ struct SettingsTabBar: View {
                             .frame(width: 13, height: 13)
                         Text(t.label).font(IBMPlex.sans(12, weight: active ? .semibold : .regular))
                     }
-                    // Inverted selected pill (Mole-style): dark chip on light theme,
-                    // light chip on dark theme — text flips to stay legible.
-                    .foregroundStyle(active ? selectedText : Color.secondary)
+                    // Active = accent (the app's selection language everywhere else),
+                    // not a grey chip. Accent fill + accent label read as one unit.
+                    .foregroundStyle(active ? Color.accentColor : Color.secondary)
                     .padding(.vertical, 6)
                     .padding(.horizontal, 11)
                     .background {
                         if active {
                             Capsule(style: .continuous)
-                                .fill(selectedFill)
+                                .fill(Theme.Palette.segmentActive(scheme == .dark))
                                 .matchedGeometryEffect(id: "pill", in: pill)
-                                .shadow(color: .black.opacity(scheme == .dark ? 0.35 : 0.20), radius: 3, y: 1)
+                        } else if hovered == t {
+                            // Neutral hover — only the truly-active tab carries accent.
+                            Capsule(style: .continuous)
+                                .fill(Color.primary.opacity(scheme == .dark ? 0.06 : 0.04))
                         }
                     }
                     .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
+                .onHover { hovered = $0 ? t : (hovered == t ? nil : hovered) }
             }
         }
         .padding(3)
@@ -977,6 +980,12 @@ private extension SettingsView {
             .padding(20)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
+        // Compact control size across the whole panel — the default .regular switch
+        // is glossy/chunky against a 13pt label in this calm, dense layout. .small
+        // is still a native AppKit switch, just the compact size class; every
+        // toggle/picker/button in the tab scales together. Inner .controlSize
+        // overrides (e.g. the prominent FDA button) still win.
+        .controlSize(.small)
     }
 }
 
@@ -998,7 +1007,7 @@ struct SettingsGroup<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             Text(header)
-                .font(IBMPlex.sans(10, weight: .semibold))
+                .font(Theme.Font.groupHeader)
                 .foregroundStyle(.secondary)
                 .tracking(0.5)
                 .padding(.leading, 2)
@@ -1006,14 +1015,14 @@ struct SettingsGroup<Content: View>: View {
                 content
             }
             .background(fillColor)
-            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                RoundedRectangle(cornerRadius: Theme.cornerRadius, style: .continuous)
                     .stroke(strokeColor, lineWidth: 0.5)
             }
             if let footer {
                 Text(footer)
-                    .font(IBMPlex.sans(11))
+                    .font(Theme.Font.footer)
                     .foregroundStyle(.secondary)
                     .padding(.leading, 2)
                     .fixedSize(horizontal: false, vertical: true)
@@ -1033,17 +1042,27 @@ struct SettingsRow<C: View>: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            Text(label).font(IBMPlex.sans(13))
+            Text(label).font(Theme.Font.rowLabel)
             Spacer()
             control
         }
         .padding(.horizontal, 12)
-        .frame(minHeight: 38)
+        .frame(minHeight: 34)   // tightened to match the compact controls (was 38)
     }
 }
 
 struct SettingsDivider: View {
     var body: some View { Divider().padding(.leading, 12) }
+}
+
+extension View {
+    /// Compact Settings switch. SwiftUI's `.switch` toggle ignores `.controlSize`
+    /// on macOS (the track is fixed), so the panel-wide `.controlSize(.small)`
+    /// doesn't shrink it — scale it explicitly to match the panel's compact
+    /// density. Anchored trailing so it stays flush-right in the row.
+    func settingsSwitch() -> some View {
+        labelsHidden().toggleStyle(.switch).scaleEffect(0.8, anchor: .trailing)
+    }
 }
 
 // MARK: - Accent color swatch
@@ -1106,12 +1125,12 @@ private struct PluginRow: View {
                     }
                 )) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(name)
+                        Text(name).font(Theme.Font.rowLabel)
                         if let desc = manifest?.description {
-                            Text(desc).font(.caption2).foregroundStyle(.secondary)
+                            Text(desc).font(Theme.Font.footer).foregroundStyle(.secondary)
                         }
                         Text(manifest.map { "\($0.id) · \($0.version)" } ?? "compute-only (no manifest)")
-                            .font(.caption2).foregroundStyle(.tertiary)
+                            .font(Theme.Font.micro).foregroundStyle(.tertiary)
                     }
                 }
                 Spacer()
@@ -1119,7 +1138,7 @@ private struct PluginRow: View {
             }
             if let caps = manifest?.capabilities, !caps.isEmpty {
                 Text(caps.map(\.capabilityLabel).joined(separator: " · "))
-                    .font(.caption2).foregroundStyle(.secondary)
+                    .font(Theme.Font.footer).foregroundStyle(.secondary)
             }
         }
         .alert("Enable \"\(name)\"?", isPresented: $confirming) {
@@ -1176,7 +1195,7 @@ struct TagManagerView: View {
                                 .font(IBMPlex.sans(12)).foregroundStyle(.secondary)
                             Spacer()
                         }
-                        .padding(.horizontal, 12).frame(minHeight: 38)
+                        .padding(.horizontal, 12).frame(minHeight: 34)
                     } else {
                         ForEach(Array(tags.enumerated()), id: \.1.name) { i, tag in
                             if i > 0 { SettingsDivider() }
@@ -1213,7 +1232,7 @@ struct TagManagerView: View {
             }
             .buttonStyle(.borderless).help("Remove from all files")
         }
-        .padding(.horizontal, 12).frame(minHeight: 38)
+        .padding(.horizontal, 12).frame(minHeight: 34)
     }
 
     /// A swatch that opens the 7 Finder colors + "No color"; picking recolors the
@@ -1250,19 +1269,22 @@ struct CategoryColorsEditor: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             ForEach(FileTypeCategory.allCases) { cat in
+                let overridden = settings.categoryColors[cat.rawValue] != nil
                 HStack(spacing: 8) {
                     FileTypeTile(rgb: settings.rgb(for: cat),
                                  label: FileTypeCatalog.extensions(in: cat).first?.uppercased() ?? "?",
                                  size: 16)
-                    Text(cat.displayName).font(.system(size: 12))
+                    Text(cat.displayName).font(Theme.Font.rowLabel)
                     Spacer()
-                    if settings.categoryColors[cat.rawValue] != nil {
-                        Button { settings.resetColor(for: cat) } label: {
-                            Image(systemName: "arrow.uturn.backward").font(.system(size: 10))
-                        }
-                        .buttonStyle(.plain).foregroundStyle(.secondary)
-                        .accessibilityLabel("Reset \(cat.displayName) color")
+                    // Reset slot is always present (disabled until there's an
+                    // override) so the row's trailing edge never jumps as you edit.
+                    Button { settings.resetColor(for: cat) } label: {
+                        Image(systemName: "arrow.uturn.backward").font(.system(size: 10))
                     }
+                    .buttonStyle(.plain).foregroundStyle(.secondary)
+                    .disabled(!overridden)
+                    .opacity(overridden ? 1 : 0)
+                    .accessibilityLabel("Reset \(cat.displayName) color")
                     ColorPicker("", selection: Binding(
                         get: { settings.color(for: cat) },
                         set: { settings.setColor($0, for: cat) }
@@ -1281,6 +1303,7 @@ struct TypeBrowser: View {
     @State private var query = ""
     @State private var newExt = ""
     @State private var newCat: FileTypeCategory = .code
+    @State private var selection: String?
 
     private struct Row: Identifiable { let ext: String; let cat: FileTypeCategory; let label: String; let custom: Bool; var id: String { ext } }
 
@@ -1301,41 +1324,63 @@ struct TypeBrowser: View {
         return out.filter { q.isEmpty || $0.ext.contains(q) }.sorted { $0.ext < $1.ext }
     }
 
+    private var selectedRow: Row? { rows.first { $0.id == selection } }
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: Theme.Space.pane) {
             TextField("Search extension — e.g. py, vcf, braw…", text: $query)
-                .textFieldStyle(.roundedBorder).font(.system(size: 12))
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 1) {
-                    ForEach(rows) { row in
-                        HStack(spacing: 8) {
-                            FileTypeTile(rgb: settings.rgb(for: row.cat), label: row.label, size: 16)
-                            Text(".\(row.ext)").font(.system(size: 12, design: .monospaced))
-                            if row.custom {
-                                Text("custom").font(.system(size: 9)).foregroundStyle(.tertiary)
-                            }
-                            Spacer()
-                            Picker("", selection: Binding(
-                                get: { row.cat },
-                                set: { settings.customFileTypes[row.ext] = "\($0.rawValue)|\(row.label)" }
-                            )) {
-                                ForEach(FileTypeCategory.allCases) { Text($0.displayName).tag($0) }
-                            }.labelsHidden().frame(width: 150)
-                            if row.custom {
-                                Button { settings.customFileTypes[row.ext] = nil } label: {
-                                    Image(systemName: "arrow.uturn.backward").font(.system(size: 10))
-                                }.buttonStyle(.plain).foregroundStyle(.secondary)
-                                .accessibilityLabel("Reset .\(row.ext)")
-                            }
-                        }
-                        .padding(.vertical, 1)
+                .textFieldStyle(.roundedBorder).font(Theme.Font.rowLabel)
+
+            // Native Table: aligned columns, one scroll region (AppKit forwards
+            // scroll at its bounds — no SwiftUI scroll-in-scroll fight), and it
+            // stays fast at ~250 rows. Category is edited via selection below, not
+            // a dropdown on every row.
+            Table(rows, selection: $selection) {
+                TableColumn("") { row in
+                    FileTypeTile(rgb: settings.rgb(for: row.cat), label: row.label, size: 16)
+                }.width(26)
+                TableColumn("Type") { row in
+                    HStack(spacing: 6) {
+                        Text(".\(row.ext)").font(Theme.Font.meta)
+                        if row.custom { Text("custom").font(Theme.Font.micro).foregroundStyle(.tertiary) }
                     }
+                }.width(min: 90, ideal: 120)
+                TableColumn("Category") { row in
+                    Text(row.cat.displayName).font(Theme.Font.meta).foregroundStyle(.secondary)
                 }
             }
-            .frame(height: 220)
+            .frame(height: 260)
+
+            // Edit the SELECTED row's category with one control (not 250 pickers).
+            HStack(spacing: Theme.Space.pane) {
+                if let row = selectedRow {
+                    Text(".\(row.ext)").font(Theme.Font.meta)
+                    Picker("", selection: Binding(
+                        get: { row.cat },
+                        set: { settings.customFileTypes[row.ext] = "\($0.rawValue)|\(row.label)" }
+                    )) {
+                        ForEach(FileTypeCategory.allCases) { Text($0.displayName).tag($0) }
+                    }.labelsHidden().frame(width: 150)
+                    if row.custom {
+                        Button {
+                            settings.customFileTypes[row.ext] = nil
+                            if selection == row.ext { selection = nil }
+                        } label: {
+                            Image(systemName: "arrow.uturn.backward").font(.system(size: 10))
+                        }.buttonStyle(.plain).foregroundStyle(.secondary)
+                        .accessibilityLabel("Reset .\(row.ext)")
+                    }
+                } else {
+                    Text("Select a type to change its category")
+                        .font(Theme.Font.meta).foregroundStyle(.tertiary)
+                }
+                Spacer()
+            }
+            .frame(minHeight: 22)
+
             Divider()
-            HStack(spacing: 6) {
-                TextField("add ext", text: $newExt).frame(width: 70).textFieldStyle(.roundedBorder)
+            HStack(spacing: Theme.Space.pane) {
+                TextField("add ext", text: $newExt).frame(width: 80).textFieldStyle(.roundedBorder)
                 Picker("", selection: $newCat) {
                     ForEach(FileTypeCategory.allCases) { Text($0.displayName).tag($0) }
                 }.labelsHidden().frame(width: 150)
@@ -1343,9 +1388,9 @@ struct TypeBrowser: View {
                     let e = newExt.trimmingCharacters(in: .whitespaces).lowercased().replacingOccurrences(of: ".", with: "")
                     guard !e.isEmpty else { return }
                     settings.customFileTypes[e] = "\(newCat.rawValue)|\(e.uppercased())"
-                    newExt = ""; query = e
+                    newExt = ""; query = e; selection = e
                 }.disabled(newExt.trimmingCharacters(in: .whitespaces).isEmpty)
-            }.font(.system(size: 12))
+            }.font(Theme.Font.rowLabel)
         }
     }
 }

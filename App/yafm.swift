@@ -62,16 +62,28 @@ struct YafmApp: App {
 struct RootView: View {
     @Bindable var app: AppState
 
+    /// The active folder's name for the titlebar; "yafm" at the volume root or
+    /// when the name is empty.
+    private var titleText: String {
+        let name = app.activeTab.directory.lastPathComponent
+        return name.isEmpty || name == "/" ? "yafm" : name
+    }
+
     var body: some View {
         ZStack {
             // Chrome fills the entire window including the title bar area
             ChromeBackground().ignoresSafeArea()
 
-            // "yafm" title centred in the hidden-titlebar zone (28 pt above safe area)
+            // Current folder name centred in the hidden-titlebar zone (28 pt above
+            // safe area) — orients you like a native window title. Capped + middle-
+            // truncated so a deep folder name never collides with the traffic lights.
             VStack {
-                Text("yafm")
+                Text(titleText)
                     .font(IBMPlex.sans(13, weight: .semibold))
                     .foregroundStyle(Color.primary.opacity(0.55))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .frame(maxWidth: 420)
                     .frame(maxWidth: .infinity)
                     .frame(height: 28)
                 Spacer()
@@ -105,15 +117,22 @@ struct RootView: View {
                     .background(PanelBackground(kind: .panes))
                     .floatingPanel()
                 }
-                .animation(.spring(response: 0.3, dampingFraction: 0.85), value: app.sidebarCollapsed)
+                .animation(Theme.Motion.layout, value: app.sidebarCollapsed)
                 .padding(9)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
-                // ── Bottom chrome — not inside any card ───────────────────────
-                Divider()
-                StatusBarView(tab: app.activeTab)
-                Divider()
-                FunctionBarView(app: app)
+                // ── Bottom chrome — ONE band, one surface: a thin status line above
+                // the full-width F-keys. Status and keys do NOT share a row (that was
+                // the cramped right-squish); they stack, keys span the full width.
+                Divider().opacity(0.5)
+                VStack(spacing: 0) {
+                    StatusBarView(tab: app.activeTab)
+                        .padding(.horizontal, Theme.Space.rowLeading)
+                        .frame(height: 18)
+                    FunctionBarView(app: app)
+                        .frame(height: 28)
+                }
+                .background(FunctionBarBackground())
             }
         }
         .sheet(isPresented: $app.renameSheet)    { RenameSheet(app: app) }
