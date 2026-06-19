@@ -215,7 +215,7 @@ half-built.
   (auto-prompt on camera plug-in), itself deferred since v0.6. Tracked in `docs/feature-requests/`.
 - [ ] **Notarized DMG** (paid Apple Developer ID) — **deferred**: still gated on the cert.
 
-## v0.9.1 – v0.9.5 — Point releases ✅ shipped
+## v0.9.1 – v0.9.7 — Point releases ✅ shipped
 
 Post-1.0-candidate hardening and the visual redesign (see `CHANGELOG.md` for full detail):
 
@@ -243,6 +243,16 @@ Post-1.0-candidate hardening and the visual redesign (see `CHANGELOG.md` for ful
   (unbounded persisted `nameW` → AppKit layout recursion; Name-width clamp + startup
   sanitizer), sidebar-drag-moved-window, click-scroll-centering, light-mode tile contrast,
   debounced plugin/EXIF re-render churn.
+- [x] **v0.9.7 — Calm UI pass + file-engine fixes.** File-type tiles + name tint off by
+  default (still toggles); function bar redesigned (one bottom band — thin status line over
+  full-width F-keys, no divider walls, hover pill + press feedback, promoted F-number);
+  window title shows the current folder; Settings aligned to the design system (5 pt radius,
+  ease-out motion, accent tab switcher, compact controls, native `Table` file-type browser,
+  consistent IBM Plex type, equal-size FDA buttons); unified row metadata typography +
+  sidebar motion. Fixed: **cross-volume move** (EXDEV copy-then-delete fallback) + move-replace;
+  **runaway-plugin watchdog** (`JSContextGroupSetExecutionTimeLimit` — a hung plugin can no
+  longer freeze the app); **SMB** mount timeout + stale-mountpoint re-mount; clamped plugin
+  column width. Notarization-ready: hardened-runtime JIT entitlements wired into `make-dmg.sh`.
 
 ## Open questions to revisit
 
@@ -272,13 +282,15 @@ Deferred (tracked, not yet done): — все закрыты в v0.9:
 
 ## Next up
 
-**v0.9.6 shipped** (collapsible sidebar icon-strip + section collapse, in-window Settings
-overlay, active highlights for devices/tags). The v0.1–0.9 arc is complete and the 1.0
-candidate line holds; the public plugin API is frozen at `apiVersion 1.0`. What remains
-before tagging **1.0**:
+**v0.9.7 shipped** (calm UI pass — redesigned function bar, Settings polish, tiles off by
+default — plus file-engine fixes: cross-volume move, runaway-plugin watchdog, SMB timeout;
+notarization entitlements wired). The v0.1–0.9 arc is complete and the 1.0 candidate line
+holds; the public plugin API is frozen at `apiVersion 1.0`. What remains before tagging **1.0**:
 
 - **Notarized DMG** — the recurring blocker; needs a paid Apple Developer ID cert
-  (`CODESIGN_IDENTITY` + `AC_NOTARY_PROFILE`). Also gates Sparkle-style auto-update.
-- **Polish pass** — finish the design-system cleanup from the v0.9.0 `AUDIT.md` brief.
+  (`CODESIGN_IDENTITY` + `AC_NOTARY_PROFILE`). The JIT entitlements are already wired into
+  `make-dmg.sh`, so it's plug-in-the-cert. Also gates Sparkle-style auto-update.
+- **Design-system cleanup** — largely done in v0.9.7 (radius/motion/typography unified,
+  Settings tokenized). Remaining is incidental polish, not a blocker.
 - **Deferred first-party features** (post-1.0, tracked in `docs/feature-requests/`): Photo
   Ingest + device detection; remote plugin marketplace + signing (hosted infra).

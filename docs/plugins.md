@@ -1,14 +1,17 @@
-# yafm Plugin API (v0.3)
+# yafm Plugin API (`apiVersion 1.0`)
 
 yafm plugins are **JavaScript**, run through macOS's built-in JavaScriptCore — the
 Obsidian / Chrome model: drop a `.js` file in the plugins folder and it works. No
 build step, no install, no `npm`.
 
-> **Status — v0.3.** The first capability is **table columns**. The host, the
-> sandbox, and the registry are built to widen (context-menu items, commands, a
-> scoped-filesystem capability) without changing this contract. Heavy first-party
-> features (git status, later SMB/archives) may be native yet appear in the same
-> registry — see [VISION.md](../VISION.md).
+> **Status — frozen at `apiVersion 1.0`.** The public surface is stable and will not
+> change until the marketplace work. It covers: **table columns**, **commands**
+> (command palette), **context-menu items**, **scoped reads** (`read:cwd`, `read:exif`),
+> and **actions** (open-in-app, clipboard). Capabilities beyond columns require a sidecar
+> `<plugin>.json` manifest declaring them. Toolbar buttons, custom previewers, and virtual
+> filesystems are **post-1.0** (`apiVersion 2.0`) — they don't fit the synchronous,
+> snapshot-based contract. Heavy first-party features (git status, SMB) are **native** yet
+> appear in the same registry — see [VISION.md](../VISION.md).
 
 ## Where plugins live
 
@@ -68,7 +71,7 @@ There is **no `url` and no absolute path** — by design (see Sandbox below).
 |--------------------------|-----------------------------------------------|
 | `yafm.registerColumn(spec)` | Register a `{ id, title, value }` column.  |
 | `yafm.log(...)`          | No-op sink (safe to call; reserved).          |
-| `yafm.version`           | Host API version string (`"0.3"`).            |
+| `yafm.version`           | Host API version string (`"1.0"`).            |
 
 ## Sandbox — what a plugin can and cannot do
 
@@ -80,12 +83,15 @@ the `yafm` object above.
 - Each plugin file gets its **own `JSContext`** (its own global scope) — one
   plugin can't read or clobber another's globals.
 - `value(entry)` runs **synchronously on the main thread** while the table builds a
-  row, so a slow plugin slows the UI but can't corrupt state or escape its snapshot.
+  row, so a plugin can't corrupt state or escape its snapshot. To keep the "never
+  freezes" guarantee even for hostile code, each context's JS execution is **time-limited**
+  (`JSContextGroupSetExecutionTimeLimit`): an infinite loop is aborted and the cell renders
+  empty rather than hanging the app.
 - Widening the surface (scoped FS reads, a vetted git/exec capability) happens in
   exactly one place — `JSPluginHost.snapshot(of:in:)` and `PluginContext.resolve`
   in `Core` — so new capability is reviewed once, not sprinkled across the host.
 
-This is why git status is **native** in v0.3: running `git` is precisely the kind
+This is why git status is **native**: running `git` is precisely the kind
 of capability the sandbox refuses to hand untrusted JavaScript. It is registered
 as a column through the same registry, so to the table it's just another column.
 

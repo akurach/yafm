@@ -1,9 +1,11 @@
 # Security
 
-yafm ships as a **non-sandboxed**, notarized DMG with full disk access (sandbox was
-deliberately rejected — it would break plugins, FTP/SMB, and full-disk access; see
-`VISION.md`). There is no OS sandbox backstop, and v0.3 will run untrusted community
-JavaScript plugins. Filesystem code is therefore held to a higher bar.
+yafm ships as a **non-sandboxed** DMG with full disk access (sandbox was deliberately
+rejected — it would break plugins, FTP/SMB, and full-disk access; see `VISION.md`).
+Notarization is the target but pending a paid Apple Developer ID — current releases ship
+**unnotarized** with "Open Anyway" steps. There is no OS sandbox backstop, and yafm runs
+untrusted community **JavaScript** plugins, so filesystem code and the plugin host are held
+to a higher bar (see *Plugin sandbox* below).
 
 ## Audit — 2026-06-05 (v0.1/v0.2 spine)
 
@@ -32,10 +34,43 @@ file engine, tag/xattr bridge, listing, keyboard monitor, and app state.
 - **TOCTOU on copy destination** — replace exists-check + truncating `OutputStream` with an
   `O_WRONLY|O_CREAT|O_EXCL` open. Current mitigation: unique-name planning + a pre-write
   existence guard (refuses to clobber, but not atomic).
-- **Plugin capability boundary** — before any JS plugin API is exposed (v0.3), define a
-  `PluginContext` that hands plugins only a vetted capability subset. Never pass `FileEngine`,
-  `TagService`, or `LocalFileSystem` to plugin-facing code. Every path-traversal class above
-  becomes plugin-reachable otherwise.
+- ✅ **Plugin capability boundary** — *done* (v0.3 → frozen `apiVersion 1.0`). Plugins get a
+  vetted capability subset via `PluginContext`; `FileEngine`/`TagService`/`LocalFileSystem` are
+  never handed to plugin-facing code. See *Plugin sandbox* below.
+
+## Plugin sandbox (capability model + execution limit)
+
+Community plugins are JavaScript run through JavaScriptCore. The boundary (`JSPluginHost`,
+`Core/Plugins.swift`):
+
+- **Per-plugin isolation** — each plugin file gets its own `JSContext` (own globals); no
+  `require`, no network, no `Process`, no timers. The host injects only a `yafm` object.
+- **Path-free snapshot** — a column/menu function receives a vetted entry snapshot
+  (name/ext/size/tags…), never a raw path. `snapshot(of:in:)` is the single widening point.
+- **Capability gating** — bridges are injected only when the sidecar manifest grants them:
+  `read:cwd` / `read:exif` (scoped reads) and `contribute:action` (open-in-app, clipboard).
+  Consent-requiring capabilities prompt at enable time, in Settings — never from the plugin.
+- **Scoped reads** — `yafm.readText` resolves `rel` host-side against the entry's directory via
+  `PluginContext.resolve` (refusing `..`/symlink escape), opens with `O_NOFOLLOW`, and caps the
+  read (256 KB) with a per-context call budget (500).
+- **Per-context handles** — opaque, scoped to the issuing context, so one plugin can't forge or
+  enumerate another's handles.
+- **Execution time limit (runaway/DoS guard)** — a plugin column/command runs synchronously, so
+  an infinite loop (`while(true){}`) would freeze the UI and break the "never freezes" guarantee.
+  Each context's VM is capped via `JSContextGroupSetExecutionTimeLimit`; past the cap the call is
+  aborted and renders an empty cell. (The symbol is bound with `@_silgen_name`; acceptable as
+  yafm is not sandboxed/App-Store-bound.)
+
+Trust is honest: manifests declare an author but are **unsigned** — no fake "verified" badge.
+Cryptographic plugin signing is deferred to the marketplace work.
+
+## Hardened-runtime entitlements (notarized build)
+
+The notarized build needs `com.apple.security.cs.allow-jit` (+ `allow-unsigned-executable-memory`)
+because it embeds JavaScriptCore — without them JSC's JIT is killed under the hardened runtime and
+the app crashes on first plugin run. These live in `App/Resources/yafm.entitlements` and are passed
+to `codesign` in `Scripts/make-dmg.sh`. **No** App Sandbox entitlements (by design); Full Disk
+Access is a runtime TCC grant, not an entitlement.
 
 ## macOS privacy gates (TCC)
 
