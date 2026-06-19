@@ -1,0 +1,43 @@
+name: CodeQL
+
+# Static application security testing (SAST). CodeQL builds the Swift package,
+# analyzes it with the security-extended query suite, and uploads results to the
+# repo's Security ▸ Code scanning tab. Swift analysis requires a macOS runner.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: '23 5 * * 1'   # weekly, Mondays 05:23 UTC — catches new queries on unchanged code
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (Swift)
+    runs-on: macos-15
+    permissions:
+      security-events: write   # upload SARIF to code scanning
+      actions: read
+      contents: read
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: swift
+          build-mode: autobuild
+          queries: security-extended
+
+      - name: Autobuild
+        uses: github/codeql-action/autobuild@v3
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v3
+        with:
+          category: "/language:swift"
