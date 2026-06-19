@@ -171,7 +171,7 @@ Manage all tags in **Settings ▸ Tags**: recolor, rename across every file, or 
 
 ### File-type tiles
 
-Instead of the same generic document icon for everything, yafm can draw a small **colored chip** showing the file's extension — recognised for around **250 known types**: source code, 3D/CAD, RAW photo, design files, and the **project files** of audio/video tools (Premiere, DaVinci Resolve, Final Cut, Ableton, FL Studio, Logic, Reaper), soundfonts/VST, fonts, and binaries. Tiles are drawn and cached, and adapt to **light and dark** appearance. Folders and unknown extensions keep their real macOS icon. Turn tiles on or off in **Settings ▸ Appearance ▸ File-Type Tiles**.
+Instead of the same generic document icon for everything, yafm can draw a small **colored chip** showing the file's extension — recognised for around **250 known types**: source code, 3D/CAD, RAW photo, design files, and the **project files** of audio/video tools (Premiere, DaVinci Resolve, Final Cut, Ableton, FL Studio, Logic, Reaper), soundfonts/VST, fonts, and binaries. Tiles are drawn and cached, and adapt to **light and dark** appearance. Folders and unknown extensions keep their real macOS icon. Tiles are **off by default** — out of the box every file shows its real macOS icon for a calm, native list; turn them on in **Settings ▸ Appearance ▸ File-Type Tiles**.
 
 A single **type → color palette** drives both the tile *and* an optional **"Tint file names by type"** toggle, so a file's tile and its name always share the same color. In **Settings ▸ Appearance** you'll find:
 

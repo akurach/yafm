@@ -40,12 +40,18 @@ yafm is the daily driver Finder should have been: fast, keyboard-driven, modern,
 
 Design the registry/loader correctly from day one; ship points incrementally.
 
+**Frozen in `apiVersion 1.0` (what the public JS API actually delivers today):**
 - Columns (e.g. git status, custom metadata)
 - Commands (command palette, ⌘K)
 - Context-menu actions
+- Scoped reads (`read:cwd`, `read:exif`) + actions (open-in-app, clipboard)
+
+**Post-1.0 (NOT part of the frozen 1.0 surface — these need a different contract than
+the synchronous, snapshot-based column model and will land in `apiVersion 2.0`):**
 - Toolbar buttons
 - Custom previewers
-- Virtual filesystems (FTP/SMB/cloud as a "disk" — the heaviest hook, needs streaming)
+- Virtual filesystems (FTP/SMB/cloud as a "disk" — the heaviest hook, needs streaming/write-back;
+  heavy first-party VFS like SMB stays **native**, not a JS plugin, until then)
 - Transformers (bulk rename rules, converters)
 
 ## Roadmap

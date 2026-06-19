@@ -64,8 +64,25 @@ yafm/
     ├── Onboarding.swift        # Full Disk Access sheet + limited-access banner
     ├── Keyboard.swift          # NSEvent key monitor → CommandID dispatch
     ├── QuickLook.swift         # QLPreviewPanel bridge
-    └── Resources/Info.plist    # bundle id + TCC usage strings + Fonts
+    ├── Resources/Info.plist    # bundle id + TCC usage strings + Fonts
+    └── Resources/yafm.entitlements  # hardened-runtime entitlements (JSC JIT) for the notarized build
 ```
+
+**Notarized build needs JIT entitlements.** The app embeds JavaScriptCore for plugins; under the
+hardened runtime JSC's JIT is killed (crash on first plugin run) without
+`com.apple.security.cs.allow-jit` (+ `allow-unsigned-executable-memory`). These live in
+`App/Resources/yafm.entitlements` and are passed to `codesign --entitlements` in `Scripts/make-dmg.sh`
+when a Developer ID is set. No App Sandbox keys (sandbox would break plugins / SMB / Full Disk Access);
+Full Disk Access is a runtime TCC grant, not an entitlement.
+
+**Runaway-plugin guard.** A plugin column/command runs synchronously; an infinite loop would freeze
+the UI and break the "never freezes" guarantee. `JSPluginHost` caps each context's VM via
+`JSContextGroupSetExecutionTimeLimit` (a private JSC symbol bound with `@_silgen_name`; acceptable
+since yafm is not sandboxed/App-Store-bound) so runaway JS aborts instead of hanging.
+
+**Cross-volume move.** `FileEngine` move/rename uses `FileManager.moveItem` (a fast metadata rename),
+falling back to a streamed copy + delete-source on `EXDEV` (different filesystems) — so F6 to a USB
+stick / network mount / DMG works instead of failing.
 
 Core as a real package (not just folders) enforces the no-UI boundary at compile time and makes
 it independently testable.

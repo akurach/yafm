@@ -4,6 +4,49 @@ All notable changes to yafm are recorded here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.7] — Calm pass: function bar · Settings polish · file-engine fixes
+
+### Fixed
+- **Cross-volume move** — moving a file to another volume (USB stick, network mount, DMG)
+  failed outright (`FileManager.moveItem` can't rename across filesystems). It now falls
+  back to a streamed copy + delete-source; the source is removed only after a clean copy.
+- **Move onto an existing file with "Replace"** — previously threw (move can't overwrite);
+  now resolved through the atomic copy-and-swap path.
+- **Runaway plugin can no longer freeze the app** — a JS column/command with an infinite
+  loop hard-froze the UI (violating the core "never freezes" guarantee). JS execution is
+  now time-limited (`JSContextGroupSetExecutionTimeLimit`); past the cap the call aborts
+  and renders an empty cell.
+- **SMB mount timeout** — an unreachable-but-not-refusing host hung as "loading…" for the
+  system's full TCP timeout (30–75 s). A mount now gives up after 20 s with an honest
+  "couldn't connect".
+- **SMB stale mountpoint** — a share that dropped (sleep / NAS reboot / unmount) listed a
+  dead `/Volumes` path forever; the cache is now validated and re-mounted on demand.
+- **Plugin column width** is clamped (an unbounded width could feed AppKit a runaway
+  column frame — the same overflow class that once froze layout).
+
+### Changed
+- **File-type color tiles + name tint are OFF by default** — a calm, native list out of
+  the box (every file shows its real macOS icon). Both remain toggles in Settings ▸ Appearance.
+- **Function bar redesigned** — one bottom band (a thin status line above the full-width
+  F-keys) instead of two stacked divider strips; no divider "walls" between keys; hover
+  pill + press feedback; the F-number is promoted as the muscle-memory anchor.
+- **Window title shows the current folder name** instead of the literal "yafm".
+- **Settings aligned to the design system** — unified 5 pt corner radius (was 8/14);
+  calm ease-out motion instead of springs; the tab switcher uses the app's accent color
+  (was a muddy grey chip) with a neutral hover; compact controls; the file-type browser
+  is now a native `Table` with selection-based category editing (replaced a ~250-row list
+  of per-row dropdowns); consistent IBM Plex typography (no more SF `.caption2` mix);
+  equal-size Full Disk Access buttons (the primary action is prominent).
+- **Row metadata typography unified** — Kind / Git / Plugin columns route through the type
+  scale; sidebar collapse/reorder/drag motion unified to one ease-out curve; corner radius
+  standardized to 5 pt everywhere (floating cards included).
+
+### Build
+- **Notarization readiness** — hardened-runtime entitlements (`com.apple.security.cs.allow-jit`
+  + `allow-unsigned-executable-memory`, required by JavaScriptCore under the hardened runtime)
+  added as `App/Resources/yafm.entitlements` and wired into `Scripts/make-dmg.sh`, so the
+  first notarized build won't crash the moment a plugin runs. (Still needs a paid Developer ID.)
+
 ## [0.9.6.1] — Hotfix
 
 ### Fixed
