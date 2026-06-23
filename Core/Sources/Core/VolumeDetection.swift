@@ -79,27 +79,32 @@ public struct VolumeInfoCollector: Sendable {
     public init() {}
 
     public func collect(volume: Volume) -> VolumeClassification {
-        let (filesystem, bsdName) = daInfo(mountURL: volume.url)
+        let (filesystem, bsdName, isDiskImage) = daInfo(mountURL: volume.url)
         let transport = resolveTransport(bsdName: bsdName, filesystem: filesystem, volume: volume)
         let isReadOnly = readOnly(mountURL: volume.url)
         let cameraFolders = probeCameraFolders(mountURL: volume.url)
         let hasTM = probeTimeMachine(mountURL: volume.url)
         return VolumeClassifier.classify(
             volume: volume, filesystem: filesystem, transport: transport,
-            isReadOnly: isReadOnly, cameraFolders: cameraFolders, hasTimeMachine: hasTM
+            isReadOnly: isReadOnly, cameraFolders: cameraFolders, hasTimeMachine: hasTM,
+            isDiskImage: isDiskImage
         )
     }
 
     // MARK: DiskArbitration
 
-    private func daInfo(mountURL: URL) -> (filesystem: String?, bsdName: String?) {
+    private func daInfo(mountURL: URL) -> (filesystem: String?, bsdName: String?, isDiskImage: Bool) {
         guard let session = DASessionCreate(kCFAllocatorDefault),
               let disk = DADiskCreateFromVolumePath(kCFAllocatorDefault, session, mountURL as CFURL),
-              let desc = DADiskCopyDescription(disk) else { return (nil, nil) }
+              let desc = DADiskCopyDescription(disk) else { return (nil, nil, false) }
         let d = desc as NSDictionary
         let fs  = d[kDADiskDescriptionVolumeKindKey]  as? String
         let bsd = d[kDADiskDescriptionMediaBSDNameKey] as? String
-        return (fs, bsd)
+        // A mounted disk image (.dmg/.sparsebundle) reports protocol/model "Disk Image".
+        let proto = (d[kDADiskDescriptionDeviceProtocolKey] as? String)?.lowercased() ?? ""
+        let model = (d[kDADiskDescriptionDeviceModelKey]    as? String)?.lowercased() ?? ""
+        let isDiskImage = proto.contains("disk image") || model.contains("disk image")
+        return (fs, bsd, isDiskImage)
     }
 
     // MARK: Transport
@@ -164,7 +169,8 @@ public struct VolumeInfoCollector: Sendable {
 public struct VolumeClassifier: Sendable {
     public static func classify(
         volume: Volume, filesystem: String?, transport: TransportType,
-        isReadOnly: Bool, cameraFolders: [String], hasTimeMachine: Bool
+        isReadOnly: Bool, cameraFolders: [String], hasTimeMachine: Bool,
+        isDiskImage: Bool = false
     ) -> VolumeClassification {
         func result(_ kind: ExternalVolumeKind, _ confidence: Double, _ reasons: [String]) -> VolumeClassification {
             VolumeClassification(kind: kind, confidence: confidence, filesystem: filesystem,
@@ -179,6 +185,11 @@ public struct VolumeClassifier: Sendable {
         // Network
         if !volume.isLocal {
             return result(.networkVolume, 1.0, ["Network volume"])
+        }
+
+        // Mounted disk image (.dmg/.sparsebundle): virtual, not real external media.
+        if isDiskImage {
+            return result(.virtualVolume, 0.95, ["Mounted disk image"])
         }
 
         let fs = filesystem?.lowercased() ?? ""

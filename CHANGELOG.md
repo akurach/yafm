@@ -4,6 +4,14 @@ All notable changes to yafm are recorded here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.7.1] — Hotfix: disk-image volume classification
+
+### Fixed
+- **Mounted disk image misclassified as External SSD** — a mounted `.dmg`/`.sparsebundle`
+  is a local ejectable APFS volume, so volume detection tagged it "External SSD". It is now
+  recognized via DiskArbitration (`DADeviceProtocol`/`DADeviceModel` = "Disk Image") and
+  shown as a Virtual volume.
+
 ## [0.9.7] — Calm pass: function bar · Settings polish · file-engine fixes
 
 ### Fixed
