@@ -23,6 +23,10 @@ the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   dead `/Volumes` path forever; the cache is now validated and re-mounted on demand.
 - **Plugin column width** is clamped (an unbounded width could feed AppKit a runaway
   column frame — the same overflow class that once froze layout).
+- **Mounted disk image misclassified as External SSD** — a mounted `.dmg`/`.sparsebundle`
+  is a local ejectable APFS volume, so volume detection tagged it "External SSD". It is now
+  recognized via DiskArbitration (`DADeviceProtocol`/`DADeviceModel` = "Disk Image") and
+  shown as a Virtual volume.
 
 ### Changed
 - **File-type color tiles + name tint are OFF by default** — a calm, native list out of
