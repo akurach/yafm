@@ -83,6 +83,6 @@ The arc in brief:
   tiles + sidebar drag-reorder + app handling · collapsible sidebar + in-window Settings ·
   **calm UI pass + file-engine fixes**: redesigned function bar, Settings polish, tiles off by
   default, cross-volume move, runaway-plugin watchdog, SMB timeout, notarization entitlements).
-  Currently **v0.9.7**; before 1.0: notarized
+  Currently **v0.9.7.1**; before 1.0: notarized
   DMG (paid cert) + final polish. Photo-ingest + marketplace deferred post-1.0. Full
   status-tracked breakdown in [`ROADMAP.md`](ROADMAP.md).
