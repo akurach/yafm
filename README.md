@@ -8,7 +8,7 @@
 
 **Yet Another File Manager for macOS.** A fast, keyboard-driven, modern alternative to Finder — that never freezes silently.
 
-> Status: **v0.9.7.1 — 1.0 candidate.** Native Swift / SwiftUI. The spine (v0.1–0.3:
+> Status: **v0.9.8 — 1.0 candidate.** Native Swift / SwiftUI. The spine (v0.1–0.3:
 > dual-pane + tabs, async listing, own file engine, tags, JS plugins, git, search) is
 > done; v0.4–0.9 added the keyboard-first speed layer, content search, SMB, the plugin
 > capability model, archives, accessibility, and a Russian UI — then a five-dimension

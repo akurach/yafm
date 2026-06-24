@@ -82,7 +82,10 @@ The arc in brief:
   extensions · column resize + sidebar config · float-layout visual redesign · file-type
   tiles + sidebar drag-reorder + app handling · collapsible sidebar + in-window Settings ·
   **calm UI pass + file-engine fixes**: redesigned function bar, Settings polish, tiles off by
-  default, cross-volume move, runaway-plugin watchdog, SMB timeout, notarization entitlements).
-  Currently **v0.9.7.1**; before 1.0: notarized
+  default, cross-volume move, runaway-plugin watchdog, SMB timeout, notarization entitlements ·
+  **v0.9.8 functional-depth vs qSpace**: sortable folder-size column, chained bulk rename,
+  Compare Folders, `⌘Z` undo, archive wrapper (extract any format incl. rar5/encrypted via
+  bundled 7-Zip + rich Compress modal), nav fixes (`⌘⌫` Trash, cursor restored on go-up)).
+  Currently **v0.9.8**; before 1.0: notarized
   DMG (paid cert) + final polish. Photo-ingest + marketplace deferred post-1.0. Full
   status-tracked breakdown in [`ROADMAP.md`](ROADMAP.md).

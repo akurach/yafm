@@ -4,7 +4,7 @@ All notable changes to yafm are recorded here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased] — Functional depth (vs qSpace backlog)
+## [0.9.8] — Functional depth: folder sizes · chained rename · compare · undo · archives
 
 ### Fixed
 - **Going up now restores the cursor** — leaving a folder (or a browsed archive) puts the

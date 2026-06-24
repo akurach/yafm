@@ -282,10 +282,13 @@ Deferred (tracked, not yet done): — все закрыты в v0.9:
 
 ## Next up
 
-**v0.9.7 shipped** (calm UI pass — redesigned function bar, Settings polish, tiles off by
-default — plus file-engine fixes: cross-volume move, runaway-plugin watchdog, SMB timeout;
-notarization entitlements wired). The v0.1–0.9 arc is complete and the 1.0 candidate line
-holds; the public plugin API is frozen at `apiVersion 1.0`. What remains before tagging **1.0**:
+**v0.9.8 shipped** (functional-depth pass vs qSpace — sortable folder-size column, chained
+bulk rename, `⌘L` edit-path, dual-pane Compare Folders, `⌘Z` undo, and a full archive wrapper:
+extract practically any format incl. rar5/encrypted via a bundled 7-Zip, plus a rich Compress
+modal; navigation fixes — `⌘⌫` to Trash, cursor restored on go-up, exit a browsed archive,
+Cyrillic zip names). **v0.9.7** before it (calm UI pass + file-engine fixes; notarization
+entitlements wired). The v0.1–0.9 arc is complete and the 1.0 candidate line holds; the public
+plugin API is frozen at `apiVersion 1.0`. What remains before tagging **1.0**:
 
 - **Notarized DMG** — the recurring blocker; needs a paid Apple Developer ID cert
   (`CODESIGN_IDENTITY` + `AC_NOTARY_PROFILE`). The JIT entitlements are already wired into
