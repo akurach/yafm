@@ -50,8 +50,19 @@ public actor ArchiveFileSystem: FileSystemProvider {
     /// blow up memory / main-actor work).
     public static let entryCap = 100_000
 
-    public init(lister: @escaping Lister = ArchiveFileSystem.unzipList) {
+    public init(lister: @escaping Lister = ArchiveFileSystem.defaultList) {
         self.lister = lister
+    }
+
+    /// Prefer the bundled 7-Zip for listing — it decodes legacy (CP866/CP1251)
+    /// filename codepages to correct Unicode, where `unzip -Z1` would emit the raw
+    /// bytes (Cyrillic mojibake). Fall back to `unzip` when 7-Zip isn't present.
+    public static func defaultList(_ zip: URL) -> [String] {
+        if ArchiveService.sevenZipAvailable {
+            let l = sevenZipList(zip)
+            if !l.isEmpty { return l }
+        }
+        return unzipList(zip)
     }
 
     public nonisolated func list(_ directory: URL) -> AsyncStream<ListingEvent> {
@@ -138,7 +149,45 @@ public actor ArchiveFileSystem: FileSystemProvider {
         return out
     }
 
-    /// Default lister: `unzip -Z1 <zip>` → one entry path per line.
+    /// List entry paths via `7zz l -slt` (UTF-8 names, correct for legacy
+    /// codepages). Parses the `-slt` blocks after the `----------` separator;
+    /// folder entries get a trailing `/` so the tree synthesis treats them as dirs.
+    public static func sevenZipList(_ zip: URL) -> [String] {
+        guard let z = ArchiveService.sevenZipPath else { return [] }
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: z)
+        proc.arguments = ["l", "-slt", "-ba", zip.path]
+        proc.standardInput = FileHandle.nullDevice
+        let pipe = Pipe()
+        proc.standardOutput = pipe
+        proc.standardError = FileHandle.nullDevice
+        do { try proc.run() } catch { return [] }
+        let data = pipe.fileHandleForReading.readDataToEndOfFile()
+        proc.waitUntilExit()
+        guard proc.terminationStatus == 0 else { return [] }
+
+        var names: [String] = []
+        var curPath: String?
+        var curFolder = false
+        func flush() {
+            guard let p = curPath, !p.isEmpty else { return }
+            names.append(curFolder && !p.hasSuffix("/") ? p + "/" : p)
+        }
+        for line in String(decoding: data, as: UTF8.self).split(separator: "\n", omittingEmptySubsequences: false) {
+            if line.hasPrefix("Path = ") {
+                flush()
+                curPath = String(line.dropFirst("Path = ".count)); curFolder = false
+            } else if line.hasPrefix("Folder = ") {
+                curFolder = line.dropFirst("Folder = ".count).trimmingCharacters(in: .whitespaces) == "+"
+            }
+        }
+        flush()
+        return names
+    }
+
+    /// Fallback lister: `unzip -Z1 <zip>` → one entry path per line. Names ride in
+    /// the zip's stored encoding, so legacy non-UTF-8 zips can show mojibake — hence
+    /// 7-Zip is preferred when available.
     public static func unzipList(_ zip: URL) -> [String] {
         let proc = Process()
         proc.executableURL = URL(fileURLWithPath: "/usr/bin/unzip")

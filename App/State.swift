@@ -168,6 +168,20 @@ final class TabModel: Identifiable {
     }
 
     func goUp() {
+        // Inside a browsed archive, "up" walks the inner path and, at the archive
+        // root, exits back to the real folder that holds the .zip.
+        if directory.scheme == "archive", let loc = ArchiveLocation(url: directory) {
+            let inner = loc.inner.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+            if inner.isEmpty {
+                open(loc.zipURL.deletingLastPathComponent())
+            } else {
+                let parentInner = (inner as NSString).deletingLastPathComponent
+                let u = ArchiveLocation.url(zip: loc.zipURL,
+                                            inner: parentInner.isEmpty ? "" : parentInner + "/")
+                open(u ?? loc.zipURL.deletingLastPathComponent())
+            }
+            return
+        }
         let parent = directory.deletingLastPathComponent()
         if parent != directory { open(parent) }
     }

@@ -96,6 +96,17 @@ final class ArchiveServiceTests: XCTestCase {
         XCTAssertFalse(FileManager.default.fileExists(atPath: out.appendingPathComponent(".secret").path))
     }
 
+    func testSevenZipListReadsUnicodeNames() async throws {
+        try XCTSkipUnless(ArchiveService.sevenZipAvailable, "7zz not resolvable in test context")
+        let dir = try tempDir(); defer { try? FileManager.default.removeItem(at: dir) }
+        let f = dir.appendingPathComponent("привет.txt")
+        try "hi".write(to: f, atomically: true, encoding: .utf8)
+        let zip = dir.appendingPathComponent("u.zip")
+        try await ArchiveService().compress([f], to: zip, options: .init(format: .zip))
+        let names = ArchiveFileSystem.sevenZipList(zip)
+        XCTAssertTrue(names.contains { $0.contains("привет") }, "names: \(names)")
+    }
+
     func testCanExtractRecognizesFormats() {
         XCTAssertTrue(ArchiveService.canExtract(URL(fileURLWithPath: "/t/a.zip")))
         XCTAssertTrue(ArchiveService.canExtract(URL(fileURLWithPath: "/t/a.7z")))

@@ -6,6 +6,14 @@ the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased] — Functional depth (vs qSpace backlog)
 
+### Fixed
+- **Cyrillic (and other legacy-codepage) names inside a browsed `.zip`** showed as mojibake —
+  `unzip -Z1` emits filenames in the zip's stored encoding. Listing now goes through the bundled
+  7-Zip (`7zz l -slt`), which decodes CP866/CP1251 to correct Unicode; `unzip` stays as fallback.
+- **Couldn't leave a browsed archive** — `→` entered a `.zip` but `←`/Backspace at the archive
+  root did nothing. `goUp` is now archive-aware: it walks the inner path and, at the root, exits
+  back to the real folder holding the `.zip`.
+
 ### Added
 - **Sortable folder-size column** — opt-in (Size column ▸ "Folder sizes", off by default).
   Each subfolder's total is computed in the background and shown in the Size column; a
