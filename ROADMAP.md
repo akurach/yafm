@@ -311,14 +311,14 @@ daily-use leverage; the first three are *surfacing work over code that already e
   live preview. (`Transformers.swift` `RenameStep`/`RenamePipeline`, `RenameSheet.swift`.)
 - [x] **One-key "edit path" (`⌘L`).** ✅ `⌘L` focuses the active pane's path bar for typing.
   (`CommandID.editPath`, `TabModel.pathEditToken`.) — `⌘K` onboarding promotion still TODO.
-- [ ] **Dual-pane "Compare folders".** A `⌘K`/menu command that diffs the two panes by
-  name+size+mtime, highlights left-only / right-only / differing rows, then lets `F5`/`F6` act
-  on the diff. The feature that makes dual-pane a *reason to switch*, not just a layout.
-- [ ] **`⌘Z` undo for the last file operation.** Copy/move/rename have no undo (only `F8`-trash
-  is recoverable). The queue already models each task — record an inverse (move-back /
-  trash-restore / rename-back) and bind `⌘Z`.
+- [x] **Dual-pane "Compare folders".** ✅ Command (palette/menu) diffs the panes by
+  name+size+mtime, tints rows (green = only-here, orange = differs), pre-selects the active
+  pane's diffs for `F5`/`F6`. (`CompareFolders.swift`, `TabModel.compareMarks`.)
+- [x] **`⌘Z` undo for the last file operation.** ✅ Reverses move / rename / trash (copy &
+  permanent delete excluded by design), 25-deep, existence-guarded. (`UndoAction`,
+  `AppState.performUndo`.)
+- [x] **Archive write** — ✅ Extract Here (`.zip` + `.tar` family) + Compress (zip), via system
+  `ditto`/`tar`/`zip`. (`ArchiveService.swift`.) `.7z/.rar` still need external binaries — TODO.
 - [ ] **Deeper batch rename** — per-row preview override; regex beyond single find/replace.
-- [ ] **Archive write** — extract-here / create-archive; formats beyond read-only `.zip`
-  (`.tar/.7z/.rar`).
 - [ ] **Batch-tag on multiselect** — one "tag selection" action instead of per-row submenu.
 - [ ] **Recursive / scoped search** — `⌘F` is single-folder scoped; add search-from-here.

@@ -101,6 +101,37 @@ final class CoreLogicTests: XCTestCase {
         XCTAssertEqual(sorted.map(\.name), ["d", "f"])   // dir still first, no folder sizes supplied
     }
 
+    // MARK: Compare folders
+
+    func testCompareFoldersClassifiesEntries() {
+        let t0 = Date(timeIntervalSince1970: 1_000_000)
+        func f(_ name: String, _ size: Int64, _ t: Date) -> FSEntry {
+            FSEntry(url: URL(fileURLWithPath: "/L/\(name)"), name: name, isDirectory: false, isHidden: false, size: size, modified: t)
+        }
+        func r(_ name: String, _ size: Int64, _ t: Date) -> FSEntry {
+            FSEntry(url: URL(fileURLWithPath: "/R/\(name)"), name: name, isDirectory: false, isHidden: false, size: size, modified: t)
+        }
+        let left  = [f("same.txt", 10, t0), f("diff.txt", 10, t0), f("onlyL.txt", 5, t0)]
+        let right = [r("same.txt", 10, t0), r("diff.txt", 99, t0), r("onlyR.txt", 7, t0)]
+        let cmp = compareFolders(left: left, right: right)
+        XCTAssertEqual(cmp.left[left[0].url], .same)
+        XCTAssertEqual(cmp.left[left[1].url], .different)   // size differs
+        XCTAssertEqual(cmp.left[left[2].url], .onlyHere)
+        XCTAssertEqual(cmp.right[right[2].url], .onlyHere)  // onlyR seen from the right
+    }
+
+    func testCompareFoldersMtimeToleranceAndDirs() {
+        let t0 = Date(timeIntervalSince1970: 1_000_000)
+        let near = t0.addingTimeInterval(0.5)   // within default 1s tolerance
+        let aFile = FSEntry(url: URL(fileURLWithPath: "/L/x"), name: "x", isDirectory: false, isHidden: false, size: 3, modified: t0)
+        let bFile = FSEntry(url: URL(fileURLWithPath: "/R/x"), name: "x", isDirectory: false, isHidden: false, size: 3, modified: near)
+        let aDir = FSEntry(url: URL(fileURLWithPath: "/L/d"), name: "d", isDirectory: true, isHidden: false, size: nil, modified: nil)
+        let bDir = FSEntry(url: URL(fileURLWithPath: "/R/d"), name: "d", isDirectory: true, isHidden: false, size: nil, modified: nil)
+        let cmp = compareFolders(left: [aFile, aDir], right: [bFile, bDir])
+        XCTAssertEqual(cmp.left[aFile.url], .same)   // mtime within tolerance
+        XCTAssertEqual(cmp.left[aDir.url], .same)     // folder present both sides
+    }
+
     // MARK: Bulk rename
 
     func testRenameRuleRegexAndSequence() {

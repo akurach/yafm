@@ -40,9 +40,12 @@ yafm/
 │   ├── FileSystemRouter.swift  # scheme → provider routing (local now; SMB/VFS behind it)
 │   ├── SMBFileSystem.swift     # native SMB/AFP share mounting (v0.7 VFS)
 │   ├── Operations.swift        # FileEngine — streamed copy/move/delete/rename + progress
+│   ├── ArchiveFileSystem.swift # read-only .zip browsing (VFS); ArchiveService.swift = extract/compress (ditto/tar/zip)
+│   ├── CompareFolders.swift    # pure dual-pane diff (name/size/mtime → CompareMark)
 │   ├── Tags.swift              # TagService (xattr bridge + index + background indexer)
-│   ├── Volumes.swift           # VolumeService, Volume (mounted drives + classification)
-│   ├── Sorting.swift           # SortOrder/SortKey, ColorRule/ColorCoder, rename transformers
+│   ├── Volumes.swift           # VolumeService, Volume; VolumeDetection.swift = transport/kind (incl. disk-image → Virtual)
+│   ├── Sorting.swift           # SortOrder/SortKey (folderSizes: opt), ColorRule/ColorCoder
+│   ├── Transformers.swift      # rename Transformers + RenameStep/RenamePipeline (chained bulk rename)
 │   ├── Commands.swift          # Command, CommandID, keybindings, ExtensionRegistry, PluginColumn
 │   ├── Plugins.swift           # JSPluginHost — JavaScriptCore column/action plugins
 │   ├── Git.swift               # GitStatusService (native git-status column)

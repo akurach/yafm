@@ -31,6 +31,10 @@ final class TabModel: Identifiable {
     /// `PathBarView` observes this and focuses its text field for typing a path.
     var pathEditToken = 0
 
+    /// Per-URL comparison marks from "Compare Folders" (nil = not comparing).
+    /// Rows tint by mark; cleared the moment the tab navigates (in `load()`).
+    var compareMarks: [URL: CompareMark]?
+
     func appendFilter(_ s: String) { filterActive = true; filter += s }
     func backspaceFilter() {
         guard filterActive else { return }
@@ -172,6 +176,7 @@ final class TabModel: Identifiable {
         task?.cancel()
         sizeTask?.cancel()
         folderSizes = [:]   // stale sizes from the previous folder must not linger
+        compareMarks = nil  // a comparison is scoped to the folders it was run on
         virtualName = nil   // a real directory listing exits virtual (tag) mode
         state = .loading(partial: [])
         let stream = fs.list(directory)
@@ -419,6 +424,37 @@ final class OperationItem: Identifiable {
     }
 }
 
+// MARK: - Undoable file operation (⌘Z)
+
+/// The inverse of a just-completed file operation, recorded so ⌘Z can reverse it.
+/// Only deterministic, safe-to-reverse operations are captured: a move can be
+/// moved back, a rename renamed back, a trash restored from the Trash. Copy and
+/// permanent delete are intentionally *not* undoable (deleting freshly-copied
+/// files on ⌘Z is surprising, and permanent delete is gone). Each reversal is
+/// guarded by existence checks so a changed tree never clobbers anything.
+enum UndoAction {
+    /// Files were moved `from → to`; undo moves each `to → from`.
+    case move(items: [(from: URL, to: URL)])
+    /// `from` was renamed to `to` (same parent); undo renames `to → from`.
+    case rename(from: URL, to: URL)
+    /// Items were trashed; undo moves each `trashed → original`.
+    case trash(items: [(original: URL, trashed: URL)])
+
+    /// Directories whose listings the reversal touches, for targeted reloads.
+    var affectedDirectories: Set<URL> {
+        switch self {
+        case let .move(items):
+            return Set(items.flatMap { [$0.from.deletingLastPathComponent(), $0.to.deletingLastPathComponent()] }
+                .map(\.standardizedFileURL))
+        case let .rename(from, to):
+            return [from.deletingLastPathComponent().standardizedFileURL,
+                    to.deletingLastPathComponent().standardizedFileURL]
+        case let .trash(items):
+            return Set(items.map { $0.original.deletingLastPathComponent().standardizedFileURL })
+        }
+    }
+}
+
 // MARK: - App state: two panes + shared services
 
 @MainActor
@@ -431,6 +467,7 @@ final class AppState {
         .registering(ArchiveFileSystem(), for: "archive")   // read-only .zip browse (v0.8)
     let tags: TagServing = TagService()
     let engine = FileEngine()
+    let archiveService = ArchiveService()
     let settings = AppSettings()
     let gitService = GitStatusService()
     let volumeService = VolumeService()
@@ -487,6 +524,10 @@ final class AppState {
     var activePaneIsLeft = true
 
     var operations: [OperationItem] = []
+    /// Most-recent-last stack of reversible operations (⌘Z). Bounded so it can't
+    /// grow without limit over a long session.
+    private(set) var undoStack: [UndoAction] = []
+    var canUndo: Bool { !undoStack.isEmpty }
     var bookmarks: [Bookmark]
     var colorCoder = ColorCoder()
     var showPreview = false
@@ -908,6 +949,10 @@ final class AppState {
         case CommandID.search:
             if search.searchActive { search.cancelSearch() } else { search.searchActive = true }
         case CommandID.editPath: activeTab.pathEditToken &+= 1
+        case CommandID.undo: performUndo()
+        case CommandID.compareFolders: compareFolders()
+        case CommandID.extractArchive: extractSelectedArchive()
+        case CommandID.compressSelection: compressSelection()
         case CommandID.commandPalette: commandPalette = true
         case CommandID.cheatSheet: cheatSheet = true
         case CommandID.connectServer: connectAddress = "smb://"; connectSheet = true
@@ -936,6 +981,81 @@ final class AppState {
 
     func enterCursor() { openCursor(allowFileOpen: settings.rightArrowOpensFiles, enterPackages: settings.rightArrowEntersPackages) }
 
+    // MARK: Compare folders
+
+    /// Diff the two panes by name/size/mtime, tint each side's rows by the result,
+    /// and pre-select the active pane's diffs (only-here + different) so `F5`/`F6`
+    /// act on exactly what's missing or changed on the other side. Running it again
+    /// while already comparing clears the comparison (a toggle).
+    func compareFolders() {
+        let here = activeTab
+        let there = inactivePane.active
+        if here.compareMarks != nil || there.compareMarks != nil {
+            here.compareMarks = nil; there.compareMarks = nil
+            return
+        }
+        // The active pane is "left" for the diff's purposes; the labels are symmetric.
+        let result = Core.compareFolders(left: here.displayed, right: there.displayed)
+        here.compareMarks = result.left
+        there.compareMarks = result.right
+        // Select what you'd copy across: entries only here or differing here.
+        let diffs = here.displayed.filter {
+            let m = result.left[$0.url]; return m == .onlyHere || m == .different
+        }.map(\.url)
+        here.selection = Set(diffs)
+        here.cursor = diffs.first ?? here.cursor
+    }
+
+    // MARK: Archives (extract / compress)
+
+    /// True when the cursor/selection is a single archive we can unpack.
+    var canExtractSelection: Bool {
+        let sel = activeTab.actionable
+        return sel.count == 1 && ArchiveService.canExtract(sel[0].url)
+    }
+
+    /// Unpack the selected archive into a sibling folder, then reveal it.
+    func extractSelectedArchive() {
+        guard let entry = activeTab.actionable.first, ArchiveService.canExtract(entry.url) else { return }
+        let dir = activeTab.directory
+        Task { @MainActor in
+            do {
+                let made = try await archiveService.extract(entry.url)
+                if activeTab.directory == dir { activeTab.load(); activeTab.cursor = made }
+            } catch {
+                NSAlert(error: error).runModal()
+            }
+        }
+    }
+
+    /// Zip the current selection into a `.zip` beside it (named after the single
+    /// item, or `Archive.zip` for several — collision-suffixed).
+    func compressSelection() {
+        let items = activeTab.actionable.map(\.url)
+        guard !items.isEmpty else { return }
+        let dir = activeTab.directory
+        let base = items.count == 1 ? items[0].deletingPathExtension().lastPathComponent : "Archive"
+        let dest = uniqueArchiveURL(base: base, in: dir)
+        Task { @MainActor in
+            do {
+                try await archiveService.compress(items, to: dest)
+                if activeTab.directory == dir { activeTab.load(); activeTab.cursor = dest }
+            } catch {
+                NSAlert(error: error).runModal()
+            }
+        }
+    }
+
+    private func uniqueArchiveURL(base: String, in dir: URL) -> URL {
+        let fm = FileManager.default
+        var url = dir.appendingPathComponent("\(base).zip")
+        var n = 2
+        while fm.fileExists(atPath: url.path) {
+            url = dir.appendingPathComponent("\(base) \(n).zip"); n += 1
+        }
+        return url
+    }
+
     // MARK: File operations
 
     func enqueue(_ kind: FileOperationKind, to destination: URL) {
@@ -943,13 +1063,18 @@ final class AppState {
         guard !sources.isEmpty else { return }
         let task = OperationTask(kind: kind, sources: sources, destination: destination,
                                  collision: settings.collisionDefault)
-        runTask(task) { [weak self] in
+        runTask(task, onFinish: { [weak self] in
             self?.inactivePane.active.load()
             if case .move = kind {
                 self?.tagCloud.forgetTagged(sources)
                 self?.activeTab.load()
             }
-        }
+        }, onSuccess: { [weak self] in
+            if case .move = kind {
+                let items = sources.map { (from: $0, to: destination.appendingPathComponent($0.lastPathComponent)) }
+                self?.pushUndo(.move(items: items))
+            }
+        })
     }
 
     func dropEntries(_ sources: [URL], onto destination: URL, move: Bool) {
@@ -961,27 +1086,35 @@ final class AppState {
         guard !filtered.isEmpty else { return }
         let task = OperationTask(kind: move ? .move : .copy, sources: filtered,
                                  destination: dest, collision: settings.collisionDefault)
-        runTask(task) { [weak self] in
+        runTask(task, onFinish: { [weak self] in
             guard let self else { return }
             let touched = Set([dest] + (move ? filtered.map { $0.deletingLastPathComponent().standardizedFileURL } : []))
             for pane in [self.left, self.right] {
                 if touched.contains(pane.active.directory.standardizedFileURL) { pane.active.load() }
             }
             if move { self.tagCloud.forgetTagged(filtered) }
-        }
+        }, onSuccess: { [weak self] in
+            guard move else { return }
+            let items = filtered.map { (from: $0, to: dest.appendingPathComponent($0.lastPathComponent)) }
+            self?.pushUndo(.move(items: items))
+        })
     }
 
     func enqueueTrash() {
         let sources = activeTab.actionable.map(\.url)
         guard !sources.isEmpty else { return }
         var trashed: [URL] = []
+        var undoItems: [(original: URL, trashed: URL)] = []
         for url in sources {
-            if (try? FileManager.default.trashItem(at: url, resultingItemURL: nil)) != nil {
+            var resulting: NSURL?
+            if (try? FileManager.default.trashItem(at: url, resultingItemURL: &resulting)) != nil {
                 trashed.append(url)
+                if let dest = resulting as URL? { undoItems.append((original: url, trashed: dest)) }
             }
         }
         if !trashed.isEmpty {
             tagCloud.forgetTagged(trashed)
+            if !undoItems.isEmpty { pushUndo(.trash(items: undoItems)) }
             activeTab.load()
         }
     }
@@ -1016,10 +1149,13 @@ final class AppState {
         guard !newName.isEmpty, !newName.contains("/"), !newName.contains("\0"),
               newName != ".", newName != ".." else { return }
         let task = OperationTask(kind: .rename(to: newName), sources: [entry.url])
-        runTask(task) { [weak self] in
+        runTask(task, onFinish: { [weak self] in
             self?.tagCloud.forgetTagged([entry.url])
             self?.activeTab.load()
-        }
+        }, onSuccess: { [weak self] in
+            let renamed = entry.url.deletingLastPathComponent().appendingPathComponent(newName)
+            self?.pushUndo(.rename(from: entry.url, to: renamed))
+        })
     }
 
     func openFile(_ url: URL) {
@@ -1065,10 +1201,14 @@ final class AppState {
         if clip.cut { clipboard = nil }
         let task = OperationTask(kind: clip.cut ? .move : .copy, sources: clip.urls, destination: dest,
                                  collision: settings.collisionDefault)
-        runTask(task) { [weak self] in
+        runTask(task, onFinish: { [weak self] in
             if clip.cut { self?.tagCloud.forgetTagged(clip.urls) }
             self?.activeTab.load()
-        }
+        }, onSuccess: { [weak self] in
+            guard clip.cut else { return }
+            let items = clip.urls.map { (from: $0, to: dest.appendingPathComponent($0.lastPathComponent)) }
+            self?.pushUndo(.move(items: items))
+        })
     }
 
     func newFolder() {
@@ -1144,7 +1284,37 @@ final class AppState {
 
     // MARK: Private helpers
 
-    private func runTask(_ task: OperationTask, onFinish: @escaping () -> Void) {
+    /// Record a reversal for ⌘Z. Bounded to the last 25 operations.
+    private func pushUndo(_ action: UndoAction) {
+        undoStack.append(action)
+        if undoStack.count > 25 { undoStack.removeFirst(undoStack.count - 25) }
+    }
+
+    /// Reverse the most recent reversible operation. Each move is guarded: it only
+    /// runs if the moved file is still where we left it and its old slot is free,
+    /// so a tree that changed underneath us is left untouched rather than clobbered.
+    func performUndo() {
+        guard let action = undoStack.popLast() else { return }
+        let fm = FileManager.default
+        func moveBack(_ from: URL, _ to: URL) {
+            guard fm.fileExists(atPath: from.path), !fm.fileExists(atPath: to.path) else { return }
+            try? fm.createDirectory(at: to.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try? fm.moveItem(at: from, to: to)
+        }
+        switch action {
+        case let .move(items):       for it in items { moveBack(it.to, it.from) }
+        case let .rename(from, to):  moveBack(to, from)
+        case let .trash(items):      for it in items { moveBack(it.trashed, it.original) }
+        }
+        // Reload any pane showing a touched directory.
+        let dirs = action.affectedDirectories
+        for pane in [left, right] where dirs.contains(pane.active.directory.standardizedFileURL) {
+            pane.active.load()
+        }
+    }
+
+    private func runTask(_ task: OperationTask, onFinish: @escaping () -> Void,
+                         onSuccess: (() -> Void)? = nil) {
         let item = OperationItem(task: task)
         operations.append(item)
         Task { @MainActor in
@@ -1152,6 +1322,7 @@ final class AppState {
                 item.progress = p
             }
             onFinish()
+            if case .done = item.progress.state { onSuccess?() }
             try? await Task.sleep(for: .seconds(2))
             operations.removeAll { $0.id == task.id && $0.isTerminal }
         }

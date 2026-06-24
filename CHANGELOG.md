@@ -17,6 +17,17 @@ the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   preview, instead of a single find/replace. Surfaces the existing Core `Transformer`s.
 - **`⌘L` — edit path** — focuses the active pane's path bar for typing a path (browser
   convention), one keystroke instead of click-the-pencil.
+- **Compare Folders** — a command (palette/menu) that diffs the two panes by name + size +
+  modification time, faintly tints each side's rows (green = only here, orange = differs), and
+  pre-selects the active pane's diffs so `F5`/`F6` act on exactly what's missing or changed on
+  the other side. Run it again, or navigate, to clear.
+- **`⌘Z` — undo the last file operation** — reverses a move, rename, or trash (copy and
+  permanent delete are intentionally not undoable). Bounded 25-deep; each reversal is guarded by
+  existence checks so a changed tree is never clobbered.
+- **Archive write** — **Extract Here** (row menu / palette) unpacks `.zip` and the `.tar`
+  family (`.tar`, `.tar.gz`/`.tgz`, `.tar.bz2`/`.tbz`) into a sibling folder; **Compress** zips
+  the selection beside it. Shells out to the system `ditto`/`tar`/`zip` — no new dependency.
+  (Read-only `.zip` *browsing* is unchanged.)
 
 ## [0.9.7.1] — Hotfix: disk-image volume classification
 

@@ -255,7 +255,7 @@ struct CheatSheet: View {
         Group(title: String(localized: "Navigation"),
               ids: [CommandID.open, CommandID.goUp, CommandID.switchPane, CommandID.nextTab, CommandID.prevTab, CommandID.newTab, CommandID.closeTab]),
         Group(title: String(localized: "Files"),
-              ids: [CommandID.copy, CommandID.move, CommandID.delete, CommandID.rename, CommandID.newFolder, CommandID.clipCopy, CommandID.clipCut, CommandID.paste]),
+              ids: [CommandID.copy, CommandID.move, CommandID.delete, CommandID.rename, CommandID.compareFolders, CommandID.undo, CommandID.extractArchive, CommandID.compressSelection, CommandID.newFolder, CommandID.clipCopy, CommandID.clipCut, CommandID.paste]),
         Group(title: String(localized: "View"),
               ids: [CommandID.quickLook, CommandID.togglePreview, CommandID.toggleHidden, CommandID.getInfo, CommandID.refresh, CommandID.view, CommandID.edit]),
         Group(title: String(localized: "Search & Palette"),

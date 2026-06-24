@@ -86,6 +86,23 @@ yafm is non-sandboxed but still bound by TCC. Two gates surface in the UI:
   packages** (v0.9.5) so the operation is never attempted and the user doesn't hit an opaque
   system denial.
 
+## Archive extract/compress (exec + path surface, v0.9.8)
+
+**Extract Here** / **Compress** shell out to the system binaries `ditto`, `tar`, and `zip`
+(`Core/ArchiveService.swift`). Notes on the surface:
+
+- **No shell.** `Process` is invoked with an explicit executable path and an **argument array** —
+  there is no `/bin/sh -c`, so archive names / paths are never interpreted by a shell (no command
+  injection from a crafted filename).
+- **Extraction is contained.** Every archive unpacks into a freshly-created, collision-suffixed
+  sibling folder, never into the current directory, so a malicious archive can't silently
+  overwrite neighbours. Path-traversal (`../`, absolute paths) is left to the system tools'
+  own protections (`ditto`/`bsdtar`); we do not yet add a second traversal check — tracked as a
+  hardening follow-up.
+- **No new privileges.** These run as the user, gated by the same TCC/Full-Disk-Access rules as
+  any other file op. Formats are limited to `.zip` and the `.tar` family; `.7z/.rar` are not
+  invoked (no bundled binaries).
+
 ## Reporting
 
 Pre-release, single-developer project. File an issue (no public advisory process yet).

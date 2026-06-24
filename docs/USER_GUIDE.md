@@ -135,6 +135,20 @@ Select two or more files and press **F2**, then turn on **Bulk rename**. Build a
 
 Use **+ Add rule** to chain them (e.g. *Replace spaces → lowercase → Number sequentially*); the preview updates as you type, and **Rename** applies the whole chain at once.
 
+### Undo (⌘Z)
+
+**⌘Z** reverses the last **move**, **rename**, or **Move to Trash** — handy after a wrong **F6** or a fat-fingered rename. Copy and *permanent* delete are deliberately not undoable. Undo is guarded: if the tree changed underneath you, it leaves things alone rather than clobbering them.
+
+### Compare folders
+
+Run **Compare Folders** (⌘K, or **File Ops** menu) to diff the two panes by name, size, and modification time. Each side's rows are faintly tinted — **green** = only on this side, **orange** = present on both but different — and the active pane's differences are pre-selected, so **F5/F6** copy/move exactly what's missing or changed to the other pane. Run it again, or navigate, to clear.
+
+### Archives
+
+- **Browse** a `.zip` read-only by opening it like a folder.
+- **Extract Here** (right-click an archive, or ⌘K) unpacks `.zip` and the `.tar` family (`.tar`, `.tar.gz`/`.tgz`, `.tar.bz2`/`.tbz`) into a sibling folder.
+- **Compress** (right-click a selection, or ⌘K) zips the selection into a `.zip` beside it.
+
 ### Clipboard
 
 - **⌘C** Copy and **⌘X** Cut into yafm's internal clipboard, then **⌘V** Paste into the target folder.
@@ -308,6 +322,7 @@ Open a **`.zip`** (Enter or double-click) to browse it **read-only**, like any f
 | Type-to-filter | start typing in a pane |
 | Search within folder | ⌘F |
 | Edit path | ⌘L |
+| Undo last file operation | ⌘Z |
 | Shortcut cheat sheet | ⌘/ |
 
 > Tip: forgot a shortcut? Press **⌘/** for the on-screen cheat sheet, or **⌘K** and search by name.

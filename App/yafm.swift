@@ -197,11 +197,19 @@ struct CommandMenus: Commands {
             Button("Toggle Preview") { app.run(CommandID.togglePreview) }
                 .keyboardShortcut("p", modifiers: [.command, .shift])
         }
+        CommandGroup(replacing: .undoRedo) {
+            Button("Undo") { app.run(CommandID.undo) }
+                .keyboardShortcut("z", modifiers: [.command])
+                .disabled(!app.canUndo)
+        }
         CommandMenu("File Ops") {
             Button("Copy → other pane") { app.run(CommandID.copy) }
             Button("Move → other pane") { app.run(CommandID.move) }
             Button("Delete") { app.run(CommandID.delete) }
             Button("Rename…") { app.run(CommandID.rename) }
+            Button("Compare Folders") { app.run(CommandID.compareFolders) }
+            Button("Extract Here") { app.run(CommandID.extractArchive) }
+            Button("Compress") { app.run(CommandID.compressSelection) }
             Divider()
             Button("Copy") { app.run(CommandID.clipCopy) }
             Button("Cut") { app.run(CommandID.clipCut) }

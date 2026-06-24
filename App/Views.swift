@@ -251,6 +251,18 @@ struct FileTableView: View {
                 .padding(.horizontal, 12).padding(.vertical, 5)
                 .background(.regularMaterial, in: Capsule())
                 .padding(.bottom, 8)
+            } else if tab.compareMarks != nil {
+                HStack(spacing: Theme.Space.row) {
+                    Circle().fill(Color.green.opacity(0.55)).frame(width: 8, height: 8)
+                    Text(String(localized: "only here")).foregroundStyle(.secondary)
+                    Circle().fill(Color.orange.opacity(0.6)).frame(width: 8, height: 8)
+                    Text(String(localized: "differs")).foregroundStyle(.secondary)
+                    Text(String(localized: "· Compare again to clear")).font(.caption2).foregroundStyle(.tertiary)
+                }
+                .font(Theme.Font.badge)
+                .padding(.horizontal, 12).padding(.vertical, 5)
+                .background(.regularMaterial, in: Capsule())
+                .padding(.bottom, 8)
             }
         }
     }
@@ -807,6 +819,17 @@ struct FileTableView: View {
                                            : Theme.Palette.cursorFill.opacity(0.4))
                       : Color.clear)
         }
+        .background(compareTint(entry))
+    }
+
+    /// Calm row tint during "Compare Folders": only-here (missing on the other
+    /// side) and different rows are faintly highlighted; identical rows stay clear.
+    @ViewBuilder private func compareTint(_ entry: FSEntry) -> some View {
+        switch tab.compareMarks?[entry.url] {
+        case .onlyHere:  Color.green.opacity(0.12)
+        case .different: Color.orange.opacity(0.14)
+        default:         Color.clear
+        }
     }
 
     private func byteString(_ n: Int64) -> String {
@@ -944,6 +967,12 @@ struct FileTableView: View {
         Button { focus(entry); app.run(CommandID.move) } label: { Label("Move to other pane", systemImage: "arrow.right.square") }
         Button { focus(entry); app.run(CommandID.clipCopy) } label: { Label("Copy", systemImage: "doc.on.doc") }
         Button { focus(entry); app.run(CommandID.clipCut) } label: { Label("Cut", systemImage: "scissors") }
+
+        Divider()
+        if ArchiveService.canExtract(entry.url) {
+            Button { focus(entry); app.run(CommandID.extractArchive) } label: { Label("Extract Here", systemImage: "archivebox") }
+        }
+        Button { focus(entry); app.run(CommandID.compressSelection) } label: { Label("Compress", systemImage: "archivebox.fill") }
 
         Divider()
         Button { focus(entry); app.run(CommandID.rename) } label: { Label("Rename…", systemImage: "pencil") }
