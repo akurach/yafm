@@ -88,20 +88,26 @@ yafm is non-sandboxed but still bound by TCC. Two gates surface in the UI:
 
 ## Archive extract/compress (exec + path surface, v0.9.8)
 
-**Extract Here** / **Compress** shell out to the system binaries `ditto`, `tar`, and `zip`
-(`Core/ArchiveService.swift`). Notes on the surface:
+**Extract Here** / **Compress** wrap the system binaries `bsdtar` (libarchive), `zip`, `unzip`,
+`gzip`, `bzip2` (`Core/ArchiveService.swift`). Notes on the surface:
 
-- **No shell.** `Process` is invoked with an explicit executable path and an **argument array** —
-  there is no `/bin/sh -c`, so archive names / paths are never interpreted by a shell (no command
-  injection from a crafted filename).
+- **No shell.** `Process` runs with an explicit executable path and an **argument array** — there
+  is no `/bin/sh -c`, so archive names / paths / passwords are never interpreted by a shell (no
+  command injection from a crafted filename or password).
+- **No interactive hang.** Child `stdin` is wired to `/dev/null`, and `bsdtar` is *always* handed
+  a `--passphrase` (the user's, or a non-guessable probe sentinel). Without this, libarchive
+  spins forever re-prompting `Enter passphrase:` on an encrypted archive. The probe is ignored on
+  unencrypted archives and rejected on encrypted ones, which we surface as "password required".
+- **Passwords** are passed as process arguments, held only in memory for the call, never logged.
+  ZIP creation uses the system `zip`'s legacy PKZip 2.0 cipher (weak) — the Compress dialog says
+  so; stronger formats aren't available from the stock tools.
 - **Extraction is contained.** Every archive unpacks into a freshly-created, collision-suffixed
   sibling folder, never into the current directory, so a malicious archive can't silently
-  overwrite neighbours. Path-traversal (`../`, absolute paths) is left to the system tools'
-  own protections (`ditto`/`bsdtar`); we do not yet add a second traversal check — tracked as a
-  hardening follow-up.
+  overwrite neighbours. Path-traversal (`../`, absolute paths) is left to libarchive's own
+  protections; a second explicit traversal check is a tracked hardening follow-up.
 - **No new privileges.** These run as the user, gated by the same TCC/Full-Disk-Access rules as
-  any other file op. Formats are limited to `.zip` and the `.tar` family; `.7z/.rar` are not
-  invoked (no bundled binaries).
+  any other file op. Read covers the broad libarchive format set; *creation* is limited to ZIP
+  and the TAR family (no bundled `.7z`/`.rar` writer).
 
 ## Reporting
 

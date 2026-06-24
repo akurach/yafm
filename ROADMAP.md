@@ -317,8 +317,11 @@ daily-use leverage; the first three are *surfacing work over code that already e
 - [x] **`⌘Z` undo for the last file operation.** ✅ Reverses move / rename / trash (copy &
   permanent delete excluded by design), 25-deep, existence-guarded. (`UndoAction`,
   `AppState.performUndo`.)
-- [x] **Archive write** — ✅ Extract Here (`.zip` + `.tar` family) + Compress (zip), via system
-  `ditto`/`tar`/`zip`. (`ArchiveService.swift`.) `.7z/.rar` still need external binaries — TODO.
+- [x] **Archive wrapper** — ✅ Extract Here unpacks *practically any* archive via libarchive
+  (`bsdtar`): zip/7z/rar4/tar.*/cpio/iso/cab/xar/bare gz·bz2, **with password support** (detect →
+  prompt → retry, no interactive hang). Compress modal: format (zip/tar.gz/bz2/xz) + level +
+  optional zip password. System tools only, no install. (`ArchiveService.swift`, `ArchiveSheet.swift`.)
+  Remaining: `.rar5` (libarchive reads only v4) and *creating* `.7z` need a bundled binary — TODO.
 - [ ] **Deeper batch rename** — per-row preview override; regex beyond single find/replace.
 - [ ] **Batch-tag on multiselect** — one "tag selection" action instead of per-row submenu.
 - [ ] **Recursive / scoped search** — `⌘F` is single-folder scoped; add search-from-here.

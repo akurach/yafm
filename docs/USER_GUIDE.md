@@ -145,9 +145,11 @@ Run **Compare Folders** (⌘K, or **File Ops** menu) to diff the two panes by na
 
 ### Archives
 
+yafm wraps the archive tools that already ship with macOS — **nothing to install.**
+
 - **Browse** a `.zip` read-only by opening it like a folder.
-- **Extract Here** (right-click an archive, or ⌘K) unpacks `.zip` and the `.tar` family (`.tar`, `.tar.gz`/`.tgz`, `.tar.bz2`/`.tbz`) into a sibling folder.
-- **Compress** (right-click a selection, or ⌘K) zips the selection into a `.zip` beside it.
+- **Extract Here** (right-click an archive, or ⌘K) unpacks *practically any* archive — `.zip`, `.7z`, `.rar` (v4), the `.tar` family (`.tar.gz`/`.tgz`, `.tar.bz2`/`.tbz`, `.tar.xz`), and more (`.cpio`, `.iso`, `.cab`, `.xar`, bare `.gz`/`.bz2`) — into a sibling folder. If the archive is **password-protected**, yafm asks for the password and retries.
+- **Compress** (right-click a selection, or ⌘K) opens a dialog: pick the **format** (ZIP, or TAR + Gzip/Bzip2/XZ), the **compression level** (0–9), an optional **password** (ZIP only — note macOS ZIP uses legacy/weak encryption), and the output name.
 
 ### Clipboard
 

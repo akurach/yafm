@@ -24,10 +24,18 @@ the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`⌘Z` — undo the last file operation** — reverses a move, rename, or trash (copy and
   permanent delete are intentionally not undoable). Bounded 25-deep; each reversal is guarded by
   existence checks so a changed tree is never clobbered.
-- **Archive write** — **Extract Here** (row menu / palette) unpacks `.zip` and the `.tar`
-  family (`.tar`, `.tar.gz`/`.tgz`, `.tar.bz2`/`.tbz`) into a sibling folder; **Compress** zips
-  the selection beside it. Shells out to the system `ditto`/`tar`/`zip` — no new dependency.
-  (Read-only `.zip` *browsing* is unchanged.)
+- **Archive wrapper (extract + compress)** — a wrapper over the archive tools that ship with
+  macOS, **nothing to install**:
+  - **Extract Here** (row menu / palette) unpacks *practically any* archive via libarchive
+    (`bsdtar`): `.zip`, `.7z`, `.rar` (v4), the `.tar` family (`.tar.gz`/`.tgz`,
+    `.tar.bz2`/`.tbz`, `.tar.xz`), plus `.cpio`/`.iso`/`.cab`/`.xar`/`.lha`/bare `.gz`/`.bz2`.
+    Each unpacks into a collision-suffixed sibling folder.
+  - **Password-protected archives** are detected (never an interactive hang) and prompt for a
+    password, retrying on submit; a wrong password says so.
+  - **Compress** opens a modal: choose format (ZIP · TAR+Gzip/Bzip2/XZ), compression level
+    (0–9), an optional ZIP password, and the output name.
+  - Runs `bsdtar`/`zip`/`gzip`/`bzip2` with argument arrays (no shell). Read-only `.zip`
+    *browsing* is unchanged.
 
 ## [0.9.7.1] — Hotfix: disk-image volume classification
 

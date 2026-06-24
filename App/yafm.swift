@@ -140,6 +140,11 @@ struct RootView: View {
         .sheet(isPresented: $app.connectSheet)   { ConnectServerSheet(app: app) }
         .sheet(isPresented: $app.commandPalette) { CommandPalette(app: app) }
         .sheet(isPresented: $app.cheatSheet)     { CheatSheet(app: app) }
+        .sheet(isPresented: $app.compressSheet)  { CompressSheet(app: app) }
+        .sheet(isPresented: Binding(get: { app.extractPasswordPrompt != nil },
+                                    set: { if !$0 { app.extractPasswordPrompt = nil } })) {
+            ExtractPasswordSheet(app: app)
+        }
         .overlay { SettingsOverlay(app: app) }
         .environment(\.font, IBMPlex.sans(13))
     }

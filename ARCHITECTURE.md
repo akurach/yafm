@@ -62,7 +62,7 @@ yafm/
     ├── FileIcon.swift          # cached real macOS icons (folders, files, app bundles)
     ├── FileTypeTile.swift      # FileTypeCategory + FileTypeCatalog (dict) + drawn tile renderer
     ├── Settings.swift          # AppSettings + Settings scene (General/Appearance/…); type browser
-    ├── Inspector.swift · FunctionBar.swift · RenameSheet.swift · SearchSheet.swift
+    ├── Inspector.swift · FunctionBar.swift · RenameSheet.swift · SearchSheet.swift · ArchiveSheet.swift
     ├── TagEditor.swift · CommandPalette.swift · ConnectServerSheet.swift
     ├── Onboarding.swift        # Full Disk Access sheet + limited-access banner
     ├── Keyboard.swift          # NSEvent key monitor → CommandID dispatch

@@ -557,6 +557,15 @@ final class AppState {
 
     var renameSheet: Bool = false
 
+    // Archive UI state. Compress opens a modal (format/level/password); extracting
+    // an encrypted archive raises a password prompt that retries on submit.
+    var compressSheet = false
+    var compressItems: [URL] = []
+    var compressBaseName = "Archive"
+    var extractPasswordPrompt: URL?      // archive awaiting a password (nil = none)
+    var extractPasswordWrong = false     // last password attempt was rejected
+    var archivePassword = ""             // shared secure field for both archive sheets
+
     struct TagSheetItem: Identifiable { let url: URL; var id: URL { url } }
     var tagSheet: TagSheetItem?
 
@@ -1014,31 +1023,55 @@ final class AppState {
         return sel.count == 1 && ArchiveService.canExtract(sel[0].url)
     }
 
-    /// Unpack the selected archive into a sibling folder, then reveal it.
-    func extractSelectedArchive() {
-        guard let entry = activeTab.actionable.first, ArchiveService.canExtract(entry.url) else { return }
+    /// Unpack the selected archive. Most archives just extract; an encrypted one
+    /// raises a password sheet (`extractPasswordPrompt`) and retries on submit.
+    /// libarchive handles the format detection, so this works for zip / 7z / rar /
+    /// tar.* / iso / cpio / … without any extra install.
+    func extractSelectedArchive(password: String? = nil) {
+        let entry = extractPasswordPrompt.flatMap { url in activeTab.displayed.first { $0.url == url } }
+            ?? activeTab.actionable.first
+        guard let entry, ArchiveService.canExtract(entry.url) else { return }
         let dir = activeTab.directory
         Task { @MainActor in
             do {
-                let made = try await archiveService.extract(entry.url)
+                let made = try await archiveService.extract(entry.url, password: password)
+                extractPasswordPrompt = nil; extractPasswordWrong = false; archivePassword = ""
                 if activeTab.directory == dir { activeTab.load(); activeTab.cursor = made }
+            } catch ArchiveService.ArchiveError.needsPassword {
+                extractPasswordPrompt = entry.url; extractPasswordWrong = false
+            } catch ArchiveService.ArchiveError.wrongPassword {
+                extractPasswordPrompt = entry.url; extractPasswordWrong = true
             } catch {
+                extractPasswordPrompt = nil
                 NSAlert(error: error).runModal()
             }
         }
     }
 
-    /// Zip the current selection into a `.zip` beside it (named after the single
-    /// item, or `Archive.zip` for several — collision-suffixed).
+    /// Submit the password sheet for extraction.
+    func submitExtractPassword() { extractSelectedArchive(password: archivePassword) }
+
+    /// Open the Compress modal for the current selection (format / level / password).
     func compressSelection() {
         let items = activeTab.actionable.map(\.url)
         guard !items.isEmpty else { return }
+        compressItems = items
+        compressBaseName = items.count == 1 ? items[0].deletingPathExtension().lastPathComponent : "Archive"
+        archivePassword = ""
+        compressSheet = true
+    }
+
+    /// Run the compression chosen in the modal.
+    func performCompress(format: ArchiveService.CompressionFormat, level: Int, password: String) {
+        let items = compressItems
+        guard !items.isEmpty else { return }
         let dir = activeTab.directory
-        let base = items.count == 1 ? items[0].deletingPathExtension().lastPathComponent : "Archive"
-        let dest = uniqueArchiveURL(base: base, in: dir)
+        let dest = uniqueArchiveURL(base: compressBaseName, ext: format.fileExtension, in: dir)
+        compressSheet = false
         Task { @MainActor in
             do {
-                try await archiveService.compress(items, to: dest)
+                try await archiveService.compress(items, to: dest, format: format,
+                                                  level: level, password: password.isEmpty ? nil : password)
                 if activeTab.directory == dir { activeTab.load(); activeTab.cursor = dest }
             } catch {
                 NSAlert(error: error).runModal()
@@ -1046,12 +1079,12 @@ final class AppState {
         }
     }
 
-    private func uniqueArchiveURL(base: String, in dir: URL) -> URL {
+    private func uniqueArchiveURL(base: String, ext: String, in dir: URL) -> URL {
         let fm = FileManager.default
-        var url = dir.appendingPathComponent("\(base).zip")
+        var url = dir.appendingPathComponent("\(base).\(ext)")
         var n = 2
         while fm.fileExists(atPath: url.path) {
-            url = dir.appendingPathComponent("\(base) \(n).zip"); n += 1
+            url = dir.appendingPathComponent("\(base) \(n).\(ext)"); n += 1
         }
         return url
     }
