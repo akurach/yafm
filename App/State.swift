@@ -135,14 +135,18 @@ final class TabModel: Identifiable {
         // fall back to a standardized-path scan (trailing-slash/symlink differences)
         // only on the final listing, so streaming stays O(n) per batch.
         if let t = pendingCursorTarget {
+            // Only *clear* the target when we actually land on it. A miss is left
+            // pending — transient recomputes on the previous listing (clearFilter,
+            // folderSizes reset, the empty .loading frame) fire before the new
+            // listing arrives, and must not consume the target. The next open()
+            // resets it, so a genuinely-absent target can't leak across navigations.
             if displayedIndex[t] != nil {
                 cursor = t; pendingCursorTarget = nil
             } else if !streaming {
                 let tp = t.standardizedFileURL.path
                 if let hit = displayed.first(where: { $0.url.standardizedFileURL.path == tp }) {
-                    cursor = hit.url
+                    cursor = hit.url; pendingCursorTarget = nil
                 }
-                pendingCursorTarget = nil
             }
         }
         // Keep the cursor on a visible row as the filter narrows the list. Only
@@ -160,9 +164,12 @@ final class TabModel: Identifiable {
         directory = url
         selection = []
         cursor = nil
-        pendingCursorTarget = focus
+        pendingCursorTarget = nil
         gitStatus = [:]
-        clearFilter()
+        clearFilter()                  // mutates `filter` → recomputeDisplayed on the *old*
+                                       // listing; set the focus target only AFTER, so that
+                                       // stale recompute can't consume it (cursor-restore bug)
+        pendingCursorTarget = focus
         onNavigate?(url)
         load()
     }
