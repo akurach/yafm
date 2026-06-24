@@ -53,6 +53,11 @@ final class TabModel: Identifiable {
     var selection: Set<URL> = []
     var cursor: URL?
 
+    /// A row to focus once the next listing contains it — used so going *up* out of
+    /// a folder/archive lands the cursor back on the item you came from (TC-style),
+    /// not at the top. Cleared the moment it's applied or a new navigation starts.
+    private var pendingCursorTarget: URL?
+
     /// VCS markers for the entries in this listing, keyed by entry URL. Filled
     /// asynchronously after a directory finishes loading; empty outside a repo.
     private(set) var gitStatus: [URL: String] = [:]
@@ -126,6 +131,20 @@ final class TabModel: Identifiable {
         idx.reserveCapacity(displayed.count)
         for (i, e) in displayed.enumerated() { idx[e.url] = i }
         displayedIndex = idx
+        // Land the cursor on the item we came from (going up). Match exactly first;
+        // fall back to a standardized-path scan (trailing-slash/symlink differences)
+        // only on the final listing, so streaming stays O(n) per batch.
+        if let t = pendingCursorTarget {
+            if displayedIndex[t] != nil {
+                cursor = t; pendingCursorTarget = nil
+            } else if !streaming {
+                let tp = t.standardizedFileURL.path
+                if let hit = displayed.first(where: { $0.url.standardizedFileURL.path == tp }) {
+                    cursor = hit.url
+                }
+                pendingCursorTarget = nil
+            }
+        }
         // Keep the cursor on a visible row as the filter narrows the list. Only
         // needed while filtering — the O(n) scan was wasted on every batch.
         if filterActive, let c = cursor, displayedIndex[c] == nil {
@@ -136,11 +155,12 @@ final class TabModel: Identifiable {
     /// URL → row index in `displayed`, rebuilt with it (perf).
     private(set) var displayedIndex: [URL: Int] = [:]
 
-    func open(_ url: URL) {
+    func open(_ url: URL, focus: URL? = nil) {
         virtualName = nil
         directory = url
         selection = []
         cursor = nil
+        pendingCursorTarget = focus
         gitStatus = [:]
         clearFilter()
         onNavigate?(url)
@@ -173,17 +193,18 @@ final class TabModel: Identifiable {
         if directory.scheme == "archive", let loc = ArchiveLocation(url: directory) {
             let inner = loc.inner.trimmingCharacters(in: CharacterSet(charactersIn: "/"))
             if inner.isEmpty {
-                open(loc.zipURL.deletingLastPathComponent())
+                // Leaving the archive → focus the .zip in its real folder.
+                open(loc.zipURL.deletingLastPathComponent(), focus: loc.zipURL)
             } else {
                 let parentInner = (inner as NSString).deletingLastPathComponent
                 let u = ArchiveLocation.url(zip: loc.zipURL,
                                             inner: parentInner.isEmpty ? "" : parentInner + "/")
-                open(u ?? loc.zipURL.deletingLastPathComponent())
+                open(u ?? loc.zipURL.deletingLastPathComponent(), focus: directory)
             }
             return
         }
         let parent = directory.deletingLastPathComponent()
-        if parent != directory { open(parent) }
+        if parent != directory { open(parent, focus: directory) }
     }
 
     func load() {

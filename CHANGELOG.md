@@ -7,6 +7,9 @@ the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [Unreleased] — Functional depth (vs qSpace backlog)
 
 ### Fixed
+- **Going up now restores the cursor** — leaving a folder (or a browsed archive) puts the
+  cursor back on the item you came from, Total Commander-style, instead of jumping to the top of
+  the parent listing.
 - **Cyrillic (and other legacy-codepage) names inside a browsed `.zip`** showed as mojibake —
   `unzip -Z1` emits filenames in the zip's stored encoding. Listing now goes through the bundled
   7-Zip (`7zz l -slt`), which decodes CP866/CP1251 to correct Unicode; `unzip` stays as fallback.
