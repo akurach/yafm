@@ -317,11 +317,15 @@ daily-use leverage; the first three are *surfacing work over code that already e
 - [x] **`⌘Z` undo for the last file operation.** ✅ Reverses move / rename / trash (copy &
   permanent delete excluded by design), 25-deep, existence-guarded. (`UndoAction`,
   `AppState.performUndo`.)
-- [x] **Archive wrapper** — ✅ Extract Here unpacks *practically any* archive via libarchive
-  (`bsdtar`): zip/7z/rar4/tar.*/cpio/iso/cab/xar/bare gz·bz2, **with password support** (detect →
-  prompt → retry, no interactive hang). Compress modal: format (zip/tar.gz/bz2/xz) + level +
-  optional zip password. System tools only, no install. (`ArchiveService.swift`, `ArchiveSheet.swift`.)
-  Remaining: `.rar5` (libarchive reads only v4) and *creating* `.7z` need a bundled binary — TODO.
+- [x] **Archive wrapper** — ✅ Extract Here unpacks *practically any* archive: zip/7z/**rar5**/
+  tar.*/cpio/iso/cab/xar/bare gz·bz2, with password support (zip + 7z; detect → prompt → retry,
+  no hang) and a smart single-root unwrap. Compress modal: format (zip/**7z**/tar.gz/bz2/xz),
+  level, 7z solid, password (zip weak / 7z AES-256), split-into-volumes, ignore hidden/.git,
+  save-location, move-originals-to-Trash. Bundles 7-Zip CLI (`7zz`, universal) for 7z-create +
+  rar5; everything else uses stock macOS tools. (`ArchiveService.swift`, `ArchiveSheet.swift`,
+  `App/Resources/bin/7zz`.)
+  - [ ] **Sign the bundled `7zz`** in the notarized build (hardened runtime blocks an unsigned
+    nested helper). Gated on the same paid cert as notarization.
 - [ ] **Deeper batch rename** — per-row preview override; regex beyond single find/replace.
 - [ ] **Batch-tag on multiselect** — one "tag selection" action instead of per-row submenu.
 - [ ] **Recursive / scoped search** — `⌘F` is single-folder scoped; add search-from-here.

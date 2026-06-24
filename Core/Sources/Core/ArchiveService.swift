@@ -34,6 +34,30 @@ public actor ArchiveService {
     /// password.
     private static let noPasswordProbe = "\u{1}yafm-no-password\u{1}"
 
+    /// Path to the bundled (or system) `7zz` — 7-Zip's CLI — used for creating
+    /// `.7z` and for the most robust RAR/7z extraction. Resolved once: the binary
+    /// shipped inside the app at `Resources/bin/7zz`, then a `YAFM_7ZZ` dev
+    /// override, then a Homebrew/`/usr/local` install. nil if none is found.
+    public static let sevenZipPath: String? = {
+        let fm = FileManager.default
+        if let url = Bundle.main.resourceURL?.appendingPathComponent("bin/7zz"),
+           fm.isExecutableFile(atPath: url.path) { return url.path }
+        if let env = ProcessInfo.processInfo.environment["YAFM_7ZZ"],
+           fm.isExecutableFile(atPath: env) { return env }
+        for p in ["/opt/homebrew/bin/7zz", "/usr/local/bin/7zz",
+                  "/opt/homebrew/bin/7z", "/usr/local/bin/7z"]
+        where fm.isExecutableFile(atPath: p) { return p }
+        return nil
+    }()
+
+    public static var sevenZipAvailable: Bool { sevenZipPath != nil }
+
+    /// Formats where 7-Zip is the better (or only) reader — route these to `7zz`
+    /// when it's available, falling back to libarchive otherwise.
+    private static func prefersSevenZip(_ url: URL) -> Bool {
+        ["rar", "cbr", "7z"].contains(url.pathExtension.lowercased())
+    }
+
     /// Extensions we offer **Extract Here** for. Extraction itself goes through
     /// libarchive, which auto-detects the real format regardless of extension.
     private static let extractable: Set<String> = [
@@ -69,21 +93,52 @@ public actor ArchiveService {
             return dest
         }
 
+        // RAR (esp. v5) and 7z extract most reliably through 7-Zip when present.
+        let useSevenZip = Self.prefersSevenZip(archive) && Self.sevenZipAvailable
         do {
-            try await run("/usr/bin/tar",
-                          ["--passphrase", password ?? Self.noPasswordProbe,
-                           "-xf", archive.path, "-C", dest.path])
+            if useSevenZip, let z = Self.sevenZipPath {
+                // -p<pass> with a value disables the interactive prompt; -y = assume
+                // yes; -bb0/-bso0 quiet. A wrong/sentinel pass fails cleanly.
+                try await run(z, ["x", archive.path, "-o\(dest.path)", "-y", "-bso0",
+                                  "-p\(password ?? Self.noPasswordProbe)"])
+            } else {
+                try await run("/usr/bin/tar",
+                              ["--passphrase", password ?? Self.noPasswordProbe,
+                               "-xf", archive.path, "-C", dest.path])
+            }
         } catch let ArchiveError.toolFailed(msg) {
             try? FileManager.default.removeItem(at: dest)
             if Self.looksLikePasswordError(msg) {
                 throw password == nil ? ArchiveError.needsPassword : ArchiveError.wrongPassword
+            }
+            // A RAR with no 7-Zip available is the one format we genuinely can't do.
+            if Self.prefersSevenZip(archive) && !Self.sevenZipAvailable {
+                throw ArchiveError.unsupported(archive.lastPathComponent + " (needs 7-Zip)")
             }
             throw ArchiveError.toolFailed(msg)
         } catch {
             try? FileManager.default.removeItem(at: dest)
             throw error
         }
-        return dest
+        return flattenSingleRoot(dest, beside: archive)
+    }
+
+    /// If the extraction produced exactly one top-level entry, the wrap folder is
+    /// redundant — lift that entry up beside the archive (collision-suffixed) and
+    /// drop the empty wrapper, matching the "wrap only if necessary" behaviour.
+    private func flattenSingleRoot(_ dest: URL, beside archive: URL) -> URL {
+        let fm = FileManager.default
+        guard let kids = try? fm.contentsOfDirectory(at: dest, includingPropertiesForKeys: nil,
+                                                     options: [.skipsHiddenFiles]),
+              kids.count == 1 else { return dest }
+        let only = kids[0]
+        let target = uniqueSibling(named: only.lastPathComponent,
+                                   in: archive.deletingLastPathComponent())
+        do {
+            try fm.moveItem(at: only, to: target)
+            try? fm.removeItem(at: dest)
+            return target
+        } catch { return dest }
     }
 
     private static func looksLikePasswordError(_ msg: String) -> Bool {
@@ -118,51 +173,100 @@ public actor ArchiveService {
 
     /// The archive kinds we can *create* with system tools.
     public enum CompressionFormat: String, Sendable, CaseIterable, Identifiable {
-        case zip, tarGz, tarBz2, tarXz
+        case zip, sevenZip, tarGz, tarBz2, tarXz
         public var id: String { rawValue }
         public var label: String {
             switch self {
-            case .zip:    return "ZIP"
-            case .tarGz:  return "TAR + Gzip"
-            case .tarBz2: return "TAR + Bzip2"
-            case .tarXz:  return "TAR + XZ"
+            case .zip:      return "ZIP"
+            case .sevenZip: return "7z"
+            case .tarGz:    return "TAR + Gzip"
+            case .tarBz2:   return "TAR + Bzip2"
+            case .tarXz:    return "TAR + XZ"
             }
         }
         public var fileExtension: String {
             switch self {
-            case .zip: return "zip"; case .tarGz: return "tar.gz"
+            case .zip: return "zip"; case .sevenZip: return "7z"; case .tarGz: return "tar.gz"
             case .tarBz2: return "tar.bz2"; case .tarXz: return "tar.xz"
             }
         }
-        /// Only the zip writer supports a password with the system tools.
-        public var supportsPassword: Bool { self == .zip }
-        /// A 0–9 level slider is meaningful for zip and gzip; bzip2/xz use a default.
-        public var supportsLevel: Bool { self == .zip || self == .tarGz }
+        /// zip (weak PKZip) and 7z (strong AES-256) support a password.
+        public var supportsPassword: Bool { self == .zip || self == .sevenZip }
+        /// A 0–9 level slider is meaningful for zip, 7z, and gzip.
+        public var supportsLevel: Bool { self == .zip || self == .sevenZip || self == .tarGz }
+        /// 7z creation needs the bundled 7-Zip; everything else uses always-present tools.
+        public var needsSevenZip: Bool { self == .sevenZip }
     }
 
-    /// Create `dest` from `items` (all in the same parent). `level` is 0–9 (clamped);
-    /// `password` only applies to `.zip`. Returns the archive created.
+    /// The formats offerable right now — drops `.sevenZip` if no 7-Zip is found.
+    public static var availableFormats: [CompressionFormat] {
+        CompressionFormat.allCases.filter { !$0.needsSevenZip || sevenZipAvailable }
+    }
+
+    /// Options for **Compress**, mirroring the per-action dialog.
+    public struct CompressOptions: Sendable {
+        public var format: CompressionFormat
+        public var level: Int                 // 0–9 (clamped)
+        public var password: String?          // zip / 7z only
+        public var solid: Bool                // 7z solid block (better ratio)
+        public var volumeSizeMB: Int?         // split into N-MB volumes (zip / 7z)
+        public var excludeHidden: Bool        // skip dotfiles + .DS_Store
+        public var excludeVCS: Bool           // skip .git / .svn
+        public init(format: CompressionFormat, level: Int = 6, password: String? = nil,
+                    solid: Bool = false, volumeSizeMB: Int? = nil,
+                    excludeHidden: Bool = false, excludeVCS: Bool = false) {
+            self.format = format; self.level = level; self.password = password
+            self.solid = solid; self.volumeSizeMB = volumeSizeMB
+            self.excludeHidden = excludeHidden; self.excludeVCS = excludeVCS
+        }
+    }
+
+    /// Create `dest` from `items` (all in the same parent) per `options`. Returns
+    /// the archive created (volume-splitting yields `dest` as the first part).
     @discardableResult
-    public func compress(_ items: [URL], to dest: URL, format: CompressionFormat,
-                         level: Int = 6, password: String? = nil) async throws -> URL {
+    public func compress(_ items: [URL], to dest: URL, options o: CompressOptions) async throws -> URL {
         guard !items.isEmpty else { throw ArchiveError.unsupported("(nothing selected)") }
         let parent = items[0].deletingLastPathComponent().path
         let names = items.map(\.lastPathComponent)
-        let lvl = max(0, min(9, level))
+        let lvl = max(0, min(9, o.level))
+        let pw = (o.password?.isEmpty == false) ? o.password : nil
 
-        switch format {
+        switch o.format {
         case .zip:
             var args = ["-r", "-q", "-\(lvl)"]
-            if let password, !password.isEmpty { args += ["-P", password] }
-            try await run("/usr/bin/zip", args + [dest.path] + names, cwd: parent)
+            if let pw { args += ["-P", pw] }
+            if let mb = o.volumeSizeMB, mb > 0 { args += ["-s", "\(mb)m"] }
+            args += [dest.path] + names
+            // `zip -x` exclusion globs must trail the file list.
+            let excludes = zipExcludes(o)
+            if !excludes.isEmpty { args += ["-x"] + excludes }
+            try await run("/usr/bin/zip", args, cwd: parent)
+        case .sevenZip:
+            guard let z = Self.sevenZipPath else { throw ArchiveError.unsupported("7z (needs 7-Zip)") }
+            var args = ["a", "-t7z", "-mx=\(lvl)", "-ms=\(o.solid ? "on" : "off")", "-y", "-bso0"]
+            if let pw { args += ["-p\(pw)", "-mhe=on"] }
+            if let mb = o.volumeSizeMB, mb > 0 { args += ["-v\(mb)m"] }
+            if o.excludeHidden { args += ["-xr!.*"] }
+            if o.excludeVCS { args += ["-xr!.git", "-xr!.svn"] }
+            try await run(z, args + [dest.path] + names, cwd: parent)
         case .tarGz, .tarBz2, .tarXz:
-            let flag: String = format == .tarGz ? "-czf" : (format == .tarBz2 ? "-cjf" : "-cJf")
+            let flag: String = o.format == .tarGz ? "-czf" : (o.format == .tarBz2 ? "-cjf" : "-cJf")
             var args: [String] = []
-            if format.supportsLevel { args += ["--options", "gzip:compression-level=\(lvl)"] }
+            if o.format.supportsLevel { args += ["--options", "gzip:compression-level=\(lvl)"] }
+            if o.excludeHidden { args += ["--exclude", ".*", "--exclude", ".DS_Store"] }
+            if o.excludeVCS { args += ["--exclude", ".git", "--exclude", ".svn"] }
             args += [flag, dest.path, "-C", parent] + names
             try await run("/usr/bin/tar", args)
         }
         return dest
+    }
+
+    /// `zip -x` exclusion globs (matched against archive-relative paths).
+    private func zipExcludes(_ o: CompressOptions) -> [String] {
+        var pats: [String] = []
+        if o.excludeHidden { pats += [".*", "*/.*", "*/.DS_Store", ".DS_Store"] }
+        if o.excludeVCS { pats += ["*.git/*", "*.git", "*.svn/*", "*.svn"] }
+        return pats
     }
 
     // MARK: Helpers

@@ -30,6 +30,14 @@ if [[ -d "$ROOT/App/Resources/Fonts" ]]; then
 	cp -R "$ROOT/App/Resources/Fonts" "$APP/Contents/Resources/Fonts"
 fi
 
+# Bundled helper binaries (7zz — 7-Zip CLI for .7z create + rar5 extract).
+# Shipped at Contents/Resources/bin, invoked as a separate process; the archive
+# service locates it via Bundle.main. Preserve the executable bit.
+if [[ -d "$ROOT/App/Resources/bin" ]]; then
+	cp -R "$ROOT/App/Resources/bin" "$APP/Contents/Resources/bin"
+	chmod +x "$APP/Contents/Resources/bin/7zz" 2>/dev/null || true
+fi
+
 # Localizations (v0.7 i18n): copy every <lang>.lproj so SwiftUI's LocalizedString
 # lookup resolves against the chosen language. Bundle.main is the app bundle here.
 for lproj in "$ROOT"/App/Resources/*.lproj; do

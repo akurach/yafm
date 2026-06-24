@@ -24,17 +24,22 @@ the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`⌘Z` — undo the last file operation** — reverses a move, rename, or trash (copy and
   permanent delete are intentionally not undoable). Bounded 25-deep; each reversal is guarded by
   existence checks so a changed tree is never clobbered.
-- **Archive wrapper (extract + compress)** — a wrapper over the archive tools that ship with
-  macOS, **nothing to install**:
-  - **Extract Here** (row menu / palette) unpacks *practically any* archive via libarchive
-    (`bsdtar`): `.zip`, `.7z`, `.rar` (v4), the `.tar` family (`.tar.gz`/`.tgz`,
+- **Archive wrapper (extract + compress)** — a wrapper over the archive tools, **nothing to
+  install by the user**; the app bundles the 7-Zip CLI (`7zz`, universal) for the formats the
+  stock tools can't do:
+  - **Extract Here** (row menu / palette) unpacks *practically any* archive — `.zip`, `.7z`,
+    `.rar` (incl. **v5**, via bundled 7-Zip), the `.tar` family (`.tar.gz`/`.tgz`,
     `.tar.bz2`/`.tbz`, `.tar.xz`), plus `.cpio`/`.iso`/`.cab`/`.xar`/`.lha`/bare `.gz`/`.bz2`.
-    Each unpacks into a collision-suffixed sibling folder.
+    RAR/7z route through 7-Zip; the rest through libarchive (`bsdtar`).
+  - **Smart wrapper** — extraction goes into a sibling folder, but if the archive has a single
+    top-level entry the redundant folder is dropped (the entry lifts up beside the archive).
   - **Password-protected archives** are detected (never an interactive hang) and prompt for a
-    password, retrying on submit; a wrong password says so.
-  - **Compress** opens a modal: choose format (ZIP · TAR+Gzip/Bzip2/XZ), compression level
-    (0–9), an optional ZIP password, and the output name.
-  - Runs `bsdtar`/`zip`/`gzip`/`bzip2` with argument arrays (no shell). Read-only `.zip`
+    password, retrying on submit; a wrong password says so. Covers encrypted zip **and 7z**.
+  - **Compress** opens a full modal: format (**ZIP · 7z** · TAR+Gzip/Bzip2/XZ), level (0–9),
+    **7z solid block**, **password** (ZIP weak / **7z AES-256 + encrypted names**), **split into
+    volumes** (MB), **ignore** hidden + `.git`/`.svn`, **save location**, and **move originals to
+    Trash** after.
+  - Runs `7zz`/`bsdtar`/`zip`/`gzip`/`bzip2` with argument arrays (no shell). Read-only `.zip`
     *browsing* is unchanged.
 
 ## [0.9.7.1] — Hotfix: disk-image volume classification

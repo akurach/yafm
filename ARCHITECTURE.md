@@ -40,7 +40,7 @@ yafm/
 │   ├── FileSystemRouter.swift  # scheme → provider routing (local now; SMB/VFS behind it)
 │   ├── SMBFileSystem.swift     # native SMB/AFP share mounting (v0.7 VFS)
 │   ├── Operations.swift        # FileEngine — streamed copy/move/delete/rename + progress
-│   ├── ArchiveFileSystem.swift # read-only .zip browsing (VFS); ArchiveService.swift = extract/compress (ditto/tar/zip)
+│   ├── ArchiveFileSystem.swift # read-only .zip browsing (VFS); ArchiveService.swift = extract/compress (bsdtar/zip/bundled 7zz)
 │   ├── CompareFolders.swift    # pure dual-pane diff (name/size/mtime → CompareMark)
 │   ├── Tags.swift              # TagService (xattr bridge + index + background indexer)
 │   ├── Volumes.swift           # VolumeService, Volume; VolumeDetection.swift = transport/kind (incl. disk-image → Virtual)

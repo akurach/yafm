@@ -145,11 +145,17 @@ Run **Compare Folders** (⌘K, or **File Ops** menu) to diff the two panes by na
 
 ### Archives
 
-yafm wraps the archive tools that already ship with macOS — **nothing to install.**
+yafm wraps the system archive tools and bundles the 7-Zip CLI — **you never install anything.**
 
 - **Browse** a `.zip` read-only by opening it like a folder.
-- **Extract Here** (right-click an archive, or ⌘K) unpacks *practically any* archive — `.zip`, `.7z`, `.rar` (v4), the `.tar` family (`.tar.gz`/`.tgz`, `.tar.bz2`/`.tbz`, `.tar.xz`), and more (`.cpio`, `.iso`, `.cab`, `.xar`, bare `.gz`/`.bz2`) — into a sibling folder. If the archive is **password-protected**, yafm asks for the password and retries.
-- **Compress** (right-click a selection, or ⌘K) opens a dialog: pick the **format** (ZIP, or TAR + Gzip/Bzip2/XZ), the **compression level** (0–9), an optional **password** (ZIP only — note macOS ZIP uses legacy/weak encryption), and the output name.
+- **Extract Here** (right-click an archive, or ⌘K) unpacks *practically any* archive — `.zip`, `.7z`, `.rar` (including v5), the `.tar` family (`.tar.gz`/`.tgz`, `.tar.bz2`/`.tbz`, `.tar.xz`), and more (`.cpio`, `.iso`, `.cab`, `.xar`, bare `.gz`/`.bz2`). It unpacks into a sibling folder — but if the archive holds a single top-level item, the extra folder is skipped. If the archive is **password-protected** (zip or 7z), yafm asks for the password and retries.
+- **Compress** (right-click a selection, or ⌘K) opens a dialog:
+  - **Format** — ZIP, **7z**, or TAR + Gzip/Bzip2/XZ.
+  - **Compression level** 0–9, plus **Solid** block for 7z (better ratio).
+  - **Password** — ZIP (legacy/weak) or **7z (AES-256, also hides file names)**.
+  - **Split into volumes** of N MB (ZIP/7z).
+  - **Ignore** hidden files and `.git`/`.svn`.
+  - **Save to** another folder, and optionally **move the originals to Trash** afterwards.
 
 ### Clipboard
 

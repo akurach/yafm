@@ -1061,18 +1061,26 @@ final class AppState {
         compressSheet = true
     }
 
-    /// Run the compression chosen in the modal.
-    func performCompress(format: ArchiveService.CompressionFormat, level: Int, password: String) {
+    /// Run the compression chosen in the modal. `saveDir` defaults to the active
+    /// folder; `trashOriginals` moves the sources to the Trash after a clean archive.
+    func performCompress(options: ArchiveService.CompressOptions,
+                         saveDir: URL? = nil, trashOriginals: Bool = false) {
         let items = compressItems
         guard !items.isEmpty else { return }
-        let dir = activeTab.directory
-        let dest = uniqueArchiveURL(base: compressBaseName, ext: format.fileExtension, in: dir)
+        let dir = saveDir ?? activeTab.directory
+        let dest = uniqueArchiveURL(base: compressBaseName, ext: options.format.fileExtension, in: dir)
         compressSheet = false
         Task { @MainActor in
             do {
-                try await archiveService.compress(items, to: dest, format: format,
-                                                  level: level, password: password.isEmpty ? nil : password)
-                if activeTab.directory == dir { activeTab.load(); activeTab.cursor = dest }
+                try await archiveService.compress(items, to: dest, options: options)
+                if trashOriginals {
+                    for u in items { try? FileManager.default.trashItem(at: u, resultingItemURL: nil) }
+                    tagCloud.forgetTagged(items)
+                }
+                for pane in [left, right] where pane.active.directory.standardizedFileURL == dir.standardizedFileURL {
+                    pane.active.load()
+                }
+                activeTab.load(); activeTab.cursor = dest
             } catch {
                 NSAlert(error: error).runModal()
             }

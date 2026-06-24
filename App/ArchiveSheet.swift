@@ -1,10 +1,12 @@
 import SwiftUI
+import AppKit
 import Core
 
-// MARK: - Compress modal (choose format · level · password)
+// MARK: - Compress modal (format · level · solid · password · split · ignore · after)
 
-/// Modal for **Compress**: pick the archive format, compression level, optional
-/// password (zip only), and the output name. Drives `AppState.performCompress`.
+/// Modal for **Compress** — the full per-action dialog (format, level, solid
+/// block, password, split-into-volumes, ignore rules, save location, and what to
+/// do with the originals). Drives `AppState.performCompress`.
 struct CompressSheet: View {
     let app: AppState
     @Environment(\.dismiss) private var dismiss
@@ -13,6 +15,13 @@ struct CompressSheet: View {
     @State private var level = 6
     @State private var password = ""
     @State private var name = "Archive"
+    @State private var solid = false
+    @State private var split = false
+    @State private var volumeMB = 100
+    @State private var ignoreHidden = false
+    @State private var ignoreVCS = false
+    @State private var trashOriginals = false
+    @State private var saveDir: URL? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -30,10 +39,24 @@ struct CompressSheet: View {
                     }
                 }
                 GridRow {
+                    Text("Save to").gridColumnAlignment(.trailing).foregroundStyle(.secondary)
+                    HStack {
+                        Text(saveDir?.lastPathComponent ?? "Same folder").lineLimit(1).foregroundStyle(.secondary)
+                        Button("Choose…") { chooseSaveDir() }
+                        if saveDir != nil { Button("Reset") { saveDir = nil }.buttonStyle(.borderless) }
+                    }
+                }
+                GridRow {
                     Text("Format").gridColumnAlignment(.trailing).foregroundStyle(.secondary)
-                    Picker("", selection: $format) {
-                        ForEach(ArchiveService.CompressionFormat.allCases) { Text($0.label).tag($0) }
-                    }.labelsHidden().fixedSize()
+                    HStack(spacing: 10) {
+                        Picker("", selection: $format) {
+                            ForEach(ArchiveService.availableFormats) { Text($0.label).tag($0) }
+                        }.labelsHidden().fixedSize()
+                        if format == .sevenZip {
+                            Toggle("Solid", isOn: $solid).toggleStyle(.checkbox)
+                                .help("Better ratio; the whole archive decompresses as one block")
+                        }
+                    }
                 }
                 GridRow {
                     Text("Compression").gridColumnAlignment(.trailing).foregroundStyle(.secondary)
@@ -42,37 +65,80 @@ struct CompressSheet: View {
                                               set: { level = Int($0.rounded()) }), in: 0...9, step: 1)
                             .frame(width: 160)
                             .disabled(!format.supportsLevel)
-                        Text(levelLabel).foregroundStyle(.secondary).font(.caption).frame(width: 72, alignment: .leading)
+                        Text(levelLabel).foregroundStyle(.secondary).font(.caption).frame(width: 80, alignment: .leading)
                     }
                 }
                 GridRow {
                     Text("Password").gridColumnAlignment(.trailing).foregroundStyle(.secondary)
                     VStack(alignment: .leading, spacing: 2) {
-                        SecureField(format.supportsPassword ? "optional" : "ZIP only", text: $password)
+                        SecureField(format.supportsPassword ? "optional" : "ZIP / 7z only", text: $password)
                             .textFieldStyle(.roundedBorder).frame(width: 200)
                             .disabled(!format.supportsPassword)
-                        if format.supportsPassword && !password.isEmpty {
-                            Text("ZIP uses legacy (weak) encryption").font(.caption2).foregroundStyle(.tertiary)
+                        if format == .zip && !password.isEmpty {
+                            Text("ZIP uses legacy (weak) encryption — 7z is AES-256").font(.caption2).foregroundStyle(.tertiary)
+                        } else if format == .sevenZip && !password.isEmpty {
+                            Text("7z: AES-256, encrypted file names").font(.caption2).foregroundStyle(.tertiary)
                         }
                     }
+                }
+                GridRow {
+                    Text("Split").gridColumnAlignment(.trailing).foregroundStyle(.secondary)
+                    HStack(spacing: 6) {
+                        Toggle("Into volumes of", isOn: $split).toggleStyle(.checkbox)
+                            .disabled(!splitSupported)
+                        TextField("100", value: $volumeMB, format: .number)
+                            .textFieldStyle(.roundedBorder).frame(width: 56)
+                            .disabled(!split || !splitSupported)
+                        Text("MB").foregroundStyle(.secondary)
+                    }
+                }
+                GridRow {
+                    Text("Ignore").gridColumnAlignment(.trailing).foregroundStyle(.secondary)
+                    HStack(spacing: 12) {
+                        Toggle("Hidden", isOn: $ignoreHidden).toggleStyle(.checkbox)
+                        Toggle(".git / .svn", isOn: $ignoreVCS).toggleStyle(.checkbox)
+                    }
+                }
+                GridRow {
+                    Text("After").gridColumnAlignment(.trailing).foregroundStyle(.secondary)
+                    Toggle("Move originals to Trash", isOn: $trashOriginals).toggleStyle(.checkbox)
                 }
             }
 
             HStack {
                 Spacer()
                 Button("Cancel") { dismiss() }
-                Button("Create") {
-                    app.compressBaseName = name.isEmpty ? "Archive" : name
-                    app.performCompress(format: format, level: level,
-                                        password: format.supportsPassword ? password : "")
-                }
-                .keyboardShortcut(.defaultAction)
+                Button("Create") { create() }.keyboardShortcut(.defaultAction)
             }
         }
         .padding(20)
-        .frame(width: 420)
+        .frame(width: 460)
         .onAppear { name = app.compressBaseName }
-        .onChange(of: format) { _, f in if !f.supportsPassword { password = "" } }
+        .onChange(of: format) { _, f in
+            if !f.supportsPassword { password = "" }
+            if !splitSupported { split = false }
+        }
+    }
+
+    private var splitSupported: Bool { format == .zip || format == .sevenZip }
+
+    private func create() {
+        app.compressBaseName = name.isEmpty ? "Archive" : name
+        let opts = ArchiveService.CompressOptions(
+            format: format, level: level,
+            password: format.supportsPassword ? password : nil,
+            solid: solid,
+            volumeSizeMB: (split && splitSupported && volumeMB > 0) ? volumeMB : nil,
+            excludeHidden: ignoreHidden, excludeVCS: ignoreVCS)
+        app.performCompress(options: opts, saveDir: saveDir, trashOriginals: trashOriginals)
+    }
+
+    private func chooseSaveDir() {
+        let panel = NSOpenPanel()
+        panel.canChooseDirectories = true
+        panel.canChooseFiles = false
+        panel.allowsMultipleSelection = false
+        if panel.runModal() == .OK { saveDir = panel.url }
     }
 
     private var levelLabel: String {

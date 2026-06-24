@@ -89,7 +89,15 @@ yafm is non-sandboxed but still bound by TCC. Two gates surface in the UI:
 ## Archive extract/compress (exec + path surface, v0.9.8)
 
 **Extract Here** / **Compress** wrap the system binaries `bsdtar` (libarchive), `zip`, `unzip`,
-`gzip`, `bzip2` (`Core/ArchiveService.swift`). Notes on the surface:
+`gzip`, `bzip2`, plus a **bundled 7-Zip CLI** (`7zz`, at `App/Resources/bin/7zz`) used for
+`.7z` creation and RAR/7z extraction (`Core/ArchiveService.swift`). Notes on the surface:
+
+- **Bundled binary.** `7zz` is invoked as a **separate process** (exec, not linked), located via
+  `Bundle.main`; yafm isn't a derivative work of it (mere aggregation). It is the official 7-Zip
+  build; its license sits beside it (`7zz-License.txt`). For the **notarized** build it must be
+  codesigned with the same identity (the hardened runtime refuses an unsigned nested helper) —
+  tracked in `ROADMAP.md`, gated on the paid cert. If `7zz` is absent, 7z-create and rar5 simply
+  aren't offered; everything else still works on the stock tools.
 
 - **No shell.** `Process` runs with an explicit executable path and an **argument array** — there
   is no `/bin/sh -c`, so archive names / paths / passwords are never interpreted by a shell (no
