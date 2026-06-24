@@ -79,6 +79,28 @@ final class CoreLogicTests: XCTestCase {
         XCTAssertEqual(sorted.map(\.name), ["Alpha", "Beta", "alpha", "zeta"])
     }
 
+    func testSortFoldersBySizeWithinDirsGroup() {
+        let dir = { (name: String) in
+            FSEntry(url: URL(fileURLWithPath: "/\(name)"), name: name, isDirectory: true, isHidden: false, size: nil, modified: nil)
+        }
+        let file = { (name: String, size: Int64) in
+            FSEntry(url: URL(fileURLWithPath: "/\(name)"), name: name, isDirectory: false, isHidden: false, size: size, modified: nil)
+        }
+        let small = dir("small"), big = dir("big")
+        let input = [file("a.bin", 10), small, file("b.bin", 99), big]
+        let sizes: [URL: Int64] = [big.url: 5000, small.url: 12]
+        // Descending size: dirs first (big folder above small), then files (99 > 10).
+        let sorted = input.sorted(by: SortOrder(key: .size, ascending: false), folderSizes: sizes)
+        XCTAssertEqual(sorted.map(\.name), ["big", "small", "b.bin", "a.bin"])
+    }
+
+    func testSortBySizeWithoutFolderSizesKeepsDirsFirst() {
+        let dir = FSEntry(url: URL(fileURLWithPath: "/d"), name: "d", isDirectory: true, isHidden: false, size: nil, modified: nil)
+        let file = FSEntry(url: URL(fileURLWithPath: "/f"), name: "f", isDirectory: false, isHidden: false, size: 99, modified: nil)
+        let sorted = [file, dir].sorted(by: SortOrder(key: .size, ascending: false))
+        XCTAssertEqual(sorted.map(\.name), ["d", "f"])   // dir still first, no folder sizes supplied
+    }
+
     // MARK: Bulk rename
 
     func testRenameRuleRegexAndSequence() {

@@ -123,7 +123,7 @@ struct PathBarView: View {
                     }.buttonStyle(.plain)
                     .accessibilityLabel("Columns")
                     .popover(isPresented: $showColumns, arrowEdge: .bottom) {
-                        ColumnOptionsPopover(settings: app.settings)
+                        ColumnOptionsPopover(settings: app.settings, app: app)
                     }
                 }
                 Button {
@@ -144,6 +144,13 @@ struct PathBarView: View {
         }
         .onChange(of: editing) { _, on in
             if on { focused = true }
+        }
+        .onChange(of: tab.pathEditToken) { _, _ in
+            // ⌘L on the active pane: focus the path bar for typing.
+            activate()
+            guard !editing else { return }
+            typed = tab.directory.path
+            editing = true
         }
     }
 
@@ -169,17 +176,22 @@ struct PathBarView: View {
 /// (also available by right-clicking the column header). Name is always shown.
 struct ColumnOptionsPopover: View {
     @Bindable var settings: AppSettings
+    var app: AppState? = nil
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("COLUMNS").font(IBMPlex.sans(10, weight: .semibold)).foregroundStyle(.secondary)
             Toggle("Size", isOn: $settings.showSizeColumn)
+            Toggle("Folder sizes", isOn: $settings.computeFolderSizes)
+                .disabled(!settings.showSizeColumn)
+                .help("Compute and show each folder's total size (slower on large trees)")
+                .onChange(of: settings.computeFolderSizes) { _, _ in app?.applyFolderSizePreference() }
             Toggle("Modified", isOn: $settings.showModifiedColumn)
             Toggle("Kind", isOn: $settings.showKindColumn)
             Toggle("Git status", isOn: $settings.showGitColumn)
         }
         .toggleStyle(.checkbox)
         .padding(12)
-        .frame(width: 180)
+        .frame(width: 200)
     }
 }
 
@@ -422,6 +434,16 @@ struct FileTableView: View {
     /// mutating `nameW`) keeps the row within the pane with no state write that loops.
     private var effectiveNameW: Double { max(80, min(nameW, paneWidth - fixedColumnsWidth)) }
 
+    // Size cell: files show their byte size; folders show "--" unless folder-size
+    // computation is on, then the computed total (or "…" while it's still walking).
+    private func sizeText(for entry: FSEntry) -> String {
+        if entry.isDirectory {
+            guard app.settings.computeFolderSizes else { return "--" }
+            return tab.folderSizes[entry.url].map(byteString) ?? "…"
+        }
+        return entry.size.map(byteString) ?? "--"
+    }
+
     // Column visibility (Name is always shown). Git also needs the folder to be a repo.
     private var showSize: Bool { app.settings.showSizeColumn }
     private var showModified: Bool { app.settings.showModifiedColumn }
@@ -536,6 +558,9 @@ struct FileTableView: View {
     @ViewBuilder private var columnVisibilityMenu: some View {
         Section("Columns") {
             Toggle("Size",     isOn: Binding(get: { app.settings.showSizeColumn },     set: { app.settings.showSizeColumn = $0 }))
+            Toggle("Folder sizes", isOn: Binding(get: { app.settings.computeFolderSizes },
+                                                 set: { app.settings.computeFolderSizes = $0; app.applyFolderSizePreference() }))
+                .disabled(!app.settings.showSizeColumn)
             Toggle("Modified", isOn: Binding(get: { app.settings.showModifiedColumn }, set: { app.settings.showModifiedColumn = $0 }))
             Toggle("Kind",     isOn: Binding(get: { app.settings.showKindColumn },     set: { app.settings.showKindColumn = $0 }))
             Toggle("Git status", isOn: Binding(get: { app.settings.showGitColumn },    set: { app.settings.showGitColumn = $0 }))
@@ -624,7 +649,7 @@ struct FileTableView: View {
             .frame(width: max(0, CGFloat(effectiveNameW)), alignment: .leading)
             .clipped()
             if showSize {
-                Text(entry.isDirectory ? "--" : (entry.size.map(byteString) ?? "--"))
+                Text(sizeText(for: entry))
                     .font(Theme.Font.mono).foregroundStyle(.secondary)
                     .frame(width: CGFloat(sizeW), alignment: .trailing)
             }

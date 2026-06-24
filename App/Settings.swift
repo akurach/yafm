@@ -278,6 +278,9 @@ final class AppSettings {
     var showModifiedColumn: Bool { didSet { store.set(showModifiedColumn, forKey: Keys.showModifiedColumn) } }
     var showKindColumn: Bool     { didSet { store.set(showKindColumn, forKey: Keys.showKindColumn) } }
     var showGitColumn: Bool      { didSet { store.set(showGitColumn, forKey: Keys.showGitColumn) } }
+    /// Opt-in: compute and show folder sizes in the Size column (off by default —
+    /// walking a tree is expensive). Drives both the displayed total and `.size` sort.
+    var computeFolderSizes: Bool { didSet { store.set(computeFolderSizes, forKey: Keys.computeFolderSizes) } }
 
     /// UI language. Writing it updates `AppleLanguages` (effective next launch).
     var language: AppLanguage {
@@ -337,6 +340,7 @@ final class AppSettings {
         static let density = "density"
         static let filetypeTiles = "filetypeTiles"
         static let showSizeColumn = "showSizeColumn"
+        static let computeFolderSizes = "computeFolderSizes"
         static let showModifiedColumn = "showModifiedColumn"
         static let showKindColumn = "showKindColumn"
         static let showGitColumn = "showGitColumn"
@@ -377,6 +381,7 @@ final class AppSettings {
         // native-feeling list out of the box; both remain opt-in toggles in Settings.
         filetypeTiles = d.object(forKey: Keys.filetypeTiles) as? Bool ?? false
         showSizeColumn     = d.object(forKey: Keys.showSizeColumn)     as? Bool ?? true
+        computeFolderSizes = d.object(forKey: Keys.computeFolderSizes) as? Bool ?? false
         showModifiedColumn = d.object(forKey: Keys.showModifiedColumn) as? Bool ?? true
         showKindColumn     = d.object(forKey: Keys.showKindColumn)     as? Bool ?? true
         showGitColumn      = d.object(forKey: Keys.showGitColumn)      as? Bool ?? true

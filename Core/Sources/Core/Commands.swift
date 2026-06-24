@@ -66,6 +66,7 @@ public enum CommandID {
     public static let edit = "op.edit"             // F4 open in editor
     // v0.3 platform commands
     public static let search = "view.search"       // ⌘F find within the folder
+    public static let editPath = "nav.editPath"    // ⌘L focus the path bar to type a path
     // v0.4 keyboard-first commands
     public static let commandPalette = "app.palette" // ⌘K fuzzy jump-to-anything
     public static let cheatSheet = "help.shortcuts"  // ⌘/ shortcut overlay
@@ -109,6 +110,7 @@ public enum DefaultCommands {
         Command(id: CommandID.view, title: "View", defaultKey: KeyBinding(.function(3))),
         Command(id: CommandID.edit, title: "Edit", defaultKey: KeyBinding(.function(4))),
         Command(id: CommandID.search, title: "Search", defaultKey: KeyBinding(.char("f"), [.command])),
+        Command(id: CommandID.editPath, title: "Edit Path", defaultKey: KeyBinding(.char("l"), [.command])),
         Command(id: CommandID.commandPalette, title: "Command Palette", defaultKey: KeyBinding(.char("k"), [.command])),
         Command(id: CommandID.cheatSheet, title: "Keyboard Shortcuts", defaultKey: KeyBinding(.char("/"), [.command])),
         Command(id: CommandID.nextTab, title: "Next Tab", defaultKey: KeyBinding(.tab, [.control])),

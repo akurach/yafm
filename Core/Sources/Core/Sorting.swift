@@ -17,8 +17,17 @@ public struct SortOrder: Sendable, Equatable {
 
 public extension Array where Element == FSEntry {
     /// Directories first, then by the chosen key. Stable, locale-aware.
-    func sorted(by order: SortOrder) -> [FSEntry] {
-        sorted { a, b in
+    ///
+    /// `folderSizes` (optional, keyed by URL) supplies computed directory totals
+    /// so a `.size` sort orders folders by their real footprint *within* the
+    /// directories-first group — the "what's eating my disk" view. Files still
+    /// sort by `FSEntry.size`; the dirs-first grouping is preserved either way.
+    func sorted(by order: SortOrder, folderSizes: [URL: Int64] = [:]) -> [FSEntry] {
+        func effectiveSize(_ e: FSEntry) -> Int64 {
+            if e.isDirectory { return folderSizes[e.url] ?? -1 }
+            return e.size ?? -1
+        }
+        return sorted { a, b in
             if a.isDirectory != b.isDirectory { return a.isDirectory }
             let result: Bool
             switch order.key {
@@ -27,7 +36,7 @@ public extension Array where Element == FSEntry {
             case .size:
                 // Unknown sizes (nil) sort below 0-byte files so they don't
                 // interleave ambiguously with real empties.
-                result = (a.size ?? -1) < (b.size ?? -1)
+                result = effectiveSize(a) < effectiveSize(b)
             case .modified:
                 result = (a.modified ?? .distantPast) < (b.modified ?? .distantPast)
             case .kind:

@@ -294,3 +294,31 @@ holds; the public plugin API is frozen at `apiVersion 1.0`. What remains before 
   Settings tokenized). Remaining is incidental polish, not a blocker.
 - **Deferred first-party features** (post-1.0, tracked in `docs/feature-requests/`): Photo
   Ingest + device detection; remote plugin marketplace + signing (hosted infra).
+
+## Functional backlog — daily-use ergonomics (vs qSpace, post-0.9.7)
+
+A functional/ergonomics audit against qSpace confirmed yafm already out-ergonomics it on the
+keyboard core loop (`F5`/`F6` to the other pane, type-to-filter, `⌘K` palette, the honest
+cancellable queue). The losses are all in **depth of file-management chores**. Ranked by
+daily-use leverage; the first three are *surfacing work over code that already exists*.
+
+- [x] **Sortable folder-size column.** ✅ Opt-in ("Folder sizes", off by default): each
+  subfolder's total is computed in the background and shown in the Size column, and a `.size`
+  sort orders folders by footprint within the directories-first group. (`Sorting.swift`
+  `folderSizes:`, `TabModel.refreshFolderSizes`.)
+- [x] **Transformer chain in the rename sheet.** ✅ `F2` now composes a left-to-right stack of
+  rules (Find & Replace · lowercase · Replace spaces · Number sequentially) over the existing
+  live preview. (`Transformers.swift` `RenameStep`/`RenamePipeline`, `RenameSheet.swift`.)
+- [x] **One-key "edit path" (`⌘L`).** ✅ `⌘L` focuses the active pane's path bar for typing.
+  (`CommandID.editPath`, `TabModel.pathEditToken`.) — `⌘K` onboarding promotion still TODO.
+- [ ] **Dual-pane "Compare folders".** A `⌘K`/menu command that diffs the two panes by
+  name+size+mtime, highlights left-only / right-only / differing rows, then lets `F5`/`F6` act
+  on the diff. The feature that makes dual-pane a *reason to switch*, not just a layout.
+- [ ] **`⌘Z` undo for the last file operation.** Copy/move/rename have no undo (only `F8`-trash
+  is recoverable). The queue already models each task — record an inverse (move-back /
+  trash-restore / rename-back) and bind `⌘Z`.
+- [ ] **Deeper batch rename** — per-row preview override; regex beyond single find/replace.
+- [ ] **Archive write** — extract-here / create-archive; formats beyond read-only `.zip`
+  (`.tar/.7z/.rar`).
+- [ ] **Batch-tag on multiselect** — one "tag selection" action instead of per-row submenu.
+- [ ] **Recursive / scoped search** — `⌘F` is single-folder scoped; add search-from-here.

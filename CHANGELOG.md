@@ -4,6 +4,20 @@ All notable changes to yafm are recorded here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased] — Functional depth (vs qSpace backlog)
+
+### Added
+- **Sortable folder-size column** — opt-in (Size column ▸ "Folder sizes", off by default).
+  Each subfolder's total is computed in the background and shown in the Size column; a
+  size-sort then orders folders by real footprint *within* the directories-first group (the
+  "what's eating my disk" view). Files keep showing their own size; the walk is cancelled on
+  navigation and streams in batches so a big tree fills progressively.
+- **Chained bulk rename** — the rename sheet (`F2`) now composes a stack of rules applied
+  left-to-right (Find & Replace · lowercase · Replace spaces · Number sequentially) with a live
+  preview, instead of a single find/replace. Surfaces the existing Core `Transformer`s.
+- **`⌘L` — edit path** — focuses the active pane's path bar for typing a path (browser
+  convention), one keystroke instead of click-the-pencil.
+
 ## [0.9.7.1] — Hotfix: disk-image volume classification
 
 ### Fixed

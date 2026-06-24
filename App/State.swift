@@ -27,6 +27,10 @@ final class TabModel: Identifiable {
     private(set) var filter = "" { didSet { recomputeDisplayed() } }
     private(set) var filterActive = false
 
+    /// Bumped to request the path bar enter edit mode (⌘L). The active tab's
+    /// `PathBarView` observes this and focuses its text field for typing a path.
+    var pathEditToken = 0
+
     func appendFilter(_ s: String) { filterActive = true; filter += s }
     func backspaceFilter() {
         guard filterActive else { return }
@@ -49,11 +53,25 @@ final class TabModel: Identifiable {
     /// asynchronously after a directory finishes loading; empty outside a repo.
     private(set) var gitStatus: [URL: String] = [:]
 
+    /// Opt-in folder sizes, keyed by entry URL. When `computeFolderSizes` is on,
+    /// each subfolder's total is computed in the background and shown in the Size
+    /// column — and feeds a `.size` sort so the biggest folder rises within the
+    /// directories-first group. Empty/`false` keeps the cheap "--" behaviour.
+    private(set) var folderSizes: [URL: Int64] = [:] { didSet { recomputeDisplayed() } }
+    var computeFolderSizes = false {
+        didSet {
+            guard computeFolderSizes != oldValue else { return }
+            if computeFolderSizes { refreshFolderSizes(for: directory) }
+            else { sizeTask?.cancel(); folderSizes = [:] }
+        }
+    }
+
     /// Called whenever the tab navigates to a new real directory (not virtual/refresh).
     var onNavigate: ((URL) -> Void)?
 
     private var task: Task<Void, Never>?
     private var gitTask: Task<Void, Never>?
+    private var sizeTask: Task<Void, Never>?
 
     init(fs: FileSystemProvider, tags: TagServing, directory: URL, showHidden: Bool = false,
          git: GitStatusService? = nil) {
@@ -95,7 +113,9 @@ final class TabModel: Identifiable {
         // O(n²) `localizedStandard` work on the main actor — it froze big folders
         // (Downloads). While streaming, show arrival order (row animation is
         // suppressed anyway); sort once when the listing is complete.
-        displayed = streaming ? filtered : filtered.sorted(by: sortOrder)
+        displayed = streaming ? filtered
+                              : filtered.sorted(by: sortOrder,
+                                                folderSizes: computeFolderSizes ? folderSizes : [:])
         // PERF: index by URL once so cursor moves / `actionable` are O(1) instead
         // of an O(n) linear scan per keystroke (perf P2-F/P2-G).
         var idx: [URL: Int] = [:]
@@ -150,6 +170,8 @@ final class TabModel: Identifiable {
 
     func load() {
         task?.cancel()
+        sizeTask?.cancel()
+        folderSizes = [:]   // stale sizes from the previous folder must not linger
         virtualName = nil   // a real directory listing exits virtual (tag) mode
         state = .loading(partial: [])
         let stream = fs.list(directory)
@@ -175,6 +197,7 @@ final class TabModel: Identifiable {
                     self.state = .loaded(partial)
                     if self.cursor == nil { self.cursor = self.displayed.first?.url }
                     self.refreshGitStatus(for: self.directory)
+                    if self.computeFolderSizes { self.refreshFolderSizes(for: self.directory) }
                     await self.fillTags(partial, forDirectory: self.directory)
                 case .failed(let message):
                     self.state = .failed(message)
@@ -212,6 +235,34 @@ final class TabModel: Identifiable {
                 keyed[dir.appendingPathComponent(name)] = marker
             }
             self.gitStatus = keyed
+        }
+    }
+
+    /// Compute each subfolder's total size in the background and publish it into
+    /// `folderSizes` (which re-sorts/redraws). Sizes stream in batches so a big
+    /// tree fills progressively without a re-sort per folder. A new listing or
+    /// toggling the feature off cancels the in-flight walk; navigated-away results
+    /// are dropped. Only directories are computed — files already carry `size`.
+    private func refreshFolderSizes(for dir: URL) {
+        sizeTask?.cancel()
+        let dirs: [URL] = { if case .loaded(let e) = state { return e.filter(\.isDirectory).map(\.url) }; return [] }()
+        guard !dirs.isEmpty else { return }
+        sizeTask = Task { [weak self] in
+            guard let self else { return }
+            var pending: [URL: Int64] = [:]
+            for url in dirs {
+                if Task.isCancelled { return }
+                let bytes = await self.fs.directorySize(of: url)
+                if Task.isCancelled || self.directory != dir { return }
+                pending[url] = bytes
+                // Flush every few results so the column fills live without a
+                // re-sort per folder (the didSet on `folderSizes` recomputes).
+                if pending.count >= 8 {
+                    self.folderSizes.merge(pending) { _, new in new }
+                    pending.removeAll(keepingCapacity: true)
+                }
+            }
+            if !pending.isEmpty, self.directory == dir { self.folderSizes.merge(pending) { _, new in new } }
         }
     }
 
@@ -289,6 +340,9 @@ final class PaneModel: Identifiable {
     var onTabNavigate: ((URL) -> Void)?
     /// New tabs inherit this (from `AppSettings.showHiddenByDefault`).
     private let defaultShowHidden: Bool
+    /// Mirrors `AppState`'s folder-size preference so tabs opened later in the
+    /// session inherit it. Updated by `applyFolderSizePreference()`.
+    var defaultComputeFolderSizes = false
 
     init(fs: FileSystemProvider, tags: TagServing, directory: URL, showHidden: Bool = false,
          git: GitStatusService? = nil) {
@@ -312,6 +366,7 @@ final class PaneModel: Identifiable {
     func newTab(at directory: URL? = nil) {
         let dir = directory ?? active.directory
         let tab = TabModel(fs: fs, tags: tags, directory: dir, showHidden: defaultShowHidden, git: git)
+        tab.computeFolderSizes = defaultComputeFolderSizes
         tab.onNavigate = { [weak self] url in self?.onTabNavigate?(url) }
         tabs.append(tab)
         activeIndex = tabs.count - 1
@@ -511,6 +566,7 @@ final class AppState {
         // Post-init: wire closures that need a fully initialised self (Phase 2).
         left.onTabNavigate  = { [weak self] url in self?.onAnyTabNavigate(url) }
         right.onTabNavigate = { [weak self] url in self?.onAnyTabNavigate(url) }
+        applyFolderSizePreference()
 
         tagCloud.onReloadActiveTab = { [weak self] in self?.activeTab.load() }
         tagCloud.activeTabGetter   = { [weak self] in self!.activeTab }
@@ -525,6 +581,16 @@ final class AppState {
 
     /// Open a URL in a fresh tab of the active pane (sidebar "Open in New Tab").
     func openInNewTab(_ url: URL) { activePane.newTab(at: url) }
+
+    /// Mirror the opt-in folder-size preference onto every tab (each tab owns its
+    /// own async walk + cache). Called at startup and whenever the toggle flips.
+    func applyFolderSizePreference() {
+        let on = settings.computeFolderSizes
+        for pane in [left, right] {
+            pane.defaultComputeFolderSizes = on
+            for tab in pane.tabs { tab.computeFolderSizes = on }
+        }
+    }
 
     /// Called by either pane on any directory navigation.
     /// Clears the readText call budget (S-H3) and saves lastFolder for crash recovery (A-10).
@@ -841,6 +907,7 @@ final class AppState {
         case CommandID.edit: editCursor()
         case CommandID.search:
             if search.searchActive { search.cancelSearch() } else { search.searchActive = true }
+        case CommandID.editPath: activeTab.pathEditToken &+= 1
         case CommandID.commandPalette: commandPalette = true
         case CommandID.cheatSheet: cheatSheet = true
         case CommandID.connectServer: connectAddress = "smb://"; connectSheet = true

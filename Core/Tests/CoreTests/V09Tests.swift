@@ -42,6 +42,41 @@ final class TransformerTests: XCTestCase {
         XCTAssertTrue(PluginAPI.frozen)
         XCTAssertEqual(PluginAPI.currentVersion, "1.0")
     }
+
+    // MARK: Rename pipeline (chained bulk-rename rules)
+
+    func testEmptyPipelineIsIdentity() {
+        let names = ["A.txt", "B.txt"]
+        XCTAssertEqual(RenamePipeline(steps: []).preview(names).map(\.to), names)
+    }
+
+    func testPipelineComposesStepsLeftToRight() {
+        // replace spaces -> lowercase -> number sequentially
+        let names = ["My File.TXT", "Other Doc.MD"]
+        let pipe = RenamePipeline(steps: [
+            .replaceSpaces(separator: "-"),
+            .lowercase,
+            .sequence(start: 1, width: 2),
+        ])
+        XCTAssertEqual(pipe.preview(names).map(\.to),
+                       ["01 - my-file.txt", "02 - other-doc.md"])
+    }
+
+    func testFindReplaceStepHonorsHashCounter() {
+        let names = ["a.txt", "b.txt"]
+        let pipe = RenamePipeline(steps: [
+            .findReplace(pattern: ".txt", replacement: "_#.txt", useRegex: false),
+        ])
+        // `#` expands to a zero-padded counter, matching the single-rule UI.
+        XCTAssertEqual(pipe.preview(names).map(\.to), ["a_01.txt", "b_02.txt"])
+    }
+
+    func testPipelinePreviewKeepsOriginalNames() {
+        let names = ["X.txt"]
+        let pair = RenamePipeline(steps: [.lowercase]).preview(names).first
+        XCTAssertEqual(pair?.from, "X.txt")
+        XCTAssertEqual(pair?.to, "x.txt")
+    }
 }
 
 /// OPS-1: a `.replace` copy must swap atomically — the original survives a

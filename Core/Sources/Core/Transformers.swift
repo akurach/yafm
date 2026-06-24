@@ -59,6 +59,48 @@ public func applyTransformer(_ t: Transformer, to names: [String]) -> [String] {
     names.enumerated().map { t.transform(name: $0.element, index: $0.offset) }
 }
 
+// MARK: - Rename pipeline (v0.9.8 — chained bulk-rename rules)
+
+/// One step in a chained bulk rename. Each step maps a batch of names to a new
+/// batch; steps compose left-to-right. `findReplace` reuses `RenameRule` (so the
+/// `#`-counter behaviour matches the single-rule UI); the rest wrap the built-in
+/// `Transformer`s. Value type, `Sendable`, trivially testable.
+public enum RenameStep: Sendable, Hashable {
+    case findReplace(pattern: String, replacement: String, useRegex: Bool)
+    case lowercase
+    case replaceSpaces(separator: String)
+    case sequence(start: Int, width: Int)
+
+    public func apply(to names: [String]) -> [String] {
+        switch self {
+        case let .findReplace(pattern, replacement, useRegex):
+            let rule = RenameRule(pattern: pattern, replacement: replacement, useRegex: useRegex,
+                                  sequenceStart: replacement.contains("#") ? 1 : nil)
+            return rule.preview(names).map(\.to)
+        case .lowercase:
+            return applyTransformer(LowercaseTransformer(), to: names)
+        case let .replaceSpaces(separator):
+            return applyTransformer(SpaceReplaceTransformer(separator: separator), to: names)
+        case let .sequence(start, width):
+            return applyTransformer(SequenceTransformer(start: start, width: width), to: names)
+        }
+    }
+}
+
+/// An ordered chain of `RenameStep`s. `preview` threads each name through every
+/// step in order and returns (original, proposed) pairs without touching disk —
+/// the bulk-rename sheet renders this live and applies the same plan on commit.
+public struct RenamePipeline: Sendable {
+    public var steps: [RenameStep]
+    public init(steps: [RenameStep]) { self.steps = steps }
+
+    public func preview(_ names: [String]) -> [(from: String, to: String)] {
+        var current = names
+        for step in steps { current = step.apply(to: current) }
+        return Array(zip(names, current)).map { (from: $0.0, to: $0.1) }
+    }
+}
+
 // MARK: - Custom previewers
 
 /// A custom previewer contributed for file types QuickLook doesn't cover well

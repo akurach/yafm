@@ -51,37 +51,54 @@ struct BasenameField: NSViewRepresentable {
     }
 }
 
-// MARK: - Rename sheet (v0.1 single + v0.2 bulk regex preview)
+// MARK: - Editable rename step (UI draft over Core's RenameStep)
+
+/// A mutable, identifiable wrapper around `Core.RenameStep` so the bulk-rename
+/// sheet can edit a chain of rules with SwiftUI bindings. `step` projects the
+/// draft into the pure Core value the pipeline consumes.
+private struct StepDraft: Identifiable {
+    enum Kind: String, CaseIterable, Identifiable {
+        case findReplace   = "Find & Replace"
+        case lowercase     = "lowercase"
+        case replaceSpaces = "Replace spaces"
+        case sequence      = "Number sequentially"
+        var id: String { rawValue }
+    }
+    let id = UUID()
+    var kind: Kind
+    var pattern = ""
+    var replacement = ""
+    var useRegex = false
+    var separator = "-"
+    var seqStart = 1
+
+    var step: RenameStep {
+        switch kind {
+        case .findReplace:   return .findReplace(pattern: pattern, replacement: replacement, useRegex: useRegex)
+        case .lowercase:     return .lowercase
+        case .replaceSpaces: return .replaceSpaces(separator: separator)
+        case .sequence:      return .sequence(start: seqStart, width: 2)
+        }
+    }
+}
+
+// MARK: - Rename sheet (v0.1 single + v0.2 bulk preview + v0.9.8 chained rules)
 
 struct RenameSheet: View {
     let app: AppState
     @Environment(\.dismiss) private var dismiss
-    @State private var pattern = ""
     @State private var replacement = ""
-    @State private var useRegex = false
     @State private var bulk = false
+    @State private var steps: [StepDraft] = [StepDraft(kind: .findReplace)]
 
     var body: some View {
         let names = app.activeTab.actionable.map(\.name)
         VStack(alignment: .leading, spacing: 10) {
             Text(bulk ? "Bulk Rename (\(names.count))" : "Rename").font(.headline)
-            Toggle("Bulk regex rename", isOn: $bulk).disabled(names.count < 2 && !bulk)
+            Toggle("Bulk rename", isOn: $bulk).disabled(names.count < 2 && !bulk)
 
             if bulk {
-                Toggle("Use regex", isOn: $useRegex)
-                TextField("Find", text: $pattern).textFieldStyle(.roundedBorder)
-                TextField("Replace (# = counter)", text: $replacement).textFieldStyle(.roundedBorder)
-                let preview = RenameRule(pattern: pattern, replacement: replacement, useRegex: useRegex,
-                                         sequenceStart: replacement.contains("#") ? 1 : nil).preview(names)
-                ScrollView {
-                    ForEach(Array(preview.enumerated()), id: \.offset) { _, pair in
-                        HStack {
-                            Text(pair.from).foregroundStyle(.secondary)
-                            Image(systemName: "arrow.right").font(.caption2)
-                            Text(pair.to).bold()
-                        }.font(.caption).frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }.frame(height: 120)
+                bulkEditor(names: names)
             } else {
                 BasenameField(text: $replacement, onSubmit: { apply(names); dismiss() })
                     .frame(height: 22)
@@ -96,14 +113,79 @@ struct RenameSheet: View {
             }
         }
         .padding()
-        .frame(width: 460)
+        .frame(width: 480)
+    }
+
+    // MARK: Bulk editor — a chain of rules applied left-to-right
+
+    @ViewBuilder
+    private func bulkEditor(names: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ForEach($steps) { $draft in
+                HStack(spacing: 6) {
+                    Picker("", selection: $draft.kind) {
+                        ForEach(StepDraft.Kind.allCases) { Text($0.rawValue).tag($0) }
+                    }
+                    .labelsHidden()
+                    .frame(width: 150)
+
+                    stepFields($draft)
+
+                    Spacer(minLength: 0)
+                    Button {
+                        steps.removeAll { $0.id == draft.id }
+                    } label: { Image(systemName: "minus.circle") }
+                        .buttonStyle(.borderless)
+                        .disabled(steps.count <= 1)
+                }
+            }
+
+            Menu {
+                ForEach(StepDraft.Kind.allCases) { kind in
+                    Button(kind.rawValue) { steps.append(StepDraft(kind: kind)) }
+                }
+            } label: {
+                Label("Add rule", systemImage: "plus")
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+
+            Divider()
+
+            let preview = RenamePipeline(steps: steps.map(\.step)).preview(names)
+            ScrollView {
+                ForEach(Array(preview.enumerated()), id: \.offset) { _, pair in
+                    HStack {
+                        Text(pair.from).foregroundStyle(.secondary)
+                        Image(systemName: "arrow.right").font(.caption2)
+                        Text(pair.to).bold().foregroundStyle(pair.from == pair.to ? .secondary : .primary)
+                    }.font(.caption).frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }.frame(height: 120)
+        }
+    }
+
+    @ViewBuilder
+    private func stepFields(_ draft: Binding<StepDraft>) -> some View {
+        switch draft.wrappedValue.kind {
+        case .findReplace:
+            TextField("Find", text: draft.pattern).textFieldStyle(.roundedBorder).frame(width: 90)
+            TextField("Replace (# = counter)", text: draft.replacement).textFieldStyle(.roundedBorder)
+            Toggle("regex", isOn: draft.useRegex).toggleStyle(.checkbox)
+        case .replaceSpaces:
+            Text("with").foregroundStyle(.secondary).font(.caption)
+            TextField("-", text: draft.separator).textFieldStyle(.roundedBorder).frame(width: 50)
+        case .sequence:
+            Text("start").foregroundStyle(.secondary).font(.caption)
+            Stepper("\(draft.wrappedValue.seqStart)", value: draft.seqStart, in: 0...9999)
+        case .lowercase:
+            EmptyView()
+        }
     }
 
     private func apply(_ names: [String]) {
         if bulk {
-            let rule = RenameRule(pattern: pattern, replacement: replacement, useRegex: useRegex,
-                                  sequenceStart: replacement.contains("#") ? 1 : nil)
-            let plan = rule.preview(names)
+            let plan = RenamePipeline(steps: steps.map(\.step)).preview(names)
             for (entry, pair) in zip(app.activeTab.actionable, plan) where pair.from != pair.to {
                 app.rename(entry: entry, to: pair.to)
             }
