@@ -117,6 +117,7 @@ struct KeyboardMonitor: NSViewRepresentable {
         case 121: tab.moveCursor(by: 20, extend: c.shift); return true                      // PageDown
         case 114: tab.toggleSelectAndAdvance(); return true                                 // Insert/Help -> toggle-select
         case 51 where c.command: app.run(CommandID.trash); return true                      // ⌘⌫ -> Move to Trash (macOS convention)
+        case 51: app.run(CommandID.goUp); return true                                       // Backspace -> up (TC convention; filter Backspace handled above)
         default: break
         }
 

@@ -71,6 +71,8 @@ yafm follows the **Total Commander** model. With a pane focused:
 
 Click a row to select it instantly; double-click to open (or **launch**, for an app). Selecting a row no longer scroll-centers the list — your place stays put. Right-click any row (or the empty area) for the full context menu.
 
+**Going up keeps your place** — when you go up out of a folder, the cursor lands back on the folder you came from (not the top of the list). The same applies when **leaving a browsed archive**: open a `.zip` with **→**, and **←**/**Backspace** at its root takes you back to the real folder, cursor on the archive.
+
 ---
 
 ## 5. Finding things fast
@@ -119,10 +121,13 @@ yafm has its **own file-operation engine** with a visible queue — every operat
 | **F5** | Copy selection to the *other* pane |
 | **F6** | Move selection to the *other* pane |
 | **F7** | New folder |
+| **⌘⌫** | Move selection to Trash (recoverable) |
 | **F8** | Delete (permanent — see Settings) |
 | **F2** | Rename |
 | **F3** | View (Quick Look) |
 | **F4** | Edit (open in editor) |
+
+**⌘⌫** is the safe, recoverable delete (Finder's Trash); **F8** deletes permanently.
 
 ### Bulk rename
 
@@ -293,6 +298,7 @@ Open a **`.zip`** (Enter or double-click) to browse it **read-only**, like any f
 | Copy to other pane | F5 |
 | Move to other pane | F6 |
 | New Folder | F7 |
+| Move to Trash (recoverable) | ⌘⌫ |
 | Delete (permanent) | F8 |
 | Rename | F2 |
 | View (Quick Look) | F3 |

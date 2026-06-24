@@ -4,6 +4,13 @@ All notable changes to yafm are recorded here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+- **Backspace now goes up** a folder, as the docs and Total Commander muscle-memory promised — the
+  key wasn't actually bound (only `←` was). Going up still restores the cursor to the folder you
+  came from. Docs (`USER_GUIDE` EN/RU) synced: `⌘⌫` Move-to-Trash, cursor-restore, archive-exit.
+
 ## [0.9.8] — Functional depth: folder sizes · chained rename · compare · undo · archives
 
 ### Fixed
