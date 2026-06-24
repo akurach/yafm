@@ -210,6 +210,8 @@ struct CommandMenus: Commands {
         CommandMenu("File Ops") {
             Button("Copy → other pane") { app.run(CommandID.copy) }
             Button("Move → other pane") { app.run(CommandID.move) }
+            Button("Move to Trash") { app.run(CommandID.trash) }
+                .keyboardShortcut(.delete, modifiers: [.command])
             Button("Delete") { app.run(CommandID.delete) }
             Button("Rename…") { app.run(CommandID.rename) }
             Button("Compare Folders") { app.run(CommandID.compareFolders) }
