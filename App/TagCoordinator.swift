@@ -197,6 +197,49 @@ final class TagCoordinator {
 
     func currentTags(of url: URL) async -> [Tag] { await tags.tags(of: url) }
 
+    // MARK: Batch tagging (multiselect)
+
+    /// Add or remove one tag across every URL in a multiselection in a single
+    /// pass. Reads each file's current set first, so a file that already carries
+    /// (or already lacks) the tag is a no-op — never a duplicate. Backs the
+    /// batch tag editor's all/some/none swatches.
+    func batchTag(name: String, colorIndex: Int?, add: Bool, on urls: [URL]) {
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !trimmed.contains("\n"), !urls.isEmpty else { return }
+        Task { [weak self] in
+            guard let self else { return }
+            for url in urls {
+                var current = await self.tags.tags(of: url)
+                let has = current.contains { $0.name == trimmed }
+                if add {
+                    guard !has else { continue }
+                    current.append(Tag(name: trimmed, colorIndex: colorIndex))
+                } else {
+                    guard has else { continue }
+                    current.removeAll { $0.name == trimmed }
+                }
+                try? await self.tags.setTags(current, on: url)
+            }
+            self.onReloadActiveTab?()
+            self.refreshTags()
+        }
+    }
+
+    /// How many of `urls` currently carry each tag name (+ a representative color
+    /// index) — lets the batch editor show a swatch as on (all), mixed (some), or
+    /// off (none) without the UI re-reading xattrs on every toggle.
+    func tagMembership(of urls: [URL]) async -> (counts: [String: Int], colorIndex: [String: Int]) {
+        var counts: [String: Int] = [:]
+        var colorIndex: [String: Int] = [:]
+        for url in urls {
+            for t in await tags.tags(of: url) {
+                counts[t.name, default: 0] += 1
+                if let ci = t.colorIndex { colorIndex[t.name] = ci }
+            }
+        }
+        return (counts, colorIndex)
+    }
+
     func promptNewTag(on entry: FSEntry) {
         let alert = NSAlert()
         alert.messageText = "New Tag"

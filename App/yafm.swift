@@ -141,6 +141,7 @@ struct RootView: View {
         .sheet(isPresented: $app.commandPalette) { CommandPalette(app: app) }
         .sheet(isPresented: $app.cheatSheet)     { CheatSheet(app: app) }
         .sheet(isPresented: $app.compressSheet)  { CompressSheet(app: app) }
+        .sheet(item: $app.tagSheet)              { TagEditorSheet(app: app, urls: $0.urls) }
         .sheet(isPresented: Binding(get: { app.extractPasswordPrompt != nil },
                                     set: { if !$0 { app.extractPasswordPrompt = nil } })) {
             ExtractPasswordSheet(app: app)

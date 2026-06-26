@@ -282,13 +282,19 @@ Deferred (tracked, not yet done): — все закрыты в v0.9:
 
 ## Next up
 
-**v0.9.8 shipped** (functional-depth pass vs qSpace — sortable folder-size column, chained
+**v0.9.9 shipped** (daily-use ergonomics — **batch-tag a multiselection** ("Tag N Items…" over
+the selection with all/some/none swatches), **per-row override** in bulk rename (edit any
+previewed target by hand while the rest follow the rule chain), and a **non-blocking eject** —
+the synchronous `unmountAndEjectDevice` ran on the main thread and froze the UI until a DMG
+finished detaching; it now ejects off-thread like Finder. Also: `⌘L` Edit Path surfaced in the
+`⌘?` cheat sheet, `⌘F` tooltip clarifies its recursion, Backspace finally bound to go-up).
+**v0.9.8** before it (functional-depth pass vs qSpace — sortable folder-size column, chained
 bulk rename, `⌘L` edit-path, dual-pane Compare Folders, `⌘Z` undo, and a full archive wrapper:
 extract practically any format incl. rar5/encrypted via a bundled 7-Zip, plus a rich Compress
 modal; navigation fixes — `⌘⌫` to Trash, cursor restored on go-up, exit a browsed archive,
-Cyrillic zip names). **v0.9.7** before it (calm UI pass + file-engine fixes; notarization
-entitlements wired). The v0.1–0.9 arc is complete and the 1.0 candidate line holds; the public
-plugin API is frozen at `apiVersion 1.0`. What remains before tagging **1.0**:
+Cyrillic zip names). The v0.1–0.9 arc
+is complete and the 1.0 candidate line holds; the public plugin API is frozen at
+`apiVersion 1.0`. What remains before tagging **1.0**:
 
 - **Notarized DMG** — the recurring blocker; needs a paid Apple Developer ID cert
   (`CODESIGN_IDENTITY` + `AC_NOTARY_PROFILE`). The JIT entitlements are already wired into
@@ -313,7 +319,8 @@ daily-use leverage; the first three are *surfacing work over code that already e
   rules (Find & Replace · lowercase · Replace spaces · Number sequentially) over the existing
   live preview. (`Transformers.swift` `RenameStep`/`RenamePipeline`, `RenameSheet.swift`.)
 - [x] **One-key "edit path" (`⌘L`).** ✅ `⌘L` focuses the active pane's path bar for typing.
-  (`CommandID.editPath`, `TabModel.pathEditToken`.) — `⌘K` onboarding promotion still TODO.
+  (`CommandID.editPath`, `TabModel.pathEditToken`.) Listed in both the `⌘K` palette and the `⌘?`
+  cheat sheet (Navigation).
 - [x] **Dual-pane "Compare folders".** ✅ Command (palette/menu) diffs the panes by
   name+size+mtime, tints rows (green = only-here, orange = differs), pre-selects the active
   pane's diffs for `F5`/`F6`. (`CompareFolders.swift`, `TabModel.compareMarks`.)
@@ -329,6 +336,13 @@ daily-use leverage; the first three are *surfacing work over code that already e
   `App/Resources/bin/7zz`.)
   - [ ] **Sign the bundled `7zz`** in the notarized build (hardened runtime blocks an unsigned
     nested helper). Gated on the same paid cert as notarization.
-- [ ] **Deeper batch rename** — per-row preview override; regex beyond single find/replace.
-- [ ] **Batch-tag on multiselect** — one "tag selection" action instead of per-row submenu.
-- [ ] **Recursive / scoped search** — `⌘F` is single-folder scoped; add search-from-here.
+- [x] **Deeper batch rename** — ✅ per-row override: each proposed name in the `F2` preview is an
+  editable field, type over one to pin it (accent + revert arrow) while the rest follow the rule
+  chain. Regex find/replace with capture-group templates was already supported by `RenameRule`.
+  (`RenameSheet.swift` `overrides`.)
+- [x] **Batch-tag on multiselect** — ✅ "Tag N Items…" opens one editor over the selection with
+  all/some/none swatch state; toggling applies/clears across every file in a single no-op-safe
+  pass. (`TagCoordinator.batchTag`/`tagMembership`, `TagEditorSheet(urls:)`.)
+- [x] **Recursive / scoped search** — ✅ already recursive: `⌘F` walks the active folder *and every
+  subfolder* (`SearchService` enumerator + `mdfind -onlyin`); the field tooltip now says so. The
+  old "single-folder scoped" note was stale. (`Search.swift`, `SearchSheet.swift`.)

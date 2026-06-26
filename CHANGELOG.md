@@ -4,9 +4,31 @@ All notable changes to yafm are recorded here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.9.9] — Batch-tag · per-row rename override · responsive eject
+
+### Added
+- **Batch-tag a multiselection** — right-click 2+ files and pick **Tag N Items…** to open one tag
+  editor over the whole selection instead of repeating a per-row submenu. Color swatches and named
+  chips read an all/some/none state (a check = every file carries it, a dash = some do, plus an
+  `n/total` badge on partial named tags); toggling applies to or clears from every selected file in
+  one pass, skipping files that already match. Packages are excluded (macOS blocks tagging bundles).
+- **Per-row override in bulk rename** — every row's proposed name in the `F2` preview is now an
+  editable field. Type over any one target to pin it (shown in the accent color, with a revert
+  arrow) while the rest keep following the rule chain — the hand-fix escape hatch for the file a
+  rule gets wrong.
+
+### Changed
+- **`⌘L` Edit Path now appears in the `⌘?` cheat sheet** (Navigation group); it was already in the
+  `⌘K` palette but undiscoverable in the shortcut overlay.
+- **`⌘F` search clarified** — the field's tooltip now states it searches the current folder *and
+  every subfolder* (the walk was already recursive; only the affordance was missing).
 
 ### Fixed
+- **Eject no longer freezes the UI.** Ejecting a volume (a DMG especially) ran the synchronous
+  `unmountAndEjectDevice` on the main thread and blocked it until the disk finished detaching, so
+  the window hitched for a beat — the opposite of the never-freeze contract. The unmount now runs
+  off the main thread and refreshes / reports errors when it completes, so the click returns at
+  once like Finder's.
 - **Backspace now goes up** a folder, as the docs and Total Commander muscle-memory promised — the
   key wasn't actually bound (only `←` was). Going up still restores the cursor to the folder you
   came from. Docs (`USER_GUIDE` EN/RU) synced: `⌘⌫` Move-to-Trash, cursor-restore, archive-exit.

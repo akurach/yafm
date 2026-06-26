@@ -982,8 +982,14 @@ struct FileTableView: View {
 
         Divider()
         // Tags write an xattr ONTO the file; for an app bundle macOS App Management
-        // blocks that, so don't offer tagging for packages.
-        if !isPackage(entry) {
+        // blocks that, so don't offer tagging for packages. A multiselection gets a
+        // single "Tag N Items…" editor (batch) instead of N per-row submenus.
+        let taggable = tab.actionable.filter { !isPackage($0) }
+        if taggable.count > 1 {
+            Button { focus(entry); app.openTagSheet(tab.actionable.filter { !isPackage($0) }.map(\.url)) } label: {
+                Label("Tag \(taggable.count) Items…", systemImage: "tag")
+            }
+        } else if !isPackage(entry) {
             Menu { tagMenu(entry) } label: { Label("Tags", systemImage: "tag") }
         }
         Button { focus(entry); app.sharePicker(for: tab.actionable.map(\.url)) } label: { Label("Share…", systemImage: "square.and.arrow.up") }

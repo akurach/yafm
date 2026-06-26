@@ -253,7 +253,7 @@ struct CheatSheet: View {
     private struct Group: Identifiable { let id = UUID(); let title: String; let ids: [String] }
     private static let groups: [Group] = [
         Group(title: String(localized: "Navigation"),
-              ids: [CommandID.open, CommandID.goUp, CommandID.switchPane, CommandID.nextTab, CommandID.prevTab, CommandID.newTab, CommandID.closeTab]),
+              ids: [CommandID.open, CommandID.goUp, CommandID.editPath, CommandID.switchPane, CommandID.nextTab, CommandID.prevTab, CommandID.newTab, CommandID.closeTab]),
         Group(title: String(localized: "Files"),
               ids: [CommandID.copy, CommandID.move, CommandID.delete, CommandID.rename, CommandID.compareFolders, CommandID.undo, CommandID.extractArchive, CommandID.compressSelection, CommandID.newFolder, CommandID.clipCopy, CommandID.clipCut, CommandID.paste]),
         Group(title: String(localized: "View"),

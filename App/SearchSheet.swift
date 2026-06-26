@@ -28,6 +28,7 @@ struct SearchBar: View {
                 .font(.caption)
                 .focused($focused)
                 .onSubmit(run)
+                .help("Searches \"\(app.activeTab.directory.lastPathComponent)\" and every subfolder under it.")
 
             if app.searchRunning {
                 ProgressView().controlSize(.small)

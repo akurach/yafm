@@ -85,7 +85,9 @@ The arc in brief:
   default, cross-volume move, runaway-plugin watchdog, SMB timeout, notarization entitlements ·
   **v0.9.8 functional-depth vs qSpace**: sortable folder-size column, chained bulk rename,
   Compare Folders, `⌘Z` undo, archive wrapper (extract any format incl. rar5/encrypted via
-  bundled 7-Zip + rich Compress modal), nav fixes (`⌘⌫` Trash, cursor restored on go-up)).
-  Currently **v0.9.8**; before 1.0: notarized
+  bundled 7-Zip + rich Compress modal), nav fixes (`⌘⌫` Trash, cursor restored on go-up) ·
+  **v0.9.9 daily-use ergonomics**: batch-tag a multiselection, per-row override in bulk rename,
+  non-blocking eject (no more main-thread freeze on DMG eject)).
+  Currently **v0.9.9**; before 1.0: notarized
   DMG (paid cert) + final polish. Photo-ingest + marketplace deferred post-1.0. Full
   status-tracked breakdown in [`ROADMAP.md`](ROADMAP.md).

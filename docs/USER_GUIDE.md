@@ -93,7 +93,7 @@ While a pane is focused, just **start typing letters or numbers** to live-filter
 
 ### ⌘F — Search within a folder
 
-Press **⌘F** to open the **find bar** under the path bar (it's inline — it won't cover the list or steal your place). Toggle between:
+Press **⌘F** to open the **find bar** under the path bar (it's inline — it won't cover the list or steal your place). Search is scoped to the **current folder and every subfolder under it** (search-from-here), so you find things nested deep without changing where you are. Toggle between:
 
 - **Name** — find files by name. Uses Spotlight (`mdfind`) with yafm's own name-scan fallback.
 - **Contents** — *grep-in-files*: find files that contain a piece of text.
@@ -138,7 +138,7 @@ Select two or more files and press **F2**, then turn on **Bulk rename**. Build a
 - **Replace spaces** — swap spaces for a separator you choose (default `-`).
 - **Number sequentially** — prefix `001 - `, `002 - `… from a start number you set.
 
-Use **+ Add rule** to chain them (e.g. *Replace spaces → lowercase → Number sequentially*); the preview updates as you type, and **Rename** applies the whole chain at once.
+Use **+ Add rule** to chain them (e.g. *Replace spaces → lowercase → Number sequentially*); the preview updates as you type, and **Rename** applies the whole chain at once. Each previewed target is also an **editable field** — type over any single row to **override** it by hand (it turns the accent color, with a revert arrow to drop back to the rule output) while the rest keep following the chain.
 
 ### Undo (⌘Z)
 
@@ -193,7 +193,7 @@ When a copy or move hits a file that already exists, yafm follows your default c
 - **Get Info** (**⌘I**) and **Copy Path**
 - **Share** — AirDrop and the macOS share services, on a file or your whole selection
 - **Add to Favorites** (folders)
-- **Tags** — a quick submenu with colored dots: toggle any tag you already use, pick a standard color, or **New Tag…**, all without a modal. (You can also open the full inline tag editor from the **Info** inspector.) The Tags menu is hidden for **apps** — macOS App Management blocks writing tags to `.app` bundles.
+- **Tags** — a quick submenu with colored dots: toggle any tag you already use, pick a standard color, or **New Tag…**, all without a modal. (You can also open the full inline tag editor from the **Info** inspector.) With **two or more files selected** this becomes **Tag N Items…**, a single editor that tags the whole selection at once — a check on a color means every file carries it, a dash means only some do, and toggling applies it to (or clears it from) all of them. The Tags menu is hidden for **apps** — macOS App Management blocks writing tags to `.app` bundles.
 
 ---
 

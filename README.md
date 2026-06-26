@@ -8,15 +8,16 @@
 
 **Yet Another File Manager for macOS.** A fast, keyboard-driven, modern alternative to Finder — that never freezes silently.
 
-> Status: **v0.9.8 — 1.0 candidate.** Native Swift / SwiftUI. The spine (v0.1–0.3:
+> Status: **v0.9.9 — 1.0 candidate.** Native Swift / SwiftUI. The spine (v0.1–0.3:
 > dual-pane + tabs, async listing, own file engine, tags, JS plugins, git, search) is
 > done; v0.4–0.9 added the keyboard-first speed layer, content search, SMB, the plugin
 > capability model, archives, accessibility, and a Russian UI — then a five-dimension
 > audit pass, a **float-layout visual redesign**, (v0.9.5) **colored file-type tiles**,
 > live sidebar drag-reorder, configurable columns, (v0.9.6) **collapsible sidebar**
-> (icon-strip mode + section collapse), in-window Settings overlay, and (v0.9.7) a
-> **calm UI pass** (redesigned function bar, Settings polish, tiles off by default)
-> plus file-engine fixes (cross-volume move, runaway-plugin watchdog, SMB timeout).
+> (icon-strip mode + section collapse), in-window Settings overlay, (v0.9.7) a
+> **calm UI pass**, (v0.9.8) **functional depth** (folder sizes, chained rename, compare
+> folders, undo, a universal archive wrapper), and (v0.9.9) **batch-tag a multiselection**,
+> **per-row rename overrides**, and a **non-blocking eject**.
 > See [ROADMAP.md](ROADMAP.md) and [CHANGELOG.md](CHANGELOG.md).
 > **New here? Read the [User Guide](docs/USER_GUIDE.md) ([RU](docs/USER_GUIDE.ru.md)).**
 

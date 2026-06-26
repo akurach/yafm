@@ -608,8 +608,14 @@ final class AppState {
     var extractPasswordWrong = false     // last password attempt was rejected
     var archivePassword = ""             // shared secure field for both archive sheets
 
-    struct TagSheetItem: Identifiable { let url: URL; var id: URL { url } }
+    struct TagSheetItem: Identifiable { let urls: [URL]; let id = UUID() }
     var tagSheet: TagSheetItem?
+
+    /// Open the tag editor over a set of files (1 = single, 2+ = batch).
+    func openTagSheet(_ urls: [URL]) {
+        guard !urls.isEmpty else { return }
+        tagSheet = TagSheetItem(urls: urls)
+    }
 
     /// Internal copy/cut buffer. Paste enqueues a copy or move.
     var clipboard: (urls: [URL], cut: Bool)?
@@ -776,6 +782,12 @@ final class AppState {
     func writeTags(_ newTags: [Tag], on url: URL)  { tagCloud.writeTags(newTags, on: url) }
     func currentTags(of url: URL) async -> [Tag]   { await tagCloud.currentTags(of: url) }
     func promptNewTag(on entry: FSEntry)            { tagCloud.promptNewTag(on: entry) }
+    func batchTag(name: String, colorIndex: Int?, add: Bool, on urls: [URL]) {
+        tagCloud.batchTag(name: name, colorIndex: colorIndex, add: add, on: urls)
+    }
+    func tagMembership(of urls: [URL]) async -> (counts: [String: Int], colorIndex: [String: Int]) {
+        await tagCloud.tagMembership(of: urls)
+    }
 
     // MARK: Search forwarding
 
@@ -870,26 +882,41 @@ final class AppState {
                 tab.open(home)
             }
         }
-        do {
-            try NSWorkspace.shared.unmountAndEjectDevice(at: volume.url)
-        } catch {
-            let volName = volume.name
-            let volURL  = volume.url
-            Task { @MainActor in
-                let procs = await Self.busyProcesses(on: volURL, timeout: 3)
-                let alert = NSAlert()
-                alert.messageText = "Could not eject \"\(volName)\""
-                if procs.isEmpty {
-                    alert.informativeText = "Another app may still have a file on this disk open. Close it and try again."
-                } else {
-                    let list = procs.map { "  • \($0)" }.joined(separator: "\n")
-                    alert.informativeText = "The following apps are using files on this disk:\n\n\(list)\n\nQuit them or close their files, then try again."
+        // Eject off the main thread: `unmountAndEjectDevice` is synchronous and
+        // blocks until the disk finishes detaching, so a DMG (flush + tear down the
+        // loopback device) froze the UI for a beat — Finder ejects in the background
+        // and feels instant. Run the blocking call on a detached task and hop back to
+        // MainActor for the UI refresh / error alert.
+        let volName = volume.name
+        let volURL  = volume.url
+        Task.detached(priority: .userInitiated) { [weak self] in
+            var ejectError: Error?
+            do { try NSWorkspace.shared.unmountAndEjectDevice(at: volURL) }
+            catch { ejectError = error }
+            await MainActor.run { [weak self] in
+                guard let self else { return }
+                if ejectError != nil {
+                    Task { await self.presentEjectFailure(volName: volName, volURL: volURL) }
                 }
-                alert.alertStyle = .warning
-                alert.runModal()
+                self.refreshVolumes()
             }
         }
-        refreshVolumes()
+    }
+
+    /// Explain a failed eject — list the apps still holding files on the volume
+    /// (best-effort `lsof`, bounded) so the user knows what to quit.
+    private func presentEjectFailure(volName: String, volURL: URL) async {
+        let procs = await Self.busyProcesses(on: volURL, timeout: 3)
+        let alert = NSAlert()
+        alert.messageText = "Could not eject \"\(volName)\""
+        if procs.isEmpty {
+            alert.informativeText = "Another app may still have a file on this disk open. Close it and try again."
+        } else {
+            let list = procs.map { "  • \($0)" }.joined(separator: "\n")
+            alert.informativeText = "The following apps are using files on this disk:\n\n\(list)\n\nQuit them or close their files, then try again."
+        }
+        alert.alertStyle = .warning
+        alert.runModal()
     }
 
     private static func busyProcesses(on url: URL, timeout: Double) async -> [String] {

@@ -90,6 +90,10 @@ struct RenameSheet: View {
     @State private var replacement = ""
     @State private var bulk = false
     @State private var steps: [StepDraft] = [StepDraft(kind: .findReplace)]
+    /// Per-row manual overrides, keyed by the original name (unique within a
+    /// folder). When present, the typed value wins over the rule pipeline for
+    /// that one file — the "fix this single name by hand" escape hatch.
+    @State private var overrides: [String: String] = [:]
 
     var body: some View {
         let names = app.activeTab.actionable.map(\.name)
@@ -153,15 +157,31 @@ struct RenameSheet: View {
             Divider()
 
             let preview = RenamePipeline(steps: steps.map(\.step)).preview(names)
+            Text("Edit any target to override that row.").font(.caption2).foregroundStyle(.tertiary)
             ScrollView {
                 ForEach(Array(preview.enumerated()), id: \.offset) { _, pair in
-                    HStack {
+                    let overridden = overrides[pair.from] != nil
+                    let target = Binding(
+                        get: { overrides[pair.from] ?? pair.to },
+                        set: { overrides[pair.from] = $0 }
+                    )
+                    HStack(spacing: 6) {
                         Text(pair.from).foregroundStyle(.secondary)
                         Image(systemName: "arrow.right").font(.caption2)
-                        Text(pair.to).bold().foregroundStyle(pair.from == pair.to ? .secondary : .primary)
+                        TextField("", text: target)
+                            .textFieldStyle(.roundedBorder)
+                            .font(.caption)
+                            .foregroundStyle(overridden ? Color.accentColor
+                                             : (pair.from == (overrides[pair.from] ?? pair.to) ? .secondary : .primary))
+                        if overridden {
+                            Button { overrides[pair.from] = nil } label: {
+                                Image(systemName: "arrow.uturn.backward")
+                            }
+                            .buttonStyle(.borderless).help("Revert to rule output")
+                        }
                     }.font(.caption).frame(maxWidth: .infinity, alignment: .leading)
                 }
-            }.frame(height: 120)
+            }.frame(height: 140)
         }
     }
 
@@ -186,8 +206,10 @@ struct RenameSheet: View {
     private func apply(_ names: [String]) {
         if bulk {
             let plan = RenamePipeline(steps: steps.map(\.step)).preview(names)
-            for (entry, pair) in zip(app.activeTab.actionable, plan) where pair.from != pair.to {
-                app.rename(entry: entry, to: pair.to)
+            for (entry, pair) in zip(app.activeTab.actionable, plan) {
+                let target = (overrides[pair.from] ?? pair.to).trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !target.isEmpty, target != pair.from else { continue }
+                app.rename(entry: entry, to: target)
             }
         } else {
             app.rename(to: replacement)
