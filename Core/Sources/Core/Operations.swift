@@ -184,7 +184,11 @@ public actor FileEngine {
             do {
                 try copy(source, to: temp, taskID: taskID, replacing: false,
                          done: &done, total: total, emit: emit)
-                _ = try fm.replaceItemAt(dst, withItemAt: temp)
+                // `.usingNewMetadataOnly`: the swapped-in file keeps the *source's*
+                // metadata (tags/perms/dates the temp carries via copyfile), not the
+                // overwritten destination's — otherwise a replace-copy would inherit
+                // the old file's Finder tags.
+                _ = try fm.replaceItemAt(dst, withItemAt: temp, options: .usingNewMetadataOnly)
             } catch {
                 try? fm.removeItem(at: temp)   // don't leak a partial temp
                 throw error
@@ -212,6 +216,8 @@ public actor FileEngine {
                 try copy(child, to: dst.appendingPathComponent(child.lastPathComponent),
                          taskID: taskID, done: &done, total: total, emit: emit)
             }
+            // Carry the folder's own xattrs/tags/perms/timestamps, same as files.
+            _ = copyfile(source.path, dst.path, nil, copyfile_flags_t(COPYFILE_METADATA))
             return
         }
 
@@ -223,7 +229,15 @@ public actor FileEngine {
         guard outFD >= 0 else { throw OpError.cannotWrite }
         let output = FileHandle(fileDescriptor: outFD, closeOnDealloc: true)
         input.open()
-        defer { input.close(); try? output.close() }
+        // We created `dst` above with O_EXCL. A cancel / disk-full / read-error
+        // mid-copy would otherwise leave a truncated file under the real name that
+        // looks complete — remove it unless we finish cleanly. (The atomic-replace
+        // branch above cleans its own temp; this is the plain new-file path.)
+        var completed = false
+        defer {
+            input.close(); try? output.close()
+            if !completed { try? fm.removeItem(at: dst) }
+        }
 
         let bufSize = 1 << 20  // 1 MiB
         var buffer = [UInt8](repeating: 0, count: bufSize)
@@ -236,6 +250,15 @@ public actor FileEngine {
             done += Int64(read)
             emit(OperationProgress(id: taskID, completedBytes: done, totalBytes: total, currentFile: dst, state: .running))
         }
+        try? output.close()
+
+        // The byte loop carries data but no metadata. Layer on xattrs (incl. the
+        // native Finder tag `com.apple.metadata:_kMDItemUserTags`), POSIX perms,
+        // timestamps, ACLs and flags with copyfile's metadata pass — otherwise an
+        // F5-copy silently strips the tags that are a headline feature. Best-effort:
+        // the data already landed, so a metadata failure doesn't fail the copy.
+        _ = copyfile(source.path, dst.path, nil, copyfile_flags_t(COPYFILE_METADATA))
+        completed = true
     }
 
     /// Move `source` onto `dst`. A plain `moveItem` is a fast metadata rename, but
@@ -266,7 +289,25 @@ public actor FileEngine {
         try copy(source, to: dst, taskID: taskID, replacing: replacing,
                  done: &done, total: total, emit: emit)
         if isCancelled(taskID) { return }   // caller emits .cancelled; source kept
-        try fm.removeItem(at: source)
+        do {
+            try fm.removeItem(at: source)
+        } catch {
+            // Copy landed but the source couldn't be removed (e.g. permission on the
+            // source volume). Leaving both duplicates the file under a move the user
+            // believes relocated it — so roll the copy back, but ONLY when we can be
+            // sure the source is still fully intact: a single-file, non-replacing move.
+            //   • directory: `removeItem` deletes children until the first error, so a
+            //     failure may have PARTIALLY deleted the source — deleting `dst` too
+            //     would lose those children from both sides.
+            //   • replacing: the original `dst` was already overwritten, so deleting
+            //     the new `dst` leaves a hole (no file at all) while source survives.
+            // In those cases keep both and surface — a visible duplicate beats data loss.
+            let srcIsDir = (try? source.resourceValues(forKeys: [.isDirectoryKey]))?.isDirectory ?? true
+            if !replacing, !srcIsDir, fm.fileExists(atPath: source.path) {
+                try? fm.removeItem(at: dst)
+            }
+            throw error
+        }
     }
 
     /// True when `error` (or its underlying error) is POSIX `EXDEV` — a

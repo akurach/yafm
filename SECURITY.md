@@ -29,11 +29,15 @@ file engine, tag/xattr bridge, listing, keyboard monitor, and app state.
 | Medium | Key monitor `assumeIsolated` unverified | `dispatchPrecondition(.onQueue(.main))` |
 | Medium | Path bar accepted any string as a path | reject null bytes / non-absolute input |
 
+### Fixed since (v0.9)
+
+- ✅ **TOCTOU on copy destination** — *done* (v0.9). The copy engine opens the output with
+  `O_WRONLY|O_CREAT|O_EXCL|O_NOFOLLOW`, so the kernel refuses if anything already exists at the
+  path (closing the check-then-open window) and won't follow a planted symlink; overwrites route
+  through a temp sibling + atomic `replaceItemAt`. See `Operations.swift` `copy(_:to:…)`.
+
 ### Deferred (tracked in `ROADMAP.md`)
 
-- **TOCTOU on copy destination** — replace exists-check + truncating `OutputStream` with an
-  `O_WRONLY|O_CREAT|O_EXCL` open. Current mitigation: unique-name planning + a pre-write
-  existence guard (refuses to clobber, but not atomic).
 - ✅ **Plugin capability boundary** — *done* (v0.3 → frozen `apiVersion 1.0`). Plugins get a
   vetted capability subset via `PluginContext`; `FileEngine`/`TagService`/`LocalFileSystem` are
   never handed to plugin-facing code. See *Plugin sandbox* below.

@@ -30,6 +30,10 @@ final class PluginCoordinator {
     }
     var disabledPluginIDs: Set<String> = Set(UserDefaults.standard.stringArray(forKey: "disabledPlugins") ?? [])
 
+    /// One-shot guard so the execution-cap self-test runs once per launch, not on
+    /// every plugin reload (enable/disable toggles call `loadPlugins` repeatedly).
+    private static var didSelfTestCap = false
+
     // Extensions that may execute code — shared by openFile (AppState), editCursor,
     // and the plugin openInApp handler so the gate can never drift between call sites.
     static let riskyExtensions: Set<String> = [
@@ -42,6 +46,15 @@ final class PluginCoordinator {
     func loadPlugins() {
         guard let dir = JSPluginHost.defaultPluginsDirectory() else { return }
         installBundledPluginsIfNeeded(into: dir)
+
+        // Once per launch, verify the runaway-plugin execution cap (a private JSC
+        // symbol) is actually enforced — off the main thread so it can't stall boot.
+        // If a macOS update drops the symbol, this logs loudly instead of the guard
+        // vanishing silently. See `JSPluginHost.executionCapSelfTest`.
+        if !Self.didSelfTestCap {
+            Self.didSelfTestCap = true
+            Task.detached(priority: .utility) { _ = JSPluginHost.executionCapSelfTest() }
+        }
 
         pluginHost.openInAppHandler = { url, bundleId in
             // C-1: executable files require explicit user confirmation.

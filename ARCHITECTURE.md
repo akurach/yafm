@@ -1,6 +1,6 @@
 # yafm — Architecture (spine + current layout)
 
-This describes the v0.1 skeleton — the thesis that still holds through **v0.9.5**.
+This describes the v0.1 skeleton — the thesis that still holds through **v0.9.9**.
 Everything here serves the two non-negotiables from `VISION.md`: **never freeze silently**
 (everything async, always a visible loading state) and **native/fast/beautiful** (Swift
 Concurrency + SwiftUI, thin testable core). The "Module layout" below is kept current; the
@@ -50,7 +50,7 @@ yafm/
 │   ├── Plugins.swift           # JSPluginHost — JavaScriptCore column/action plugins
 │   ├── Git.swift               # GitStatusService (native git-status column)
 │   └── Search.swift            # SearchService (mdfind + own fallback)
-│   └── Core/Tests/CoreTests/   # XCTest suites (81 tests)
+│   └── Core/Tests/CoreTests/   # XCTest suites (111 unit + 4 opt-in StressTests)
 └── App/                        # SwiftUI executable sources (flat)
     ├── yafm.swift              # @main, RootView, sheets (tag/rename/onboarding/palette), menus
     ├── State.swift             # AppState · PaneModel · TabModel (@Observable @MainActor)
@@ -167,7 +167,10 @@ struct OperationProgress: Sendable {
 }
 ```
 
-Copy/move stream bytes in a loop (or `copyfile` with a callback) so progress is real, not faked. The queue is always visible in the UI.
+Copy/move stream bytes in a 1 MiB loop so progress is real, not faked, with cancel checked each
+buffer; a `copyfile(…, COPYFILE_METADATA)` pass then layers on xattrs (incl. native Finder tags),
+POSIX perms, timestamps, ACLs and flags that the raw byte loop can't carry. The queue is always
+visible in the UI.
 
 ### Tags
 

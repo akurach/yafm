@@ -4,6 +4,50 @@ All notable changes to yafm are recorded here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.10] — 2026-07-02 — 1.0 hardening (never-freeze contract + copy fidelity)
+
+### Fixed
+- **`F8` "Move to Trash" no longer freezes the window.** The trash gesture ran
+  `FileManager.trashItem` synchronously in a loop on the main actor, so trashing many files or
+  anything on a slow / SMB volume blocked the UI with no progress and no cancel — and swallowed
+  every error via `try?`. The loop now runs off the main thread and hops back to update state and
+  **surface failures** in an alert instead of silently dropping them.
+- **Copy no longer strips xattrs — including native Finder tags.** The streamed byte-copy carried
+  data but no metadata, so an `F5`-copy (and cross-volume `F6`-move via its copy+delete fallback)
+  silently lost `com.apple.metadata:_kMDItemUserTags`, POSIX permissions, timestamps, ACLs and
+  Finder flags. A `copyfile(…, COPYFILE_METADATA)` pass now layers that metadata onto every copied
+  file and folder after the data lands. New test asserts a tag survives a copy.
+- **A cancelled or failed copy no longer leaves a truncated file.** Cancelling mid-copy (or hitting
+  disk-full / a read error) left the half-written destination on disk under the real name, looking
+  like a finished copy. The plain new-file path now removes the partial output unless the copy
+  completes cleanly (the atomic-replace path already cleaned its temp). New test covers it.
+- **Cross-volume move no longer silently duplicates a file.** In the copy+delete fallback (moving
+  to a USB stick / network share), if the copy succeeded but removing the source failed (e.g.
+  permission on the source volume), *both* copies were left — a "move" that quietly duplicated. The
+  copy is now rolled back and the failure surfaced, so the move cleanly didn't happen.
+- **Undo no longer fails silently.** `⌘Z` used to no-op — with no message — when a file had moved,
+  been deleted, or its original name was retaken. It now reports how many items couldn't be restored.
+- **Plugin execution-cap self-test.** The runaway-plugin guard rides a private JSC symbol
+  (`JSContextGroupSetExecutionTimeLimit`); if a macOS update drops it, the never-freeze guarantee
+  for plugins would vanish silently. A launch-time self-test (off the main thread) now verifies the
+  cap actually fires and logs loudly if it doesn't.
+- **Command palette no longer janks on every keystroke.** Path completion ran a synchronous
+  `contentsOfDirectory` on the main thread as you typed (laggy in big / SMB folders); it now
+  computes off-main and reads from a cache on the render path.
+
+### Testing
+- **Never-freeze stress harness** (`StressTests`, opt-in via `YAFM_STRESS=1`, wired as its own CI
+  step): large-folder listing, wide-tree copy, prompt+clean cancel of a big copy, and a write-denied
+  tree — each asserted to finish within a wall-clock ceiling so a reintroduced hang / O(n²) blowup
+  fails as a timeout. Turns the never-freeze promise from aspirational into CI-enforced (engine +
+  listing surface). Plus unit tests for a write-denied destination and the plugin cap self-test.
+
+### Changed
+- Docs actualized to v0.9.9: `SECURITY.md` moves the copy-destination **TOCTOU** finding from
+  *Deferred* to *Fixed* (closed in v0.9 via `O_CREAT|O_EXCL|O_NOFOLLOW` + atomic replace);
+  `ARCHITECTURE.md` header and copy-engine note updated; both `USER_GUIDE` version stamps and the
+  Core test count (111 unit + 4 opt-in stress) reconciled.
+
 ## [0.9.9] — Batch-tag · per-row rename override · responsive eject
 
 ### Added

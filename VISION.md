@@ -87,7 +87,10 @@ The arc in brief:
   Compare Folders, `⌘Z` undo, archive wrapper (extract any format incl. rar5/encrypted via
   bundled 7-Zip + rich Compress modal), nav fixes (`⌘⌫` Trash, cursor restored on go-up) ·
   **v0.9.9 daily-use ergonomics**: batch-tag a multiselection, per-row override in bulk rename,
-  non-blocking eject (no more main-thread freeze on DMG eject)).
-  Currently **v0.9.9**; before 1.0: notarized
+  non-blocking eject (no more main-thread freeze on DMG eject)) ·
+  **v0.9.10 1.0-hardening**: copy preserves native tags/perms/timestamps (`copyfile` metadata
+  pass); off-main trash; no truncated/duplicated files on cancel/failure; a never-freeze stress
+  harness in CI.
+  Currently **v0.9.10**; before 1.0: notarized
   DMG (paid cert) + final polish. Photo-ingest + marketplace deferred post-1.0. Full
   status-tracked breakdown in [`ROADMAP.md`](ROADMAP.md).

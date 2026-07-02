@@ -282,7 +282,17 @@ Deferred (tracked, not yet done): — все закрыты в v0.9:
 
 ## Next up
 
-**v0.9.9 shipped** (daily-use ergonomics — **batch-tag a multiselection** ("Tag N Items…" over
+**v0.9.10 shipped** (1.0-hardening pass — the never-freeze contract made provable and copy made
+faithful: `F8`/compress **trash moved off the main thread** (was a synchronous `trashItem` loop
+that froze on slow/SMB volumes and swallowed errors); **copy preserves native tags + metadata**
+via a `copyfile(COPYFILE_METADATA)` pass (F5-copy and cross-volume F6-move were silently stripping
+`com.apple.metadata:_kMDItemUserTags`, perms, timestamps); **no truncated file** left on a
+cancelled/failed copy; **no silent duplication** on a cross-volume move whose source-delete fails;
+**undo reports** partial failures instead of no-op'ing; a **launch-time plugin execution-cap
+self-test**; **de-janked command palette** (path completion off the main thread); and a new
+**never-freeze stress harness** — large-folder listing, wide-tree copy, prompt+clean cancel,
+write-denied tree — wired into CI as its own step). **v0.9.9** before it (daily-use ergonomics —
+**batch-tag a multiselection** ("Tag N Items…" over
 the selection with all/some/none swatches), **per-row override** in bulk rename (edit any
 previewed target by hand while the rest follow the rule chain), and a **non-blocking eject** —
 the synchronous `unmountAndEjectDevice` ran on the main thread and froze the UI until a DMG

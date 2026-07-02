@@ -1143,8 +1143,17 @@ final class AppState {
             do {
                 try await archiveService.compress(items, to: dest, options: options)
                 if trashOriginals {
-                    for u in items { try? FileManager.default.trashItem(at: u, resultingItemURL: nil) }
-                    tagCloud.forgetTagged(items)
+                    // Off-main, same as F8 — a synchronous `trashItem` loop here froze
+                    // the window on slow/SMB volumes and swallowed errors.
+                    let result = await Self.trashInBackground(items)
+                    tagCloud.forgetTagged(result.trashed)
+                    if let message = result.errorMessage {
+                        let alert = NSAlert()
+                        alert.alertStyle = .warning
+                        alert.messageText = "Archived, but couldn't move some originals to the Trash."
+                        alert.informativeText = message
+                        alert.runModal()
+                    }
                 }
                 for pane in [left, right] where pane.active.directory.standardizedFileURL == dir.standardizedFileURL {
                     pane.active.load()
@@ -1213,20 +1222,49 @@ final class AppState {
     func enqueueTrash() {
         let sources = activeTab.actionable.map(\.url)
         guard !sources.isEmpty else { return }
-        var trashed: [URL] = []
-        var undoItems: [(original: URL, trashed: URL)] = []
-        for url in sources {
-            var resulting: NSURL?
-            if (try? FileManager.default.trashItem(at: url, resultingItemURL: &resulting)) != nil {
-                trashed.append(url)
-                if let dest = resulting as URL? { undoItems.append((original: url, trashed: dest)) }
+        // `FileManager.trashItem` is synchronous and can block for seconds on many
+        // files or a slow/SMB volume. Running the loop inline on @MainActor froze
+        // the window — no progress, no cancel — the exact silent freeze yafm exists
+        // to avoid. Detach the blocking work, then hop back for state + errors.
+        Task { [weak self] in
+            let result = await Self.trashInBackground(sources)
+            guard let self else { return }
+            if !result.trashed.isEmpty {
+                self.tagCloud.forgetTagged(result.trashed)
+                if !result.undoItems.isEmpty { self.pushUndo(.trash(items: result.undoItems)) }
+                self.activeTab.load()
+            }
+            if let message = result.errorMessage {
+                let alert = NSAlert()
+                alert.alertStyle = .warning
+                alert.messageText = "Couldn't move some items to the Trash."
+                alert.informativeText = message
+                alert.runModal()
             }
         }
-        if !trashed.isEmpty {
-            tagCloud.forgetTagged(trashed)
-            if !undoItems.isEmpty { pushUndo(.trash(items: undoItems)) }
-            activeTab.load()
-        }
+    }
+
+    /// Move `sources` to the Trash off the main thread. Errors are surfaced (not
+    /// swallowed as the old `try?` loop did); the first failure's message is
+    /// returned. All returned values are `Sendable` so they cross back to the actor.
+    private nonisolated static func trashInBackground(_ sources: [URL])
+        async -> (trashed: [URL], undoItems: [(original: URL, trashed: URL)], errorMessage: String?) {
+        await Task.detached(priority: .userInitiated) {
+            var trashed: [URL] = []
+            var undoItems: [(original: URL, trashed: URL)] = []
+            var errorMessage: String?
+            for url in sources {
+                var resulting: NSURL?
+                do {
+                    try FileManager.default.trashItem(at: url, resultingItemURL: &resulting)
+                    trashed.append(url)
+                    if let dest = resulting as URL? { undoItems.append((original: url, trashed: dest)) }
+                } catch {
+                    if errorMessage == nil { errorMessage = error.localizedDescription }
+                }
+            }
+            return (trashed, undoItems, errorMessage)
+        }.value
     }
 
     func enqueueDelete() {
@@ -1406,10 +1444,11 @@ final class AppState {
     func performUndo() {
         guard let action = undoStack.popLast() else { return }
         let fm = FileManager.default
+        var failed = 0
         func moveBack(_ from: URL, _ to: URL) {
-            guard fm.fileExists(atPath: from.path), !fm.fileExists(atPath: to.path) else { return }
+            guard fm.fileExists(atPath: from.path), !fm.fileExists(atPath: to.path) else { failed += 1; return }
             try? fm.createDirectory(at: to.deletingLastPathComponent(), withIntermediateDirectories: true)
-            try? fm.moveItem(at: from, to: to)
+            do { try fm.moveItem(at: from, to: to) } catch { failed += 1 }
         }
         switch action {
         case let .move(items):       for it in items { moveBack(it.to, it.from) }
@@ -1420,6 +1459,16 @@ final class AppState {
         let dirs = action.affectedDirectories
         for pane in [left, right] where dirs.contains(pane.active.directory.standardizedFileURL) {
             pane.active.load()
+        }
+        // Undo used to no-op silently when a file had moved, been deleted, or its old
+        // name was retaken — the user pressed ⌘Z and nothing happened. Say so.
+        if failed > 0 {
+            let alert = NSAlert()
+            alert.alertStyle = .warning
+            alert.messageText = failed == 1 ? "Couldn't undo an item."
+                                            : "Couldn't fully undo (\(failed) items)."
+            alert.informativeText = "The file moved, was deleted, or its original name is already taken."
+            alert.runModal()
         }
     }
 

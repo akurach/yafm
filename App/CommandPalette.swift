@@ -44,6 +44,7 @@ struct CommandPalette: View {
     @State private var query = ""
     @State private var selected = 0
     @State private var items: [PaletteItem] = []   // built once on appear (P1-3)
+    @State private var pathCache: [PaletteItem] = []   // async path completion (see .task)
     @FocusState private var focused: Bool
 
     var body: some View {
@@ -59,6 +60,20 @@ struct CommandPalette: View {
                     // Intercept Esc here so it closes the palette rather than
                     // the text field's default clear-on-escape (P2-5).
                     .onKeyPress(.escape) { app.commandPalette = false; return .handled }
+                    // Path completion touches the filesystem (a possibly slow/SMB
+                    // parent dir). Doing it inside `filtered` ran a synchronous
+                    // `contentsOfDirectory` on the main thread on every keystroke —
+                    // laggy typing. Compute it off-main and cache the result instead.
+                    .task(id: query) {
+                        let raw = query.trimmingCharacters(in: .whitespaces)
+                        let hits = await Task.detached(priority: .userInitiated) {
+                            Self.pathCompletions(for: raw)
+                        }.value
+                        // A newer keystroke cancels this `.task`; don't let a slow
+                        // older scan land its stale results over a fresher query.
+                        guard !Task.isCancelled else { return }
+                        pathCache = hits.map { goItem($0.url, $0.title) }
+                    }
             }
             .padding(.horizontal, 14).padding(.vertical, 12)
             Divider()
@@ -173,32 +188,39 @@ struct CommandPalette: View {
             }
             .sorted { $0.1 < $1.1 }
             .map(\.0)
-        let pitems = pathItems(for: raw)
-        results.insert(contentsOf: pitems, at: 0)
+        // Path completions are computed asynchronously (see `.task(id: query)`) and
+        // read from the cache here — no filesystem work on the render path.
+        results.insert(contentsOf: pathCache, at: 0)
         return results
+    }
+
+    /// Wrap a resolved folder URL into a "Go to" palette item. Kept on the view so
+    /// the async completion (which yields plain URLs) can build items on the main actor.
+    private func goItem(_ url: URL, _ title: String) -> PaletteItem {
+        PaletteItem(id: "goto.\(url.path)", title: title, subtitle: url.path,
+                    shortcut: "", systemImage: "folder",
+                    run: { [weak app] in app?.activeTab.open(url) })
     }
 
     /// Live path completion when the query is a path (`/…` or `~/…`): the exact
     /// folder if it exists, plus child folders whose name the typed leaf prefixes.
     /// Hidden folders (`.ssh`) stay out until the user types a leading dot — so
     /// `~/D` offers Documents/Downloads but `~/.s` is needed to reach `.ssh`.
-    private func pathItems(for raw: String) -> [PaletteItem] {
+    /// Resolve path completions (exact folder + child-folder matches) for a raw
+    /// query. Pure and `nonisolated` so it can run off the main actor — it only
+    /// touches the filesystem and returns plain `(url, title)` pairs; the view turns
+    /// those into items via `goItem`. Runs on a background thread (see `.task`).
+    nonisolated static func pathCompletions(for raw: String) -> [(url: URL, title: String)] {
         guard raw.hasPrefix("/") || raw.hasPrefix("~") else { return [] }
         let expanded = (raw as NSString).expandingTildeInPath
         guard expanded.hasPrefix("/"), !expanded.contains("\0") else { return [] }
         let fm = FileManager.default
-        var out: [PaletteItem] = []
-
-        func goItem(_ url: URL, _ title: String) -> PaletteItem {
-            PaletteItem(id: "goto.\(url.path)", title: title, subtitle: url.path,
-                        shortcut: "", systemImage: "folder",
-                        run: { [weak app] in app?.activeTab.open(url) })
-        }
+        var out: [(url: URL, title: String)] = []
 
         // Exact existing directory → top item, so Enter enters the typed path.
         var isDir: ObjCBool = false
         if fm.fileExists(atPath: expanded, isDirectory: &isDir), isDir.boolValue {
-            out.append(goItem(URL(fileURLWithPath: expanded), String(localized: "Go to \(expanded)")))
+            out.append((URL(fileURLWithPath: expanded), String(localized: "Go to \(expanded)")))
         }
 
         // Parent dir + partial leaf to complete against.
@@ -220,7 +242,7 @@ struct CommandPalette: View {
             guard url.path != expanded else { continue }   // already the exact item
             var d: ObjCBool = false
             guard fm.fileExists(atPath: url.path, isDirectory: &d), d.boolValue else { continue }
-            out.append(goItem(url, name))
+            out.append((url, name))
         }
         return out
     }

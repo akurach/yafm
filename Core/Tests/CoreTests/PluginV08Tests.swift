@@ -83,6 +83,14 @@ final class PluginCapabilityTests: XCTestCase {
                           "the watchdog must abort the loop, not hang")
     }
 
+    // The launch-time self-test must confirm the private-symbol execution cap is
+    // actually enforced. If this fails, the never-freeze guard for runaway plugins
+    // has silently disappeared (a macOS update dropped the JSC symbol).
+    func testExecutionCapSelfTestConfirmsCapEnforced() {
+        XCTAssertTrue(JSPluginHost.executionCapSelfTest(deadline: 8),
+                      "JS execution-time cap is not enforced — runaway plugins could freeze the app")
+    }
+
     func testReadCwdReadsScopedFileWhenGranted() throws {
         let dir = try tempDir()
         defer { try? FileManager.default.removeItem(at: dir) }

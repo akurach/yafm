@@ -1,5 +1,6 @@
 import Foundation
 import JavaScriptCore
+import os
 
 // JavaScriptCore's execution-time-limit API lives in the private
 // JSContextRefPrivate.h, which is absent from the public Swift module map — so we
@@ -119,7 +120,7 @@ public final class JSPluginHost {
     /// plugin can't permanently freeze the app. Generous enough that legitimate
     /// I/O-bound columns (EXIF/readText) finish; tight enough to bound an infinite
     /// loop to a recoverable hiccup rather than a dead window.
-    public static let jsExecutionTimeLimitSeconds = 2.0
+    nonisolated public static let jsExecutionTimeLimitSeconds = 2.0
 
     // MARK: App-layer action handlers (set by AppState before loadPlugins)
 
@@ -373,10 +374,42 @@ public final class JSPluginHost {
     /// per context, so the limit is naturally scoped to this one plugin. A nil
     /// callback means JSC terminates execution at the limit (the call then throws,
     /// surfacing as an empty cell). See the `@_silgen_name` binding at file top.
-    private static func capExecutionTime(of context: JSContext) {
+    nonisolated private static func capExecutionTime(of context: JSContext) {
         guard let global = context.jsGlobalContextRef else { return }
         JSContextGroupSetExecutionTimeLimit(
             JSContextGetGroup(global), jsExecutionTimeLimitSeconds, nil, nil)
+    }
+
+    /// Prove the execution-time cap is actually enforced by the private-symbol JSC
+    /// binding. If a future macOS renames/removes `JSContextGroupSetExecutionTimeLimit`,
+    /// the binding fails at launch and the runaway-plugin guard silently disappears —
+    /// this makes that failure **loud**. Runs a `while(true){}` on a background thread
+    /// with a wall-clock deadline; returns false (and logs an error) if the cap didn't
+    /// fire in time. Never hangs the caller — detecting a *missing* cap must not block.
+    @discardableResult
+    nonisolated public static func executionCapSelfTest(deadline: TimeInterval = 6) -> Bool {
+        let finished = OSAllocatedUnfairLock(initialState: false)
+        let worker = Thread {
+            guard let ctx = JSContext() else { return }
+            capExecutionTime(of: ctx)
+            // A BOUNDED spin, not `while(true)`: with the cap enforced JSC aborts this
+            // in ~`jsExecutionTimeLimitSeconds` (well under `deadline`) and `finished`
+            // flips fast → returns true. With the cap MISSING the loop still terminates
+            // on its own (after a finite spin, far past `deadline`) instead of pegging a
+            // core forever — the caller has already returned false by then.
+            _ = ctx.evaluateScript("var n=0; while(n<5e10){n=n+1}")
+            finished.withLock { $0 = true }
+        }
+        worker.stackSize = 1 << 19
+        worker.start()
+        let start = Date()
+        while Date().timeIntervalSince(start) < deadline {
+            if finished.withLock({ $0 }) { return true }
+            Thread.sleep(forTimeInterval: 0.05)
+        }
+        Logger(subsystem: "com.yafm.app", category: "plugins").error(
+            "JS execution-time cap NOT enforced — runaway plugins can now freeze the app (JSContextGroupSetExecutionTimeLimit missing?)")
+        return false
     }
 
     /// Clear all handle maps and reset the readText call budget. Call on directory

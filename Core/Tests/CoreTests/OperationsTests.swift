@@ -39,6 +39,111 @@ final class OperationsTests: XCTestCase {
         XCTAssertLessThan(last?.completedBytes ?? .max, 64 << 20, "copy ran to completion despite cancel")
     }
 
+    // MARK: T-1b — cancel mid-copy leaves no truncated file behind
+
+    func testCancelMidCopyLeavesNoPartialFile() async throws {
+        let dir = try tmpDir(); defer { try? FileManager.default.removeItem(at: dir) }
+        let src = dir.appendingPathComponent("big.bin")
+        let dst = dir.appendingPathComponent("dst")
+        try FileManager.default.createDirectory(at: dst, withIntermediateDirectories: true)
+        try Data(repeating: 9, count: 64 << 20).write(to: src)
+
+        let engine = FileEngine()
+        let task = OperationTask(kind: .copy, sources: [src], destination: dst)
+        var cancelledOnce = false
+        var last: OperationProgress?
+        for await p in engine.run(task) {
+            last = p
+            if !cancelledOnce, p.state == .running, p.completedBytes > 0, p.completedBytes < p.totalBytes {
+                engine.cancel(task.id); cancelledOnce = true
+            }
+        }
+        XCTAssertEqual(last?.state, .cancelled)
+        // The half-written destination must be removed — not left as a truncated
+        // file masquerading as a finished copy.
+        XCTAssertFalse(FileManager.default.fileExists(atPath: dst.appendingPathComponent("big.bin").path),
+                       "cancelled copy left a truncated file behind")
+    }
+
+    // MARK: T-1c — copy preserves xattrs (the native Finder tag lives in one)
+
+    func testCopyPreservesXattrs() async throws {
+        let dir = try tmpDir(); defer { try? FileManager.default.removeItem(at: dir) }
+        let src = dir.appendingPathComponent("tagged.txt")
+        let dstDir = dir.appendingPathComponent("dest")
+        try FileManager.default.createDirectory(at: dstDir, withIntermediateDirectories: true)
+        try "hello".write(to: src, atomically: true, encoding: .utf8)
+
+        // Same mechanism as a native macOS tag (com.apple.metadata:_kMDItemUserTags).
+        let key = "com.yafm.test.tag"
+        let value = Data("Red".utf8)
+        let rc = value.withUnsafeBytes { setxattr(src.path, key, $0.baseAddress, $0.count, 0, 0) }
+        try XCTSkipIf(rc != 0, "filesystem does not support xattrs")
+
+        let engine = FileEngine()
+        var last: OperationProgress?
+        for await p in engine.run(OperationTask(kind: .copy, sources: [src], destination: dstDir)) { last = p }
+        XCTAssertEqual(last?.state, .done)
+
+        let dst = dstDir.appendingPathComponent("tagged.txt")
+        let size = getxattr(dst.path, key, nil, 0, 0, 0)
+        XCTAssertGreaterThan(size, 0, "copy stripped the xattr (native tags would be lost)")
+        var out = [UInt8](repeating: 0, count: size)
+        _ = getxattr(dst.path, key, &out, size, 0, 0)
+        XCTAssertEqual(Data(out), value)
+    }
+
+    // MARK: T-1d — copy into a write-denied destination fails cleanly (no hang)
+
+    func testCopyIntoReadOnlyDestinationFails() async throws {
+        try XCTSkipIf(getuid() == 0, "root ignores POSIX permissions")
+        let dir = try tmpDir()
+        let src = dir.appendingPathComponent("s.txt")
+        try "x".write(to: src, atomically: true, encoding: .utf8)
+        let dst = dir.appendingPathComponent("ro")
+        try FileManager.default.createDirectory(at: dst, withIntermediateDirectories: true)
+        try FileManager.default.setAttributes([.posixPermissions: 0o500], ofItemAtPath: dst.path)
+        defer {   // restore write so the dir can be torn down
+            try? FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: dst.path)
+            try? FileManager.default.removeItem(at: dir)
+        }
+
+        let engine = FileEngine()
+        var last: OperationProgress?
+        for await p in engine.run(OperationTask(kind: .copy, sources: [src], destination: dst)) { last = p }
+
+        guard case .failed = last?.state else {
+            return XCTFail("expected .failed for a write-denied destination, got \(String(describing: last?.state))")
+        }
+    }
+
+    // MARK: T-1e — replace-copy carries the SOURCE's tags, not the overwritten file's
+
+    func testReplaceCopyUsesSourceMetadata() async throws {
+        let dir = try tmpDir(); defer { try? FileManager.default.removeItem(at: dir) }
+        let src = dir.appendingPathComponent("a.txt")
+        let dstDir = dir.appendingPathComponent("dest")
+        try FileManager.default.createDirectory(at: dstDir, withIntermediateDirectories: true)
+        try "new".write(to: src, atomically: true, encoding: .utf8)
+        let dst = dstDir.appendingPathComponent("a.txt")
+        try "old".write(to: dst, atomically: true, encoding: .utf8)
+
+        let key = "com.yafm.test.tag"
+        let rcS = Data("Src".utf8).withUnsafeBytes { setxattr(src.path, key, $0.baseAddress, $0.count, 0, 0) }
+        _ = Data("Dst".utf8).withUnsafeBytes { setxattr(dst.path, key, $0.baseAddress, $0.count, 0, 0) }
+        try XCTSkipIf(rcS != 0, "filesystem does not support xattrs")
+
+        let engine = FileEngine()
+        for await _ in engine.run(OperationTask(kind: .copy, sources: [src], destination: dstDir, collision: .replace)) {}
+
+        XCTAssertEqual(try String(contentsOf: dst, encoding: .utf8), "new")
+        let size = getxattr(dst.path, key, nil, 0, 0, 0)
+        XCTAssertGreaterThan(size, 0)
+        var out = [UInt8](repeating: 0, count: size)
+        _ = getxattr(dst.path, key, &out, size, 0, 0)
+        XCTAssertEqual(Data(out), Data("Src".utf8), "replace kept the old file's tag instead of the source's")
+    }
+
     // MARK: T-2 — move relocates the file
 
     func testMoveRelocatesFile() async throws {
