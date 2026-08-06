@@ -4,6 +4,17 @@ All notable changes to yafm are recorded here.
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 the project uses [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.9.11] — 2026-08-06 — eject/unmount freeze fix
+
+### Fixed
+- **Unmounting/ejecting an external volume could still freeze the UI for ~10s.** v0.9.9 moved
+  `unmountAndEjectDevice` off the main thread, but the volume-list refresh that follows it
+  (`refreshVolumes`) still ran `FileManager.mountedVolumeURLs` + `resourceValues(forKeys:)`
+  synchronously on the main actor — both block while a volume is mid-detach. It fired after every
+  eject completion and on every `NSWorkspace.didUnmountNotification`, so a slow-to-detach external
+  HDD spun the cursor for real. The volume list is now collected off-main and applied back on
+  `MainActor` via a new `applyRefreshedVolumes`.
+
 ## [0.9.10] — 2026-07-02 — 1.0 hardening (never-freeze contract + copy fidelity)
 
 ### Fixed

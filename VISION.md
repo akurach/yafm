@@ -90,7 +90,9 @@ The arc in brief:
   non-blocking eject (no more main-thread freeze on DMG eject)) ·
   **v0.9.10 1.0-hardening**: copy preserves native tags/perms/timestamps (`copyfile` metadata
   pass); off-main trash; no truncated/duplicated files on cancel/failure; a never-freeze stress
-  harness in CI.
-  Currently **v0.9.10**; before 1.0: notarized
+  harness in CI · **v0.9.11**: fixed a remaining eject/unmount freeze — `refreshVolumes` still ran
+  `mountedVolumeURLs`/`resourceValues` synchronously on main after eject/unmount, blocking for
+  seconds on a slow-to-detach external volume.
+  Currently **v0.9.11**; before 1.0: notarized
   DMG (paid cert) + final polish. Photo-ingest + marketplace deferred post-1.0. Full
   status-tracked breakdown in [`ROADMAP.md`](ROADMAP.md).

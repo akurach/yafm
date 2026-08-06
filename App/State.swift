@@ -830,8 +830,21 @@ final class AppState {
     // MARK: Volumes (§2)
 
     func refreshVolumes() {
+        // `mountedVolumes()` calls FileManager.mountedVolumeURLs + resourceValues(forKeys:)
+        // per URL — both are synchronous and can block for seconds while a volume is
+        // mid-mount/mid-detach (seen with external HDDs on unmount: ~10s UI freeze).
+        // Collect off the main thread, apply the diff back on MainActor.
+        let service = volumeService
+        Task.detached(priority: .userInitiated) { [weak self] in
+            let fetched = service.mountedVolumes()
+            guard let self else { return }
+            await MainActor.run { self.applyRefreshedVolumes(fetched) }
+        }
+    }
+
+    private func applyRefreshedVolumes(_ fetched: [Volume]) {
         let prev = Set(volumes.map(\.url))
-        volumes = volumeService.mountedVolumes()
+        volumes = fetched
         let curr = Set(volumes.map(\.url))
 
         for url in prev.subtracting(curr) {

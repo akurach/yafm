@@ -282,6 +282,12 @@ Deferred (tracked, not yet done): — все закрыты в v0.9:
 
 ## Next up
 
+**v0.9.11 shipped** (eject/unmount freeze fix — `refreshVolumes` collected the volume list
+synchronously on the main actor after eject completion and on every `didUnmountNotification`;
+`FileManager.mountedVolumeURLs`/`resourceValues` block while a volume is mid-detach, so a slow
+external HDD froze the UI for ~10s. Now collected off-main, applied back via
+`applyRefreshedVolumes` on `MainActor`.)
+
 **v0.9.10 shipped** (1.0-hardening pass — the never-freeze contract made provable and copy made
 faithful: `F8`/compress **trash moved off the main thread** (was a synchronous `trashItem` loop
 that froze on slow/SMB volumes and swallowed errors); **copy preserves native tags + metadata**
